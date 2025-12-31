@@ -1,7 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"github.com/BullionBear/seq/pkg/logger"
+)
 
 func main() {
-	fmt.Println("Hello, World!")
+	logger.Log.Info().Msg("Hello, World!")
 }
