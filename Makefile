@@ -1,4 +1,4 @@
-.PHONY: build test lint clean run benchmark help install-linter escape-analysis
+.PHONY: all build test lint clean run benchmark help install-linter escape-analysis
 
 # Variables
 BINARY_NAME=seq
@@ -7,7 +7,10 @@ CMD_DIR=./cmd
 COVERAGE_FILE=coverage.out
 
 # Default target
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := all
+
+# Run all checks: build and test
+all: build test
 
 # Build the application
 build:
@@ -101,6 +104,7 @@ escape-analysis-detail:
 # Show help
 help:
 	@echo "Available targets:"
+	@echo "  make (or make all)  - Build and run all tests (default)"
 	@echo "  make build          - Build the executable to $(BIN_DIR)/$(BINARY_NAME)"
 	@echo "  make run            - Build and run the application"
 	@echo "  make test           - Run tests"
