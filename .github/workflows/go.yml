@@ -38,6 +38,13 @@ jobs:
     - name: Run file allocation test
       run: go test -v -run TestLogger_FileAllocation ./pkg/logger/
 
+    - name: Run escape analysis
+      run: |
+        echo "Running escape analysis..."
+        go build -gcflags="-m" ./... 2>&1 | tee escape-analysis.txt || true
+        echo "Escape analysis complete. Showing allocations to heap:"
+        grep -E "(escapes|moved to heap)" escape-analysis.txt || echo "No heap allocations detected (or using different output format)"
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:

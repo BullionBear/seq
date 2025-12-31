@@ -1,4 +1,4 @@
-.PHONY: build test lint clean run benchmark help install-linter
+.PHONY: build test lint clean run benchmark help install-linter escape-analysis
 
 # Variables
 BINARY_NAME=seq
@@ -61,7 +61,7 @@ install-linter:
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BIN_DIR)
-	@rm -f $(COVERAGE_FILE) coverage.html
+	@rm -f $(COVERAGE_FILE) coverage.html escape-analysis.txt
 	@go clean
 	@echo "Clean complete"
 
@@ -86,6 +86,18 @@ vet:
 	@echo "Running go vet..."
 	@go vet ./...
 
+# Run escape analysis to see what escapes to heap
+escape-analysis:
+	@echo "Running escape analysis..."
+	@echo "=== Escape Analysis Report ==="
+	@go build -gcflags="-m" ./... 2>&1 | grep -E "(escapes|moved to heap|escape analysis)" || go build -gcflags="-m" ./... 2>&1
+
+# Run detailed escape analysis (more verbose)
+escape-analysis-detail:
+	@echo "Running detailed escape analysis..."
+	@echo "=== Detailed Escape Analysis Report ==="
+	@go build -gcflags="-m -m" ./... 2>&1 | tee escape-analysis.txt || go build -gcflags="-m -m" ./... 2>&1 | tee escape-analysis.txt
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -102,5 +114,7 @@ help:
 	@echo "  make deps           - Download and tidy dependencies"
 	@echo "  make fmt            - Format code"
 	@echo "  make vet            - Run go vet"
+	@echo "  make escape-analysis - Run escape analysis (shows heap allocations)"
+	@echo "  make escape-analysis-detail - Run detailed escape analysis"
 	@echo "  make help           - Show this help message"
 

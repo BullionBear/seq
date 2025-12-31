@@ -3,6 +3,7 @@ package logger
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -22,6 +23,94 @@ func TestLogger_WithLevel(t *testing.T) {
 
 func TestLogger_Warn(t *testing.T) {
 	Log.Warn().Msg("Hello, World!")
+}
+
+// TestGetLogger tests the GetLogger function with different logger types
+func TestGetLogger(t *testing.T) {
+	// Test console logger
+	consoleLog := GetLogger(LoggerTypeConsole)
+	consoleLog.Info().Msg("Console log message")
+
+	// Test file logger
+	fileLog := GetLogger(LoggerTypeFile)
+	fileLog.Info().Msg("File log message")
+
+	// Test default case (unknown type should return console logger)
+	defaultLog := GetLogger(LoggerType(999))
+	defaultLog.Info().Msg("Default log message")
+}
+
+// TestGetLogger_Console tests console logger specifically
+func TestGetLogger_Console(t *testing.T) {
+	log := GetLogger(LoggerTypeConsole)
+	log.Info().Str("test", "console").Msg("Testing console logger")
+}
+
+// TestGetLogger_File tests file logger specifically
+func TestGetLogger_File(t *testing.T) {
+	log := GetLogger(LoggerTypeFile)
+	log.Info().Str("test", "file").Msg("Testing file logger")
+}
+
+// TestSetLogFile tests changing the log file path
+func TestSetLogFile(t *testing.T) {
+	// Create a temporary directory for testing
+	tmpDir := t.TempDir()
+	testLogFile := filepath.Join(tmpDir, "test.log")
+
+	// Set the log file path
+	err := SetLogFile(testLogFile)
+	if err != nil {
+		t.Fatalf("SetLogFile failed: %v", err)
+	}
+
+	// Verify the path was set
+	currentPath := GetLogFile()
+	if currentPath != testLogFile {
+		t.Errorf("Expected log file path %s, got %s", testLogFile, currentPath)
+	}
+
+	// Use the file logger
+	fileLog := GetLogger(LoggerTypeFile)
+	fileLog.Info().Str("test", "setlogfile").Msg("Testing SetLogFile")
+
+	// Verify the log file was created
+	if _, err := os.Stat(testLogFile); os.IsNotExist(err) {
+		t.Errorf("Log file was not created at %s", testLogFile)
+	}
+}
+
+// TestSetLogFile_AfterUse tests changing the log file path after logger has been used
+func TestSetLogFile_AfterUse(t *testing.T) {
+	// First use the file logger (this initializes it)
+	fileLog := GetLogger(LoggerTypeFile)
+	fileLog.Info().Msg("Initial log message")
+
+	// Now change the log file path
+	tmpDir := t.TempDir()
+	newLogFile := filepath.Join(tmpDir, "new.log")
+
+	err := SetLogFile(newLogFile)
+	if err != nil {
+		t.Fatalf("SetLogFile failed: %v", err)
+	}
+
+	// Use the file logger again - should use new path
+	fileLog2 := GetLogger(LoggerTypeFile)
+	fileLog2.Info().Str("test", "afteruse").Msg("Testing SetLogFile after use")
+
+	// Verify the new log file was created
+	if _, err := os.Stat(newLogFile); os.IsNotExist(err) {
+		t.Errorf("New log file was not created at %s", newLogFile)
+	}
+}
+
+// TestGetLogFile tests getting the current log file path
+func TestGetLogFile(t *testing.T) {
+	path := GetLogFile()
+	if path == "" {
+		t.Error("GetLogFile returned empty string")
+	}
 }
 
 // BenchmarkLogger_Info benchmarks the basic Info logging operation
