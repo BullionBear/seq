@@ -58,4 +58,3 @@ func ConnectPostgres(cfg config.ConfigDatabase) (*gorm.DB, error) {
 
 	return db, nil
 }
-
