@@ -35,13 +35,20 @@ func main() {
 	}
 
 	// Initialize logger from configuration
-	if err := logger.InitFromConfig(cfg.Logger); err != nil {
+	loggerOpts := logger.Options{
+		Level:          cfg.Logger.Level,
+		Output:         cfg.Logger.Output,
+		Path:           cfg.Logger.Path,
+		MaxByteSize:    cfg.Logger.MaxByteSize,
+		MaxBackupFiles: cfg.Logger.MaxBackupFiles,
+	}
+	if err := logger.Init(loggerOpts); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Get the configured logger
-	log := logger.GetLoggerFromConfig()
+	// Get the singleton logger
+	log := logger.Get()
 	log.Info().Msg("Starting Seq...")
 	log.Info().Msg("Version: " + env.Version)
 	log.Info().Msg("Build Time: " + env.BuildTime)

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/BullionBear/seq/internal/config"
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -29,13 +28,27 @@ const (
 	EnvLogFile = "SEQ_LOG_FILE"
 )
 
+// Options contains configuration options for the logger
+type Options struct {
+	Level          string // Log level: trace, debug, info, warn, error, fatal, panic
+	Output         string // Output type: "stdout" or "file"
+	Path           string // Log file path (required when Output is "file")
+	MaxByteSize    int    // Max size in bytes before rotation (0 = no rotation)
+	MaxBackupFiles int    // Max number of backup files to keep (0 = keep all)
+}
+
 var (
+	// globalLogger is the singleton logger instance
+	globalLogger zerolog.Logger
+	// globalLoggerInitialized tracks if the global logger has been initialized
+	globalLoggerInitialized bool
+	// globalLoggerMutex protects global logger initialization
+	globalLoggerMutex sync.RWMutex
+
 	// consoleLogger is initialized for console/terminal output
 	consoleLogger zerolog.Logger
 	// fileLogger is initialized for file output
 	fileLogger zerolog.Logger
-	// mainLogger is the configured logger based on config (stdout or file)
-	mainLogger zerolog.Logger
 	// logFile stores the current log file path
 	logFile string
 	// fileLoggerInit ensures file logger is initialized only once
@@ -44,10 +57,6 @@ var (
 	fileLoggerMutex sync.RWMutex
 	// fileLoggerInitialized tracks if file logger has been initialized
 	fileLoggerInitialized bool
-	// mainLoggerInitialized tracks if main logger has been initialized from config
-	mainLoggerInitialized bool
-	// mainLoggerMutex protects main logger initialization
-	mainLoggerMutex sync.RWMutex
 	// consoleWriter is a package-level variable to reduce escapes
 	// Using a pointer to avoid copying the struct when passing to zerolog.New
 	consoleWriter = &zerolog.ConsoleWriter{
@@ -75,8 +84,8 @@ func init() {
 		logFile = DefaultLogFile
 	}
 
-	// Initialize main logger to console by default
-	mainLogger = consoleLogger
+	// Initialize global logger to console by default
+	globalLogger = consoleLogger
 }
 
 // parseLogLevel parses a string log level and returns the corresponding zerolog.Level
@@ -133,18 +142,18 @@ func createFileWriter(path string, maxByteSize int, maxBackupFiles int) (io.Writ
 	}, nil
 }
 
-// InitFromConfig initializes the logger from configuration
+// Init initializes the global singleton logger with the provided options
 // This should be called once at application startup
-func InitFromConfig(cfg config.ConfigLogger) error {
-	mainLoggerMutex.Lock()
-	defer mainLoggerMutex.Unlock()
+func Init(opts Options) error {
+	globalLoggerMutex.Lock()
+	defer globalLoggerMutex.Unlock()
 
 	// Set log level
-	level := parseLogLevel(cfg.Level)
+	level := parseLogLevel(opts.Level)
 	zerolog.SetGlobalLevel(level)
 
 	// Determine output type (default to stdout if not specified)
-	output := strings.ToLower(cfg.Output)
+	output := strings.ToLower(opts.Output)
 	if output == "" {
 		output = "stdout"
 	}
@@ -157,23 +166,23 @@ func InitFromConfig(cfg config.ConfigLogger) error {
 		writer = consoleWriter
 	case "file":
 		// Validate that path is provided
-		if cfg.Path == "" {
+		path := opts.Path
+		if path == "" {
 			// Fall back to default path or environment variable
-			logPath := os.Getenv(EnvLogFile)
-			if logPath == "" {
-				logPath = DefaultLogFile
+			path = os.Getenv(EnvLogFile)
+			if path == "" {
+				path = DefaultLogFile
 			}
-			cfg.Path = logPath
 		}
 
 		// Create file writer with rotation support
-		fileWriter, err := createFileWriter(cfg.Path, cfg.MaxByteSize, cfg.MaxBackupFiles)
+		fileWriter, err := createFileWriter(path, opts.MaxByteSize, opts.MaxBackupFiles)
 		if err != nil {
 			return err
 		}
 
 		writer = fileWriter
-		logFile = cfg.Path
+		logFile = path
 
 		// Also update the file logger for backward compatibility
 		fileLoggerMutex.Lock()
@@ -190,29 +199,29 @@ func InitFromConfig(cfg config.ConfigLogger) error {
 		writer = consoleWriter
 	}
 
-	// Create main logger with the selected writer
-	mainLogger = zerolog.New(writer).
+	// Create global logger with the selected writer
+	globalLogger = zerolog.New(writer).
 		With().
 		Timestamp().
 		Caller().
 		Logger().
 		Level(level)
 
-	mainLoggerInitialized = true
+	globalLoggerInitialized = true
 	return nil
 }
 
-// GetLoggerFromConfig returns the configured logger (initialized from config)
-// If config hasn't been initialized, returns console logger
-func GetLoggerFromConfig() zerolog.Logger {
-	mainLoggerMutex.RLock()
-	defer mainLoggerMutex.RUnlock()
+// Get returns the global singleton logger instance
+// If the logger hasn't been initialized with Init(), returns the default console logger
+func Get() zerolog.Logger {
+	globalLoggerMutex.RLock()
+	defer globalLoggerMutex.RUnlock()
 
-	if mainLoggerInitialized {
-		return mainLogger
+	if globalLoggerInitialized {
+		return globalLogger
 	}
 
-	// Fall back to console logger if not initialized from config
+	// Fall back to console logger if not initialized
 	return consoleLogger
 }
 
@@ -312,5 +321,5 @@ func GetLogger(loggerType LoggerType) zerolog.Logger {
 }
 
 // Log is kept for backward compatibility, defaults to console logger
-// Deprecated: Use GetLoggerFromConfig(), GetLogger(LoggerTypeConsole), or GetLogger(LoggerTypeFile) instead
+// Deprecated: Use Get() for the singleton logger, or GetLogger(LoggerTypeConsole)/GetLogger(LoggerTypeFile) for specific loggers
 var Log = consoleLogger
