@@ -12,7 +12,7 @@ const (
 		SELECT * FROM secrets
 	`
 	InsertSecret = `
-		INSERT INTO secrets (acct_id, acct_name, exchange, api_key, api_secret) VALUES (?, ?, ?, ?, ?)
+		INSERT INTO secrets (acct_id, user_id, acct_name, exchange, api_key, api_secret, passphrase, master_is) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 )
 
@@ -53,7 +53,7 @@ func (s *SecretManager) AddSecret(secret Secret) error {
 		return fmt.Errorf("secret already exists for acctID: %d", secret.AcctID)
 	}
 	s.secrets[secret.AcctID] = secret
-	if err := s.db.Exec(InsertSecret, secret.AcctID, secret.AcctName, secret.Exchange, secret.APIKey, secret.APISecret).Error; err != nil {
+	if err := s.db.Exec(InsertSecret, secret.AcctID, secret.UserID, secret.AcctName, secret.Exchange, secret.APIKey, secret.APISecret, secret.Passphrase, secret.MasterIs).Error; err != nil {
 		return err
 	}
 	return nil
