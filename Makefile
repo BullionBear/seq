@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean run benchmark help install-linter escape-analysis
+.PHONY: all build test lint clean run benchmark help install-linter escape-analysis migrate
 
 # Variables
 PACKAGE := github.com/BullionBear/seq
@@ -41,6 +41,16 @@ build:
 run: build-local
 	@echo "Running $(BINARY_NAME)..."
 	@$(BIN_DIR)/$(BINARY_NAME)
+
+# Run database migrations
+# Usage: make migrate [CONFIG=config/local.yml]
+migrate:
+	@echo "Running database migrations..."
+	@if [ -z "$(CONFIG)" ]; then \
+		go run $(CMD_DIR)/migrate/main.go -c config/local.yml; \
+	else \
+		go run $(CMD_DIR)/migrate/main.go -c $(CONFIG); \
+	fi
 
 # Run tests
 test:
@@ -138,5 +148,6 @@ help:
 	@echo "  make vet            - Run go vet"
 	@echo "  make escape-analysis - Run escape analysis (shows heap allocations)"
 	@echo "  make escape-analysis-detail - Run detailed escape analysis"
+	@echo "  make migrate        - Run database migrations (use CONFIG=path/to/config.yml for custom config)"
 	@echo "  make help           - Show this help message"
 
