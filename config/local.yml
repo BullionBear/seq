@@ -1,0 +1,10 @@
+logger:
+  level: debug
+  output: stdout  # "stdout" or "file"
+  path: logs/seq.log  # Required when output is "file"
+  max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
+  max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
+ems:
+  url: http://localhost:8080
+pms:
+  url: http://localhost:8081

@@ -15,8 +15,11 @@ type Config struct {
 
 // ConfigLogger contains logger configuration
 type ConfigLogger struct {
-	Level string `yaml:"level"`
-	Path  string `yaml:"path"`
+	Level          string `yaml:"level"`
+	Output         string `yaml:"output"`           // "stdout" or "file"
+	Path           string `yaml:"path"`             // Required when output is "file"
+	MaxByteSize    int    `yaml:"max_byte_size"`    // Max size in bytes before rotation (0 = no rotation)
+	MaxBackupFiles int    `yaml:"max_backup_files"` // Max number of backup files to keep (0 = keep all)
 }
 
 // ConfigEMS contains EMS (Event Management System) configuration

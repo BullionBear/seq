@@ -1,9 +1,50 @@
 package main
 
 import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/BullionBear/seq/env"
+	"github.com/BullionBear/seq/internal/config"
 	"github.com/BullionBear/seq/pkg/logger"
 )
 
 func main() {
-	logger.Log.Info().Msg("Hello, World!")
+	// Parse command-line flags
+	configPath := flag.String("c", "", "Path to configuration file")
+	flag.Parse()
+
+	// Determine config path: flag takes precedence over environment variable
+	if *configPath == "" {
+		*configPath = os.Getenv("CONFIG")
+	}
+
+	// Exit if no config path provided
+	if *configPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: Configuration file path is required.\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s -c <config-file> or set CONFIG environment variable\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	// Load configuration
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to load configuration from %s: %v\n", *configPath, err)
+		os.Exit(1)
+	}
+
+	// Initialize logger from configuration
+	if err := logger.InitFromConfig(cfg.Logger); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Get the configured logger
+	log := logger.GetLoggerFromConfig()
+	log.Info().Msg("Starting Seq...")
+	log.Info().Msg("Version: " + env.Version)
+	log.Info().Msg("Build Time: " + env.BuildTime)
+	log.Info().Msg("Commit Hash: " + env.CommitHash)
+	log.Info().Msgf("Configuration loaded from: %s", *configPath)
 }

@@ -1,11 +1,15 @@
 package logger
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/BullionBear/seq/internal/config"
 	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // LoggerType represents the type of logger to retrieve
@@ -30,6 +34,8 @@ var (
 	consoleLogger zerolog.Logger
 	// fileLogger is initialized for file output
 	fileLogger zerolog.Logger
+	// mainLogger is the configured logger based on config (stdout or file)
+	mainLogger zerolog.Logger
 	// logFile stores the current log file path
 	logFile string
 	// fileLoggerInit ensures file logger is initialized only once
@@ -38,6 +44,10 @@ var (
 	fileLoggerMutex sync.RWMutex
 	// fileLoggerInitialized tracks if file logger has been initialized
 	fileLoggerInitialized bool
+	// mainLoggerInitialized tracks if main logger has been initialized from config
+	mainLoggerInitialized bool
+	// mainLoggerMutex protects main logger initialization
+	mainLoggerMutex sync.RWMutex
 	// consoleWriter is a package-level variable to reduce escapes
 	// Using a pointer to avoid copying the struct when passing to zerolog.New
 	consoleWriter = &zerolog.ConsoleWriter{
@@ -65,7 +75,145 @@ func init() {
 		logFile = DefaultLogFile
 	}
 
-	// Initialize file logger (lazy initialization on first use)
+	// Initialize main logger to console by default
+	mainLogger = consoleLogger
+}
+
+// parseLogLevel parses a string log level and returns the corresponding zerolog.Level
+func parseLogLevel(level string) zerolog.Level {
+	switch strings.ToLower(level) {
+	case "trace":
+		return zerolog.TraceLevel
+	case "debug":
+		return zerolog.DebugLevel
+	case "info":
+		return zerolog.InfoLevel
+	case "warn", "warning":
+		return zerolog.WarnLevel
+	case "error":
+		return zerolog.ErrorLevel
+	case "fatal":
+		return zerolog.FatalLevel
+	case "panic":
+		return zerolog.PanicLevel
+	default:
+		return zerolog.DebugLevel // Default to debug
+	}
+}
+
+// createFileWriter creates a file writer with optional log rotation
+func createFileWriter(path string, maxByteSize int, maxBackupFiles int) (io.Writer, error) {
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+
+	// If no rotation is configured, use a simple file writer
+	if maxByteSize <= 0 {
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, err
+		}
+		return file, nil
+	}
+
+	// Use lumberjack for log rotation
+	// Convert bytes to megabytes for lumberjack (it expects MB)
+	maxSizeMB := maxByteSize / (1024 * 1024)
+	if maxSizeMB <= 0 {
+		maxSizeMB = 1 // Minimum 1 MB
+	}
+
+	return &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    maxSizeMB,      // Maximum size in megabytes before rotation
+		MaxBackups: maxBackupFiles, // Maximum number of old log files to retain
+		MaxAge:     0,              // Don't delete by age, only by count
+		Compress:   false,          // Don't compress by default
+	}, nil
+}
+
+// InitFromConfig initializes the logger from configuration
+// This should be called once at application startup
+func InitFromConfig(cfg config.ConfigLogger) error {
+	mainLoggerMutex.Lock()
+	defer mainLoggerMutex.Unlock()
+
+	// Set log level
+	level := parseLogLevel(cfg.Level)
+	zerolog.SetGlobalLevel(level)
+
+	// Determine output type (default to stdout if not specified)
+	output := strings.ToLower(cfg.Output)
+	if output == "" {
+		output = "stdout"
+	}
+
+	var writer io.Writer
+
+	switch output {
+	case "stdout", "console":
+		// Use console writer for stdout
+		writer = consoleWriter
+	case "file":
+		// Validate that path is provided
+		if cfg.Path == "" {
+			// Fall back to default path or environment variable
+			logPath := os.Getenv(EnvLogFile)
+			if logPath == "" {
+				logPath = DefaultLogFile
+			}
+			cfg.Path = logPath
+		}
+
+		// Create file writer with rotation support
+		fileWriter, err := createFileWriter(cfg.Path, cfg.MaxByteSize, cfg.MaxBackupFiles)
+		if err != nil {
+			return err
+		}
+
+		writer = fileWriter
+		logFile = cfg.Path
+
+		// Also update the file logger for backward compatibility
+		fileLoggerMutex.Lock()
+		fileLogger = zerolog.New(writer).
+			With().
+			Timestamp().
+			Caller().
+			Logger().
+			Level(level)
+		fileLoggerInitialized = true
+		fileLoggerMutex.Unlock()
+	default:
+		// Unknown output type, default to stdout
+		writer = consoleWriter
+	}
+
+	// Create main logger with the selected writer
+	mainLogger = zerolog.New(writer).
+		With().
+		Timestamp().
+		Caller().
+		Logger().
+		Level(level)
+
+	mainLoggerInitialized = true
+	return nil
+}
+
+// GetLoggerFromConfig returns the configured logger (initialized from config)
+// If config hasn't been initialized, returns console logger
+func GetLoggerFromConfig() zerolog.Logger {
+	mainLoggerMutex.RLock()
+	defer mainLoggerMutex.RUnlock()
+
+	if mainLoggerInitialized {
+		return mainLogger
+	}
+
+	// Fall back to console logger if not initialized from config
+	return consoleLogger
 }
 
 // initFileLogger initializes the file logger (called lazily on first access)
@@ -150,6 +298,7 @@ func GetLogFile() string {
 }
 
 // GetLogger returns the logger instance based on the LoggerType
+// This maintains backward compatibility with existing code
 func GetLogger(loggerType LoggerType) zerolog.Logger {
 	switch loggerType {
 	case LoggerTypeFile:
@@ -163,5 +312,5 @@ func GetLogger(loggerType LoggerType) zerolog.Logger {
 }
 
 // Log is kept for backward compatibility, defaults to console logger
-// Deprecated: Use GetLogger(LoggerTypeConsole) or GetLogger(LoggerTypeFile) instead
+// Deprecated: Use GetLoggerFromConfig(), GetLogger(LoggerTypeConsole), or GetLogger(LoggerTypeFile) instead
 var Log = consoleLogger
