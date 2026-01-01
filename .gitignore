@@ -34,7 +34,7 @@ go.work.sum
 
 # Binaries
 bin/
-
+migrate
 # Log files
 logs/
 *.log
