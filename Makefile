@@ -1,26 +1,44 @@
 .PHONY: all build test lint clean run benchmark help install-linter escape-analysis
 
 # Variables
+PACKAGE := github.com/BullionBear/seq
 BINARY_NAME=seq
 BIN_DIR=./bin
 CMD_DIR=./cmd
 COVERAGE_FILE=coverage.out
+VERSION := $(shell git describe --tags --always --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null || echo "dev")
+COMMIT_HASH := $(shell git rev-parse --short HEAD 2> /dev/null || echo "unknown")
+BUILD_TIMESTAMP := $(shell date '+%Y-%m-%dT%H:%M:%S')
+LDFLAGS := -X '${PACKAGE}/env.Version=${VERSION}' \
+           -X '${PACKAGE}/env.CommitHash=${COMMIT_HASH}' \
+           -X '${PACKAGE}/env.BuildTime=${BUILD_TIMESTAMP}'
 
 # Default target
 .DEFAULT_GOAL := all
 
-# Run all checks: build and test
-all: build test
+# Run all checks: build locally for tests
+all:
+	@$(MAKE) build-local
+	@$(MAKE) test
 
-# Build the application
-build:
-	@echo "Building $(BINARY_NAME)..."
+# Build for local platform (used by test and run)
+build-local:
+	@echo "Building $(BINARY_NAME) for local platform..."
+	@echo "Version: $(VERSION), Commit: $(COMMIT_HASH), BuildTime: $(BUILD_TIMESTAMP)"
 	@mkdir -p $(BIN_DIR)
-	@go build -o $(BIN_DIR)/$(BINARY_NAME) $(CMD_DIR)/main.go
+	@go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME) $(CMD_DIR)/main.go
 	@echo "Build complete: $(BIN_DIR)/$(BINARY_NAME)"
 
-# Run the application
-run: build
+# Build the application for Linux AMD64
+build:
+	@echo "Building $(BINARY_NAME) for linux/amd64..."
+	@echo "Version: $(VERSION), Commit: $(COMMIT_HASH), BuildTime: $(BUILD_TIMESTAMP)"
+	@mkdir -p $(BIN_DIR)
+	@env GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)/main.go
+	@echo "Build complete: $(BIN_DIR)/$(BINARY_NAME)-linux-amd64"
+
+# Run the application (builds for local platform first)
+run: build-local
 	@echo "Running $(BINARY_NAME)..."
 	@$(BIN_DIR)/$(BINARY_NAME)
 
@@ -105,8 +123,8 @@ escape-analysis-detail:
 help:
 	@echo "Available targets:"
 	@echo "  make (or make all)  - Build and run all tests (default)"
-	@echo "  make build          - Build the executable to $(BIN_DIR)/$(BINARY_NAME)"
-	@echo "  make run            - Build and run the application"
+	@echo "  make build          - Build for linux/amd64 to $(BIN_DIR)/$(BINARY_NAME)-linux-amd64"
+	@echo "  make run            - Build for local platform and run the application"
 	@echo "  make test           - Run tests"
 	@echo "  make test-coverage  - Run tests with coverage report"
 	@echo "  make benchmark      - Run benchmarks"
