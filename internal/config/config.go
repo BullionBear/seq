@@ -29,7 +29,18 @@ type ConfigEMS struct {
 
 // ConfigPMS contains PMS (Portfolio Management System) configuration
 type ConfigPMS struct {
-	URL string `yaml:"url"`
+	URL      string         `yaml:"url"`
+	Database ConfigDatabase `yaml:"database"`
+}
+
+// ConfigDatabase contains database configuration
+type ConfigDatabase struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"` // disable, allow, prefer, require, verify-ca, verify-full
 }
 
 // LoadConfig loads configuration from a YAML file
