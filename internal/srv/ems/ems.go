@@ -1,13 +1,91 @@
 package ems
 
-type EMS struct {
-	URL string
+import (
+	"time"
+
+	"github.com/BullionBear/seq/internal/srv/sms"
+	"github.com/BullionBear/seq/pkg/evbus"
+	"github.com/shopspring/decimal"
+)
+
+type ExecutionManager struct {
+	sms           *sms.SecretManager
+	clientOrderID int
+	activeOrders  map[int]Order  // index by clientOrderID
+	client        map[int]Client // acctID to client
 }
 
-func NewEMS(url string) *EMS {
-	return &EMS{URL: url}
+func NewExecutionManager(sms *sms.SecretManager, orderSize int) *ExecutionManager {
+	return &ExecutionManager{
+		sms:           sms,
+		clientOrderID: 0,
+		activeOrders:  make(map[int]Order, orderSize),
+	}
 }
 
-func (e *EMS) GetURL() string {
-	return e.URL
+func (e *ExecutionManager) MakeLimitOrder(
+	strategyID int,
+	acctID int,
+	symbolID int,
+	side Side,
+	price decimal.Decimal,
+	quantity decimal.Decimal) (int, error) {
+	e.clientOrderID++
+	order := Order{
+		StrategyID:    strategyID,
+		ClientOrderID: e.clientOrderID,
+		AcctID:        acctID,
+		SymbolID:      symbolID,
+		Side:          side,
+		Status:        StatusInitialized,
+		Type:          TypeLimit,
+		Price:         price,
+		Quantity:      quantity,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	e.activeOrders[e.clientOrderID] = order
+	return e.clientOrderID, nil
+}
+
+func (e *ExecutionManager) MakeMarketOrder(
+	strategyID int,
+	acctID int,
+	symbolID int,
+	side Side,
+	quantity decimal.Decimal) (int, error) {
+	e.clientOrderID++
+	order := Order{
+		StrategyID:    strategyID,
+		ClientOrderID: e.clientOrderID,
+		AcctID:        acctID,
+		SymbolID:      symbolID,
+		Side:          side,
+		Status:        StatusInitialized,
+		Type:          TypeMarket,
+		Quantity:      quantity,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	e.activeOrders[e.clientOrderID] = order
+	return e.clientOrderID, nil
+}
+
+func (e *ExecutionManager) SubmitOrder(clientOrderID int) error {
+	return nil
+}
+
+func (e *ExecutionManager) CancelOrder(clientOrderID int) error {
+	return nil
+}
+
+func (e *ExecutionManager) SubscribeOrderUpdate(acctID int, callback func(*evbus.Event[OrderUpdate]) error, errCallback func(error)) (unsubscribe func(), err error) {
+	return func() {
+	}, nil
+}
+
+func (e *ExecutionManager) SubscribeOrderFill(acctID int, callback func(*evbus.Event[OrderFill]) error, errCallback func(error)) (unsubscribe func(), err error) {
+	return func() {
+	}, nil
 }
