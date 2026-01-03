@@ -9,10 +9,12 @@ import (
 )
 
 type ExecutionManager struct {
-	sms           *sms.SecretManager
-	clientOrderID int
-	activeOrders  map[int]Order  // index by clientOrderID
-	client        map[int]Client // acctID to client
+	sms                *sms.SecretManager
+	clientOrderID      int
+	activeOrders       map[int]Order  // index by clientOrderID
+	client             map[int]Client // acctID to client
+	orderUpdateFactory *evbus.EventFactory[OrderUpdate]
+	orderFillFactory   *evbus.EventFactory[OrderFill]
 }
 
 func NewExecutionManager(sms *sms.SecretManager, orderSize int) *ExecutionManager {
@@ -20,6 +22,12 @@ func NewExecutionManager(sms *sms.SecretManager, orderSize int) *ExecutionManage
 		sms:           sms,
 		clientOrderID: 0,
 		activeOrders:  make(map[int]Order, orderSize),
+		orderUpdateFactory: evbus.NewEventFactory(func(o *OrderUpdate) {
+			o.Reset()
+		}),
+		orderFillFactory: evbus.NewEventFactory(func(f *OrderFill) {
+			f.Reset()
+		}),
 	}
 }
 

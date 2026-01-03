@@ -56,6 +56,14 @@ type OrderUpdate struct {
 	UpdatedAt         time.Time
 }
 
+func (o *OrderUpdate) Reset() {
+	o.BeforeStatus = StatusUninitialized
+	o.AfterStatus = StatusUninitialized
+	o.BeforeExecutedQty = decimal.Zero
+	o.AfterExecutedQty = decimal.Zero
+	o.UpdatedAt = time.Time{}
+}
+
 type OrderFill struct {
 	ClientOrderID int
 	FillID        int
@@ -64,4 +72,14 @@ type OrderFill struct {
 	FeeCcyID      int
 	FeeQty        decimal.Decimal
 	FilledAt      time.Time
+}
+
+func (f *OrderFill) Reset() {
+	f.ClientOrderID = 0
+	f.FillID = 0
+	f.FilledQty = decimal.Zero
+	f.FilledPrice = decimal.Zero
+	f.FeeQty = decimal.Zero
+	f.FeeCcyID = 0
+	f.FilledAt = time.Time{}
 }
