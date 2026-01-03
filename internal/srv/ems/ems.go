@@ -5,7 +5,6 @@ import (
 
 	"github.com/BullionBear/seq/internal/srv/sms"
 	"github.com/BullionBear/seq/pkg/evbus"
-	"github.com/shopspring/decimal"
 )
 
 type ExecutionManager struct {
@@ -36,8 +35,8 @@ func (e *ExecutionManager) MakeLimitOrder(
 	acctID int,
 	symbolID int,
 	side Side,
-	price decimal.Decimal,
-	quantity decimal.Decimal) (int, error) {
+	price float64,
+	quantity float64) (int, error) {
 	e.clientOrderID++
 	order := Order{
 		StrategyID:    strategyID,
@@ -61,7 +60,7 @@ func (e *ExecutionManager) MakeMarketOrder(
 	acctID int,
 	symbolID int,
 	side Side,
-	quantity decimal.Decimal) (int, error) {
+	quantity float64) (int, error) {
 	e.clientOrderID++
 	order := Order{
 		StrategyID:    strategyID,

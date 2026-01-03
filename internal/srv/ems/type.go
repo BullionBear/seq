@@ -2,8 +2,6 @@ package ems
 
 import (
 	"time"
-
-	"github.com/shopspring/decimal"
 )
 
 type Side int
@@ -39,9 +37,9 @@ type Order struct {
 	SymbolID      int
 	Side          Side
 	Type          Type
-	Price         decimal.Decimal
-	Quantity      decimal.Decimal
-	ExecutedQty   decimal.Decimal
+	Price         float64
+	Quantity      float64
+	ExecutedQty   float64
 	Status        Status
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
@@ -51,35 +49,35 @@ type OrderUpdate struct {
 	ClientOrderID     int
 	BeforeStatus      Status
 	AfterStatus       Status
-	BeforeExecutedQty decimal.Decimal
-	AfterExecutedQty  decimal.Decimal
+	BeforeExecutedQty float64
+	AfterExecutedQty  float64
 	UpdatedAt         time.Time
 }
 
 func (o *OrderUpdate) Reset() {
 	o.BeforeStatus = StatusUninitialized
 	o.AfterStatus = StatusUninitialized
-	o.BeforeExecutedQty = decimal.Zero
-	o.AfterExecutedQty = decimal.Zero
+	o.BeforeExecutedQty = 0
+	o.AfterExecutedQty = 0
 	o.UpdatedAt = time.Time{}
 }
 
 type OrderFill struct {
 	ClientOrderID int
 	FillID        int
-	FilledQty     decimal.Decimal
-	FilledPrice   decimal.Decimal
+	FilledQty     float64
+	FilledPrice   float64
 	FeeCcyID      int
-	FeeQty        decimal.Decimal
+	FeeQty        float64
 	FilledAt      time.Time
 }
 
 func (f *OrderFill) Reset() {
 	f.ClientOrderID = 0
 	f.FillID = 0
-	f.FilledQty = decimal.Zero
-	f.FilledPrice = decimal.Zero
-	f.FeeQty = decimal.Zero
+	f.FilledQty = 0
+	f.FilledPrice = 0
+	f.FeeQty = 0
 	f.FeeCcyID = 0
 	f.FilledAt = time.Time{}
 }
