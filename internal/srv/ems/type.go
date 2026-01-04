@@ -11,11 +11,20 @@ const (
 	SideSell
 )
 
-type Type int
+type OrderType int
 
 const (
-	TypeMarket Type = iota
+	TypeMarket OrderType = iota
 	TypeLimit
+)
+
+type TimeInForce int
+
+const (
+	TimeInForceGTC TimeInForce = iota
+	TimeInForceIOC
+	TimeInForceFOK
+	TimeInForcePO
 )
 
 type Status int
@@ -23,6 +32,7 @@ type Status int
 const (
 	StatusUninitialized Status = iota
 	StatusInitialized
+	StatusInFlight
 	StatusAccepted
 	StatusPartiallyFilled
 	StatusFilled
@@ -36,7 +46,8 @@ type Order struct {
 	ClientOrderID int
 	SymbolID      int
 	Side          Side
-	Type          Type
+	Type          OrderType
+	TimeInForce   TimeInForce
 	Price         float64
 	Quantity      float64
 	ExecutedQty   float64
