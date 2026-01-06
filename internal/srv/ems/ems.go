@@ -3,6 +3,7 @@ package ems
 import (
 	"time"
 
+	"github.com/BullionBear/seq/internal/srv"
 	"github.com/BullionBear/seq/internal/srv/sms"
 	"github.com/BullionBear/seq/pkg/evbus"
 )
@@ -10,8 +11,8 @@ import (
 type ExecutionManager struct {
 	sms                *sms.SecretManager
 	clientOrderID      int
-	activeOrders       map[int]Order  // index by clientOrderID
-	client             map[int]Client // acctID to client
+	activeOrders       map[int]Order           // index by clientOrderID
+	client             map[int]ExecutionClient // acctID to client
 	orderUpdateFactory *evbus.EventFactory[OrderUpdate]
 	orderFillFactory   *evbus.EventFactory[OrderFill]
 }
@@ -34,7 +35,7 @@ func (e *ExecutionManager) MakeLimitOrder(
 	strategyID int,
 	acctID int,
 	symbolID int,
-	side Side,
+	side srv.Side,
 	price float64,
 	quantity float64) (int, error) {
 	e.clientOrderID++
@@ -59,7 +60,7 @@ func (e *ExecutionManager) MakeMarketOrder(
 	strategyID int,
 	acctID int,
 	symbolID int,
-	side Side,
+	side srv.Side,
 	quantity float64) (int, error) {
 	e.clientOrderID++
 	order := Order{

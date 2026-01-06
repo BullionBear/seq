@@ -2,13 +2,8 @@ package ems
 
 import (
 	"time"
-)
 
-type Side int
-
-const (
-	SideBuy Side = iota
-	SideSell
+	"github.com/BullionBear/seq/internal/srv"
 )
 
 type OrderType int
@@ -45,7 +40,7 @@ type Order struct {
 	AcctID        int
 	ClientOrderID int
 	SymbolID      int
-	Side          Side
+	Side          srv.Side
 	Type          OrderType
 	TimeInForce   TimeInForce
 	Price         float64
