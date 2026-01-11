@@ -13,7 +13,6 @@ Seq is a high-performance Go-based trading system backend that provides essentia
 - **Secret Management System (SMS)**: Securely manages API keys and credentials
 - **Instrument Catalog**: Provides access to trading instruments and market data
 - **Structured Logging**: Comprehensive logging with rotation support (stdout or file)
-- **Database Migrations**: Version-controlled database schema management
 - **PostgreSQL Integration**: Uses GORM ORM with PostgreSQL for data persistence
 - **Configuration Management**: YAML-based configuration with environment variable support
 
@@ -31,7 +30,6 @@ Seq is a high-performance Go-based trading system backend that provides essentia
 - **Logger**: Singleton logger with support for stdout/file output and log rotation
 - **Database**: PostgreSQL connection pool with GORM
 - **Config**: YAML-based configuration system
-- **Migrations**: Database schema versioning and management
 
 ## Getting Started
 
@@ -67,12 +65,7 @@ cp config/local.yml config/myconfig.yml
 # Edit config/myconfig.yml with your database credentials
 ```
 
-5. Run database migrations:
-```bash
-make migrate CONFIG=config/myconfig.yml
-```
-
-6. Build and run:
+5. Build and run:
 ```bash
 make run CONFIG=config/myconfig.yml
 # or
@@ -127,103 +120,6 @@ pms:
 - **dbname**: Database name
 - **sslmode**: SSL connection mode (disable, allow, prefer, require, verify-ca, verify-full)
 
-## Database Migrations
-
-### Overview
-
-Seq uses [golang-migrate](https://github.com/golang-migrate/migrate) for database schema versioning and management. Migrations are stored in the `migrations/` directory as SQL files following the naming convention:
-
-- `{version}_{description}.up.sql` - Migration to apply
-- `{version}_{description}.down.sql` - Migration to rollback
-
-### Running Migrations
-
-#### Using Make (Recommended)
-
-```bash
-# Run migrations with default config (config/local.yml)
-make migrate
-
-# Run migrations with custom config
-make migrate CONFIG=config/prod.yml
-```
-
-#### Using Go Run
-
-```bash
-# Using default config
-go run cmd/migrate/main.go -c config/local.yml
-
-# Using environment variable
-CONFIG=config/prod.yml go run cmd/migrate/main.go -c config/prod.yml
-```
-
-### Migration File Naming
-
-Migration files must follow this naming convention:
-- Format: `{version}_{description}.{direction}.sql`
-- Version: Sequential number (e.g., `000001`, `000002`)
-- Description: Descriptive name with underscores (e.g., `create_instrument`, `add_user_table`)
-- Direction: `up` or `down`
-
-Examples:
-- `000001_create_instrument.up.sql`
-- `000001_create_instrument.down.sql`
-- `000002_add_index.up.sql`
-- `000002_add_index.down.sql`
-
-### Creating New Migrations
-
-1. Create a new migration file pair in the `migrations/` directory:
-```bash
-# Example: Creating migration 000002
-touch migrations/000002_add_user_table.up.sql
-touch migrations/000002_add_user_table.down.sql
-```
-
-2. Write your SQL in the `.up.sql` file:
-```sql
--- migrations/000002_add_user_table.up.sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(255) NOT NULL UNIQUE,
-    email VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-
-3. Write the reverse operation in the `.down.sql` file:
-```sql
--- migrations/000002_add_user_table.down.sql
-DROP TABLE users;
-```
-
-4. Run the migration:
-```bash
-make migrate CONFIG=config/local.yml
-```
-
-### Migration Best Practices
-
-- **Always create both up and down migrations**: This ensures you can rollback if needed
-- **Use sequential version numbers**: Migrations are applied in version order
-- **Keep migrations small and focused**: One logical change per migration
-- **Test migrations**: Test both up and down migrations before deploying
-- **Never modify existing migrations**: If you need to change a migration, create a new one
-- **Use transactions carefully**: Some DDL statements in PostgreSQL cannot be rolled back
-- **Backup before migrations**: Always backup your database before running migrations in production
-
-### Migration State
-
-The migration tool automatically tracks which migrations have been applied in the database using a `schema_migrations` table. This table is created automatically on the first migration run.
-
-### Troubleshooting Migrations
-
-- **Migration already applied**: If a migration fails partway through, you may need to manually fix the database state or use `migrate force` (not included in this tool)
-- **Connection errors**: Ensure your database configuration in the config file is correct
-- **Permission errors**: Ensure the database user has CREATE TABLE and other necessary permissions
-- **Migration order**: Migrations are applied in version order - ensure your version numbers are sequential
-
 ## Development
 
 ### Building
@@ -275,7 +171,6 @@ make vet
 - `make test-coverage` - Run tests with coverage report
 - `make benchmark` - Run benchmarks
 - `make lint` - Run golangci-lint
-- `make migrate` - Run database migrations
 - `make clean` - Remove build artifacts
 - `make deps` - Download and tidy dependencies
 - `make fmt` - Format code
@@ -287,9 +182,7 @@ make vet
 ```
 seq/
 ├── cmd/
-│   ├── main.go              # Main application entry point
-│   └── migrate/
-│       └── main.go          # Migration tool entry point
+│   └── main.go              # Main application entry point
 ├── config/
 │   └── local.yml            # Example configuration file
 ├── internal/
@@ -299,9 +192,6 @@ seq/
 │       ├── catalog/         # Instrument catalog service (PMS)
 │       ├── ems/             # Event management service
 │       └── sms/             # Secret management service
-├── migrations/              # Database migration files
-│   ├── 000001_create_instrument.up.sql
-│   └── 000001_create_instrument.down.sql
 ├── pkg/
 │   └── logger/              # Logging package
 ├── bin/                     # Build output directory
