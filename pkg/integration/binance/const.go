@@ -1,8 +1,8 @@
 package binance
 
 const (
-	BaseURL = "https://api.binance.com"
-
+	BaseURL   = "https://api.binance.com"
+	WSBaseURL = "wss://stream.binance.com"
 	// Trading endpoints
 	EndpointOrder = "/api/v3/order"
 
