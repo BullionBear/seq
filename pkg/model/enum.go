@@ -1,17 +1,16 @@
-package integration
+package model
 
-type Exchange int
-
-const (
-	ExchangeBinance Exchange = iota
-	ExchangeBybit
-)
-
-type ProductType int
+type Status int
 
 const (
-	ProductTypeSpot ProductType = iota
-	ProductTypePerpetual
+	StatusUninitialized Status = iota
+	StatusInitialized
+	StatusInFlight
+	StatusAccepted
+	StatusPartiallyFilled
+	StatusFilled
+	StatusCanceled
+	StatusRejected
 )
 
 type Side int

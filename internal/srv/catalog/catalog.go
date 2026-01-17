@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/BullionBear/seq/pkg/integration/cpanel"
+	"github.com/BullionBear/seq/internal/srv/catalog/cpanel"
 	"github.com/BullionBear/seq/pkg/logger"
 )
 
