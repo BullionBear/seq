@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/BullionBear/seq/internal/adapter/binance"
@@ -15,32 +16,41 @@ type DataClientRouter struct {
 	bybitSpotDataClient   *bybit.BybitDataClient
 }
 
-func (r *DataClientRouter) SubscribeDepth(symbolID int, limit int) (unsubscribe func(), err error) {
+func (r *DataClientRouter) SubscribeDepth(symbolID int, limit int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		return r.binanceSpotDataClient.SubscribeDepth(symbolID, limit)
+		r.binanceSpotDataClient.SubscribeDepth(symbolID, limit)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		return r.bybitSpotDataClient.SubscribeDepth(symbolID, limit)
+		r.bybitSpotDataClient.SubscribeDepth(symbolID, limit)
 	default:
-		return nil, fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
+		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
+	return nil
 }
 
-func (r *DataClientRouter) SubscribeTrade(symbolID int) (unsubscribe func(), err error) {
+func (r *DataClientRouter) SubscribeTrade(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		return r.binanceSpotDataClient.SubscribeTrade(symbolID)
+		r.binanceSpotDataClient.SubscribeTrade(symbolID)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		return r.bybitSpotDataClient.SubscribeTrade(symbolID)
+		r.bybitSpotDataClient.SubscribeTrade(symbolID)
 	default:
-		return nil, fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
+		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
+	return nil
+}
+
+func (r *DataClientRouter) Connect(ctx context.Context) error {
+	return nil
+}
+
+func (r *DataClientRouter) Disconnect() {
 }
