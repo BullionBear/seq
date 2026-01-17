@@ -7,7 +7,7 @@ import (
 )
 
 type RingBuffer struct {
-	items   []EventRef
+	items   []Event
 	rbRead  uint64
 	rbMask  uint64
 	rbWrite uint64
@@ -23,7 +23,7 @@ func NewRingBuffer(size uint64) RingBuffer {
 	}
 
 	return RingBuffer{
-		items:   make([]EventRef, actualSize),
+		items:   make([]Event, actualSize),
 		rbRead:  0,
 		rbMask:  actualSize - 1,
 		rbWrite: 0,
@@ -32,7 +32,7 @@ func NewRingBuffer(size uint64) RingBuffer {
 
 // Write writes an item to the ring buffer.
 // Returns true if successful, false if the buffer is full.
-func (rb *RingBuffer) Write(item EventRef) bool {
+func (rb *RingBuffer) Write(item Event) bool {
 	if rb.IsFull() {
 		return false
 	}
@@ -43,9 +43,9 @@ func (rb *RingBuffer) Write(item EventRef) bool {
 
 // Read reads an item from the ring buffer.
 // Returns the item and true if successful, false if the buffer is empty.
-func (rb *RingBuffer) Read() (EventRef, bool) {
+func (rb *RingBuffer) Read() (Event, bool) {
 	if rb.IsEmpty() {
-		return EventRef{}, false
+		return Event{}, false
 	}
 	item := rb.items[rb.rbRead&rb.rbMask]
 	rb.rbRead++
@@ -140,7 +140,7 @@ func NewEventBus() EventBus {
 	}
 }
 
-func (e *EventBus) Poll(handler func(event EventRef)) bool {
+func (e *EventBus) Poll(handler func(event Event)) bool {
 	if e.rbEvent.IsEmpty() {
 		return false
 	}
@@ -149,25 +149,30 @@ func (e *EventBus) Poll(handler func(event EventRef)) bool {
 		return false
 	}
 	handler(event)
-	return false
+	return true
 }
 
 func (e *EventBus) PublishDepthSnapshot(depthSnapshot model.DepthSnapshot) {
-	e.arenaDepthSnapshot.Write(depthSnapshot)
+	idx := e.arenaDepthSnapshot.Write(depthSnapshot)
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthSnapshot, Index: idx}})
 }
 
 func (e *EventBus) PublishDepthUpdate(depthUpdate model.DepthUpdate) {
-	e.arenaDepthUpdate.Write(depthUpdate)
+	idx := e.arenaDepthUpdate.Write(depthUpdate)
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthUpdate, Index: idx}})
 }
 
 func (e *EventBus) PublishTick(tick model.Tick) {
-	e.arenaTick.Write(tick)
+	idx := e.arenaTick.Write(tick)
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeTick, Index: idx}})
 }
 
 func (e *EventBus) PublishOrderUpdate(orderUpdate model.OrderUpdate) {
-	e.arenaOrderUpdate.Write(orderUpdate)
+	idx := e.arenaOrderUpdate.Write(orderUpdate)
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderUpdate, Index: idx}})
 }
 
 func (e *EventBus) PublishOrderFill(orderFill model.OrderFill) {
-	e.arenaOrderFill.Write(orderFill)
+	idx := e.arenaOrderFill.Write(orderFill)
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderFill, Index: idx}})
 }
