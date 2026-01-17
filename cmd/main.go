@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/BullionBear/seq/env"
-	"github.com/BullionBear/seq/internal/config"
 	"github.com/BullionBear/seq/internal/srv/catalog"
+	"github.com/BullionBear/seq/pkg/engine"
 	"github.com/BullionBear/seq/pkg/logger"
+	"github.com/BullionBear/seq/pkg/strategy"
+	"github.com/BullionBear/seq/pkg/strategy/impl"
 )
 
 func main() {
@@ -29,7 +34,7 @@ func main() {
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := strategy.LoadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to load configuration from %s: %v\n", *configPath, err)
 		os.Exit(1)
@@ -63,4 +68,17 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info().Msg("Catalog service initialized successfully")
+
+	strategyImpl := impl.NewXArb()
+
+	// Create context that cancels on SIGINT (Ctrl+C) or SIGTERM
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	engine := engine.NewEngine()
+	go engine.Run(ctx, strategyImpl, cfg)
+
+	// Wait for context cancellation (signal)
+	<-ctx.Done()
+	log.Info().Msg("Engine stopped")
 }

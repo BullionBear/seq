@@ -2,9 +2,6 @@ package strategy
 
 import "github.com/BullionBear/seq/pkg/model"
 
-type StrategyConfig struct {
-}
-
 type Strategy interface {
 	// lifecycle methods
 	OnInit(config *StrategyConfig) error // called once when the strategy is initialized
