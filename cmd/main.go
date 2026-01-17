@@ -7,7 +7,6 @@ import (
 
 	"github.com/BullionBear/seq/env"
 	"github.com/BullionBear/seq/internal/config"
-	"github.com/BullionBear/seq/internal/db"
 	pms "github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/pkg/logger"
 )
@@ -56,12 +55,6 @@ func main() {
 	log.Info().Msg("Build Time: " + env.BuildTime)
 	log.Info().Msg("Commit Hash: " + env.CommitHash)
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
-
-	// Initialize PostgreSQL database connection
-	db, err := db.ConnectPostgres(cfg.PMS.Database)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL database")
-	}
 
 	// Initialize PMS service (InstrumentCatalog)
 	pmsService, err := pms.NewInstrumentCatalog(db)
