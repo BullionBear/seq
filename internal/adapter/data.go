@@ -6,14 +6,25 @@ import (
 
 	"github.com/BullionBear/seq/internal/adapter/binance"
 	"github.com/BullionBear/seq/internal/adapter/bybit"
+	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/srv/catalog"
 )
 
 type DataClientRouter struct {
-	catalog *catalog.Catalog
+	catalog  *catalog.Catalog
+	eventBus *evbus.EventBus
 
-	binanceSpotDataClient *binance.BinanceSpotDataClient
-	bybitSpotDataClient   *bybit.BybitDataClient
+	binanceSpotDataClient binance.BinanceSpotDataClient
+	bybitSpotDataClient   bybit.BybitDataClient
+}
+
+func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataClientRouter {
+	return &DataClientRouter{
+		catalog:               catalog,
+		eventBus:              eventBus,
+		binanceSpotDataClient: binance.NewBinanceSpotDataClient(),
+		bybitSpotDataClient:   bybit.NewBybitDataClient(),
+	}
 }
 
 func (r *DataClientRouter) SubscribeDepth(symbolID int, limit int) error {

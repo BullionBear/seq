@@ -5,8 +5,8 @@ import "context"
 type BybitDataClient struct {
 }
 
-func NewBybitDataClient() *BybitDataClient {
-	return &BybitDataClient{}
+func NewBybitDataClient() BybitDataClient {
+	return BybitDataClient{}
 }
 
 func (c *BybitDataClient) SubscribeDepth(symbolID int, limit int) {

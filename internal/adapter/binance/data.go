@@ -5,8 +5,8 @@ import "context"
 type BinanceSpotDataClient struct {
 }
 
-func NewBinanceSpotDataClient() *BinanceSpotDataClient {
-	return &BinanceSpotDataClient{}
+func NewBinanceSpotDataClient() BinanceSpotDataClient {
+	return BinanceSpotDataClient{}
 }
 
 func (c *BinanceSpotDataClient) SubscribeDepth(symbolID int, limit int) {

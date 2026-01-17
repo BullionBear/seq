@@ -75,8 +75,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	engine := engine.NewEngine()
-	go engine.Run(ctx, strategyImpl, cfg)
+	engine := engine.NewEngine(strategyImpl)
+	engine.Init(cfg)
+	engine.Start()
+	go engine.Run(ctx, cfg)
 
 	// Wait for context cancellation (signal)
 	<-ctx.Done()
