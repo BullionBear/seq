@@ -4,28 +4,28 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/BullionBear/seq/pkg/integration/lynxlinkage"
+	"github.com/BullionBear/seq/pkg/integration/cpanel"
 	"github.com/BullionBear/seq/pkg/logger"
 )
 
 var log = logger.Get()
 
 type Catalog struct {
-	lynxlinkageClient *lynxlinkage.LynxLinkageClient
-	symbols           map[int]lynxlinkage.Symbol
-	exchanges         map[int]lynxlinkage.Exchange
-	products          map[int]lynxlinkage.Product
-	tokens            map[int]lynxlinkage.Token
+	cpanelClient *cpanel.CpanelClient
+	symbols      map[int]cpanel.Symbol
+	exchanges    map[int]cpanel.Exchange
+	products     map[int]cpanel.Product
+	tokens       map[int]cpanel.Token
 }
 
 func NewCatalog(baseURL string) *Catalog {
-	lynxlinkageClient := lynxlinkage.NewLynxLinkageClient(baseURL)
+	cpanelClient := cpanel.NewCpanelClient(baseURL)
 	catalog := Catalog{
-		lynxlinkageClient: lynxlinkageClient,
-		symbols:           make(map[int]lynxlinkage.Symbol, 1024),
-		exchanges:         make(map[int]lynxlinkage.Exchange, 64),
-		products:          make(map[int]lynxlinkage.Product, 16),
-		tokens:            make(map[int]lynxlinkage.Token, 256),
+		cpanelClient: cpanelClient,
+		symbols:      make(map[int]cpanel.Symbol, 1024),
+		exchanges:    make(map[int]cpanel.Exchange, 64),
+		products:     make(map[int]cpanel.Product, 16),
+		tokens:       make(map[int]cpanel.Token, 256),
 	}
 	if err := catalog.LoadAllSymbols(); err != nil {
 		log.Error().Err(err).Msg("Failed to load all symbols")
@@ -35,7 +35,7 @@ func NewCatalog(baseURL string) *Catalog {
 }
 
 func (c *Catalog) LoadAllSymbols() error {
-	symbols, err := c.lynxlinkageClient.GetSymbol(context.Background(), lynxlinkage.SymbolParams{})
+	symbols, err := c.cpanelClient.GetSymbol(context.Background(), cpanel.SymbolParams{})
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (c *Catalog) LoadAllSymbols() error {
 	return nil
 }
 
-func (c *Catalog) GetSymbol(symbolID int) (*lynxlinkage.Symbol, error) {
+func (c *Catalog) GetSymbol(symbolID int) (*cpanel.Symbol, error) {
 	symbol, ok := c.symbols[symbolID]
 	if !ok {
 		return nil, fmt.Errorf("symbol not found for symbolID: %d", symbolID)

@@ -1,4 +1,4 @@
-package lynxlinkage
+package cpanel
 
 const (
 	BaseURL = "https://capi.lynxlinkage.com"

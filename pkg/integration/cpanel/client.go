@@ -1,4 +1,4 @@
-package lynxlinkage
+package cpanel
 
 import (
 	"context"
@@ -11,13 +11,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-type LynxLinkageClient struct {
+type CpanelClient struct {
 	baseURL string
 	client  *fasthttp.Client
 }
 
-func NewLynxLinkageClient(baseURL string) *LynxLinkageClient {
-	return &LynxLinkageClient{
+func NewCpanelClient(baseURL string) *CpanelClient {
+	return &CpanelClient{
 		baseURL: baseURL,
 		client: &fasthttp.Client{
 			MaxConnsPerHost: 100,
@@ -27,7 +27,7 @@ func NewLynxLinkageClient(baseURL string) *LynxLinkageClient {
 
 // GetSymbol fetches symbols from GET /api/v1/symbol endpoint
 // It supports optional query parameters via SymbolParams
-func (c *LynxLinkageClient) GetSymbol(ctx context.Context, params SymbolParams) ([]Symbol, error) {
+func (c *CpanelClient) GetSymbol(ctx context.Context, params SymbolParams) ([]Symbol, error) {
 	// Build the URL with query parameters
 	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointSymbol)
 	u, err := url.Parse(reqURL)

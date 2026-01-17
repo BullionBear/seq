@@ -1,4 +1,4 @@
-package lynxlinkage
+package cpanel
 
 // Symbol represents a trading symbol from the LynxLinkage API
 type Symbol struct {

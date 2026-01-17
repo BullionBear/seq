@@ -1,4 +1,4 @@
-package lynxlinkage
+package cpanel
 
 import (
 	"context"
@@ -105,7 +105,7 @@ func TestLynxLinkageClient_GetSymbol_Success(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -193,7 +193,7 @@ func TestLynxLinkageClient_GetSymbol_WithQueryParams(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -258,7 +258,7 @@ func TestLynxLinkageClient_GetSymbol_AllQueryParams(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -298,7 +298,7 @@ func TestLynxLinkageClient_GetSymbol_Non200Status(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -324,7 +324,7 @@ func TestLynxLinkageClient_GetSymbol_InvalidJSON(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -347,7 +347,7 @@ func TestLynxLinkageClient_GetSymbol_ContextTimeout(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -371,7 +371,7 @@ func TestLynxLinkageClient_GetSymbol_ContextDeadlineExceeded(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -401,7 +401,7 @@ func TestLynxLinkageClient_GetSymbol_EmptyResponse(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -433,7 +433,7 @@ func TestLynxLinkageClient_GetSymbol_ResponseStructure(t *testing.T) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
@@ -511,7 +511,7 @@ func BenchmarkLynxLinkageClient_GetSymbol(b *testing.B) {
 	testClient, ln := createTestServer(handler)
 	defer ln.Close()
 
-	client := &LynxLinkageClient{
+	client := &CpanelClient{
 		baseURL: "http://test",
 		client:  testClient,
 	}
