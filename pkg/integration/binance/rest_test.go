@@ -152,29 +152,6 @@ func TestClient_GetDepth_WithLimit(t *testing.T) {
 	}
 }
 
-// TestClient_GetDepth_WithSymbolStatus tests symbolStatus parameter
-func TestClient_GetDepth_WithSymbolStatus(t *testing.T) {
-	client := NewClient()
-
-	params := DepthParams{
-		Symbol:       "BTCUSDT",
-		Limit:        10,
-		SymbolStatus: SymbolStatusTrading,
-	}
-
-	depth, err := client.GetDepth(params)
-	if err != nil {
-		t.Fatalf("GetDepth failed: %v", err)
-	}
-	defer client.ReleaseDepthResponse(depth)
-
-	if depth == nil {
-		t.Fatal("GetDepth returned nil response")
-	}
-
-	t.Logf("Successfully retrieved order book with symbolStatus filter")
-}
-
 // TestClient_GetDepth_InvalidSymbol tests error handling for invalid symbol
 func TestClient_GetDepth_InvalidSymbol(t *testing.T) {
 	client := NewClient()

@@ -55,18 +55,8 @@ func (d *DepthResponse) Reset() {
 	// Arrays remain allocated, just reset lengths
 }
 
-// SymbolStatus represents the trading status filter
-type SymbolStatus string
-
-const (
-	SymbolStatusTrading SymbolStatus = "TRADING"
-	SymbolStatusHalt    SymbolStatus = "HALT"
-	SymbolStatusBreak   SymbolStatus = "BREAK"
-)
-
 // DepthParams represents parameters for the depth endpoint
 type DepthParams struct {
-	Symbol       string
-	Limit        int
-	SymbolStatus SymbolStatus
+	Symbol string
+	Limit  int
 }

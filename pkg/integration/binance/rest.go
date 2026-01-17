@@ -74,9 +74,6 @@ func (c *Client) GetDepth(params DepthParams) (*DepthResponse, error) {
 	if params.Limit > 0 {
 		args.Set("limit", strconv.Itoa(params.Limit))
 	}
-	if params.SymbolStatus != "" {
-		args.Set("symbolStatus", string(params.SymbolStatus))
-	}
 
 	// Set request method
 	req.Header.SetMethod("GET")
