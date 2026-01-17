@@ -4,12 +4,12 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/internal/srv"
-	"github.com/BullionBear/seq/internal/srv/sms"
+	"github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/pkg/evbus"
 )
 
 type ExecutionManager struct {
-	sms                *sms.SecretManager
+	catalog            *catalog.Catalog
 	clientOrderID      int
 	activeOrders       map[int]Order           // index by clientOrderID
 	client             map[int]ExecutionClient // acctID to client
@@ -17,9 +17,9 @@ type ExecutionManager struct {
 	orderFillFactory   *evbus.EventFactory[OrderFill]
 }
 
-func NewExecutionManager(sms *sms.SecretManager, orderSize int) *ExecutionManager {
+func NewExecutionManager(catalog *catalog.Catalog, orderSize int) *ExecutionManager {
 	return &ExecutionManager{
-		sms:           sms,
+		catalog:       catalog,
 		clientOrderID: 0,
 		activeOrders:  make(map[int]Order, orderSize),
 		orderUpdateFactory: evbus.NewEventFactory(func(o *OrderUpdate) {

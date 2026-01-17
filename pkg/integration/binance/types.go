@@ -60,3 +60,17 @@ type DepthParams struct {
 	Symbol string
 	Limit  int
 }
+
+// AuthorizationParams represents parameters for the authorization endpoint
+type AuthenticationParams struct {
+	APIKey    string
+	SecretKey string
+}
+
+type CreateOrderRequest struct {
+	Symbol   string
+	Side     string
+	Type     string
+	Price    float64
+	Quantity float64
+}

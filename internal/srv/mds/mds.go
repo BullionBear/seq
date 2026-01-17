@@ -1,16 +1,16 @@
 package mds
 
 import (
-	"github.com/BullionBear/seq/internal/srv/sms"
+	"github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/pkg/evbus"
 )
 
 type MarketDataManager struct {
-	sms *sms.SecretManager
+	catalog *catalog.Catalog
 }
 
-func NewMarketDataManager(sms *sms.SecretManager) *MarketDataManager {
-	return &MarketDataManager{sms: sms}
+func NewMarketDataManager(catalog *catalog.Catalog) *MarketDataManager {
+	return &MarketDataManager{catalog: catalog}
 }
 
 func (m *MarketDataManager) SubscribeTick(symbolID int, callback func(*evbus.Event[Tick]) error, errCallback func(error)) (unsubscribe func(), err error) {
