@@ -7,6 +7,10 @@ import (
 	"github.com/BullionBear/seq/pkg/model"
 )
 
+const (
+	MaxDepthLevels = 2048
+)
+
 // EventHandler is a function type for handling events
 type EventHandler func(event Event)
 
@@ -125,7 +129,8 @@ type EventBus struct {
 	arenaOrderUpdate   Arena[model.OrderUpdate]
 	arenaOrderFill     Arena[model.OrderFill]
 
-	arenaPriceLevels Arena[model.PriceLevel]
+	PriceLevels [MaxDepthLevels]model.PriceLevel
+	offset      int
 }
 
 func NewEventBus() EventBus {
@@ -137,8 +142,20 @@ func NewEventBus() EventBus {
 		arenaTick:          NewArena[model.Tick](2048),
 		arenaOrderUpdate:   NewArena[model.OrderUpdate](1024),
 		arenaOrderFill:     NewArena[model.OrderFill](1024),
-		arenaPriceLevels:   NewArena[model.PriceLevel](4096),
+
+		PriceLevels: [MaxDepthLevels]model.PriceLevel{},
+		offset:      0,
 	}
+}
+
+func (e *EventBus) AllocPriceLevels(size int) []model.PriceLevel {
+	offset := e.offset
+	e.offset += size
+	if e.offset >= MaxDepthLevels {
+		offset = 0
+		e.offset = size
+	}
+	return e.PriceLevels[offset:e.offset]
 }
 
 func (e *EventBus) Poll(handler EventHandler) bool {

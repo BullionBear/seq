@@ -1,7 +1,5 @@
 package model
 
-import "time"
-
 type PriceLevel struct {
 	Price    float64
 	Quantity float64
@@ -12,7 +10,7 @@ type DepthUpdate struct {
 	PreviousDepthID int
 	DepthID         int
 	NextDepthID     int
-	Timestamp       time.Time
+	Timestamp       uint64
 	Asks            []PriceLevel
 	Bids            []PriceLevel
 }
@@ -20,7 +18,7 @@ type DepthUpdate struct {
 type DepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
-	Timestamp time.Time
+	Timestamp uint64
 	Asks      []PriceLevel
 	Bids      []PriceLevel
 }
