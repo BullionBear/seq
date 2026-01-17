@@ -34,10 +34,6 @@ type Token struct {
 	Slug string `json:"slug"`
 }
 
-// SymbolResponse represents the response from GET /api/v1/symbol
-// It returns an array of Symbol objects
-type SymbolResponse []Symbol
-
 // SymbolParams represents query parameters for the symbol endpoint
 type SymbolParams struct {
 	ExchangeID   *int    `json:"exchange_id,omitempty"`

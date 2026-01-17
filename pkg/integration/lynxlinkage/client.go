@@ -27,9 +27,9 @@ func NewLynxLinkageClient(baseURL string) *LynxLinkageClient {
 
 // GetSymbol fetches symbols from GET /api/v1/symbol endpoint
 // It supports optional query parameters via SymbolParams
-func (c *LynxLinkageClient) GetSymbol(ctx context.Context, params SymbolParams) (*SymbolResponse, error) {
+func (c *LynxLinkageClient) GetSymbol(ctx context.Context, params SymbolParams) ([]Symbol, error) {
 	// Build the URL with query parameters
-	reqURL := fmt.Sprintf("%s/api/v1/symbol", c.baseURL)
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointSymbol)
 	u, err := url.Parse(reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL: %w", err)
@@ -91,11 +91,11 @@ func (c *LynxLinkageClient) GetSymbol(ctx context.Context, params SymbolParams) 
 	}
 
 	// Deserialize response using sonic
-	var result SymbolResponse
+	var result []Symbol
 	err = sonic.Unmarshal(resp.Body(), &result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return &result, nil
+	return result, nil
 }

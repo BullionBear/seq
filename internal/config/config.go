@@ -8,9 +8,15 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Logger ConfigLogger `yaml:"logger"`
-	EMS    ConfigEMS    `yaml:"ems"`
-	PMS    ConfigPMS    `yaml:"pms"`
+	Logger  ConfigLogger  `yaml:"logger"`
+	Catalog ConfigCatalog `yaml:"catalog"`
+	EMS     ConfigEMS     `yaml:"ems"`
+	PMS     ConfigPMS     `yaml:"pms"`
+}
+
+// ConfigCatalog contains catalog configuration
+type ConfigCatalog struct {
+	BaseURL string `yaml:"base_url"`
 }
 
 // ConfigLogger contains logger configuration

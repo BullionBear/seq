@@ -7,7 +7,7 @@ import (
 
 	"github.com/BullionBear/seq/env"
 	"github.com/BullionBear/seq/internal/config"
-	pms "github.com/BullionBear/seq/internal/srv/catalog"
+	"github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/pkg/logger"
 )
 
@@ -56,12 +56,11 @@ func main() {
 	log.Info().Msg("Commit Hash: " + env.CommitHash)
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
 
-	// Initialize PMS service (InstrumentCatalog)
-	pmsService, err := pms.NewInstrumentCatalog()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize PMS service")
+	// Initialize Catelog service (InstrumentCatalog)
+	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL)
+	if catalogService == nil {
+		log.Error().Msg("Failed to initialize catalog service")
+		os.Exit(1)
 	}
-	_ = pmsService // TODO: Use PMS service as needed
-
-	log.Info().Msg("PMS service initialized successfully")
+	log.Info().Msg("Catalog service initialized successfully")
 }

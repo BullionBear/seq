@@ -12,8 +12,8 @@ import (
 )
 
 // mockSymbolResponse creates a mock symbol response for testing
-func mockSymbolResponse() SymbolResponse {
-	return SymbolResponse{
+func mockSymbolResponse() []Symbol {
+	return []Symbol{
 		{
 			ID:   1,
 			Name: "BTCUSDT",
@@ -116,29 +116,25 @@ func TestLynxLinkageClient_GetSymbol_Success(t *testing.T) {
 		t.Fatalf("GetSymbol failed: %v", err)
 	}
 
-	if result == nil {
-		t.Fatal("GetSymbol returned nil response")
+	if len(result) != 2 {
+		t.Errorf("Expected 2 symbols, got %d", len(result))
 	}
 
-	if len(*result) != 2 {
-		t.Errorf("Expected 2 symbols, got %d", len(*result))
+	if result[0].Name != "BTCUSDT" {
+		t.Errorf("Expected first symbol name 'BTCUSDT', got '%s'", result[0].Name)
 	}
 
-	if (*result)[0].Name != "BTCUSDT" {
-		t.Errorf("Expected first symbol name 'BTCUSDT', got '%s'", (*result)[0].Name)
+	if result[0].Exchange.Name != "Binance" {
+		t.Errorf("Expected exchange name 'Binance', got '%s'", result[0].Exchange.Name)
 	}
 
-	if (*result)[0].Exchange.Name != "Binance" {
-		t.Errorf("Expected exchange name 'Binance', got '%s'", (*result)[0].Exchange.Name)
-	}
-
-	if (*result)[1].Name != "ETHUSDT" {
-		t.Errorf("Expected second symbol name 'ETHUSDT', got '%s'", (*result)[1].Name)
+	if result[1].Name != "ETHUSDT" {
+		t.Errorf("Expected second symbol name 'ETHUSDT', got '%s'", result[1].Name)
 	}
 }
 
 func TestLynxLinkageClient_GetSymbol_WithQueryParams(t *testing.T) {
-	mockResp := SymbolResponse{
+	mockResp := []Symbol{
 		{
 			ID:   1,
 			Name: "BTCUSDT",
@@ -214,12 +210,8 @@ func TestLynxLinkageClient_GetSymbol_WithQueryParams(t *testing.T) {
 		t.Fatalf("GetSymbol failed: %v", err)
 	}
 
-	if result == nil {
-		t.Fatal("GetSymbol returned nil response")
-	}
-
-	if len(*result) != 1 {
-		t.Errorf("Expected 1 symbol, got %d", len(*result))
+	if len(result) != 1 {
+		t.Errorf("Expected 1 symbol, got %d", len(result))
 	}
 }
 
@@ -292,8 +284,8 @@ func TestLynxLinkageClient_GetSymbol_AllQueryParams(t *testing.T) {
 		t.Fatalf("GetSymbol failed: %v", err)
 	}
 
-	if result == nil {
-		t.Fatal("GetSymbol returned nil response")
+	if len(result) == 0 {
+		t.Fatal("GetSymbol returned empty response")
 	}
 }
 
@@ -420,12 +412,8 @@ func TestLynxLinkageClient_GetSymbol_EmptyResponse(t *testing.T) {
 		t.Fatalf("GetSymbol failed: %v", err)
 	}
 
-	if result == nil {
-		t.Fatal("GetSymbol returned nil response")
-	}
-
-	if len(*result) != 0 {
-		t.Errorf("Expected empty response, got %d symbols", len(*result))
+	if len(result) != 0 {
+		t.Errorf("Expected empty response, got %d symbols", len(result))
 	}
 }
 
@@ -456,7 +444,11 @@ func TestLynxLinkageClient_GetSymbol_ResponseStructure(t *testing.T) {
 		t.Fatalf("GetSymbol failed: %v", err)
 	}
 
-	symbol := (*result)[0]
+	if len(result) == 0 {
+		t.Fatal("GetSymbol returned empty response")
+	}
+
+	symbol := result[0]
 
 	// Verify all fields are populated correctly
 	if symbol.ID != 1 {
