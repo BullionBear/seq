@@ -57,7 +57,7 @@ func main() {
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
 
 	// Initialize PMS service (InstrumentCatalog)
-	pmsService, err := pms.NewInstrumentCatalog(db)
+	pmsService, err := pms.NewInstrumentCatalog()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize PMS service")
 	}
