@@ -2,6 +2,7 @@ package evbus
 
 import (
 	"math"
+	"time"
 
 	"github.com/BullionBear/seq/pkg/model"
 )
@@ -92,18 +93,15 @@ func NewArena[T any](size uint64) Arena[T] {
 	}
 	return Arena[T]{
 		items: make([]T, size), // Allocate actual array
-		read:  0,
 		write: 0,
 		mask:  size - 1,
 	}
 }
 
-func (a *Arena[T]) Read() T {
+func (a *Arena[T]) Read(index uint64) T {
 	// Mask-based indexing handles overflow automatically:
 	// Even if read overflows (after 2^64 operations), read&mask wraps correctly
-	item := a.items[a.read&a.mask]
-	a.read++
-	return item
+	return a.items[index&a.mask]
 }
 
 func (a *Arena[T]) Write(item T) uint64 {
@@ -149,30 +147,41 @@ func (e *EventBus) Poll(handler func(event Event)) bool {
 		return false
 	}
 	handler(event)
+	event.UpdatedAt = uint64(time.Now().UnixNano())
 	return true
 }
 
 func (e *EventBus) PublishDepthSnapshot(depthSnapshot model.DepthSnapshot) {
 	idx := e.arenaDepthSnapshot.Write(depthSnapshot)
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthSnapshot, Index: idx}})
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthSnapshot, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
 }
 
 func (e *EventBus) PublishDepthUpdate(depthUpdate model.DepthUpdate) {
 	idx := e.arenaDepthUpdate.Write(depthUpdate)
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthUpdate, Index: idx}})
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
 }
 
 func (e *EventBus) PublishTick(tick model.Tick) {
 	idx := e.arenaTick.Write(tick)
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeTick, Index: idx}})
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeTick, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
 }
 
 func (e *EventBus) PublishOrderUpdate(orderUpdate model.OrderUpdate) {
 	idx := e.arenaOrderUpdate.Write(orderUpdate)
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderUpdate, Index: idx}})
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
 }
 
 func (e *EventBus) PublishOrderFill(orderFill model.OrderFill) {
 	idx := e.arenaOrderFill.Write(orderFill)
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderFill, Index: idx}})
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
 }
