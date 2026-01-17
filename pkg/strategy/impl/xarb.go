@@ -35,18 +35,22 @@ func (x *XArb) OnDispose() error {
 	return nil
 }
 
-func (x *XArb) OnDepth(depth *model.DepthUpdate) error {
+func (x *XArb) OnDepthSnapshot(depthSnapshot model.DepthSnapshot) error {
 	return nil
 }
 
-func (x *XArb) OnTick(tick *model.Tick) error {
+func (x *XArb) OnDepthUpdate(depthUpdate model.DepthUpdate) error {
 	return nil
 }
 
-func (x *XArb) OnOrderUpdate(orderUpdate *model.OrderUpdate) error {
+func (x *XArb) OnTick(tick model.Tick) error {
 	return nil
 }
 
-func (x *XArb) OnOrderFill(orderFill *model.OrderFill) error {
+func (x *XArb) OnOrderUpdate(orderUpdate model.OrderUpdate) error {
+	return nil
+}
+
+func (x *XArb) OnOrderFill(orderFill model.OrderFill) error {
 	return nil
 }

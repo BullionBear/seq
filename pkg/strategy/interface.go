@@ -11,9 +11,10 @@ type Strategy interface {
 	OnDispose() error                    // called once when the strategy is disposed
 	// event handlers
 	// market data handlers
-	OnDepth(depth *model.DepthUpdate) error
-	OnTick(tick *model.Tick) error
+	OnDepthSnapshot(depthSnapshot model.DepthSnapshot) error
+	OnDepthUpdate(depthUpdate model.DepthUpdate) error
+	OnTick(tick model.Tick) error
 	// execution handlers
-	OnOrderUpdate(orderUpdate *model.OrderUpdate) error
-	OnOrderFill(orderFill *model.OrderFill) error
+	OnOrderUpdate(orderUpdate model.OrderUpdate) error
+	OnOrderFill(orderFill model.OrderFill) error
 }

@@ -7,6 +7,9 @@ import (
 	"github.com/BullionBear/seq/pkg/model"
 )
 
+// EventHandler is a function type for handling events
+type EventHandler func(event Event)
+
 type RingBuffer struct {
 	items   []Event
 	rbRead  uint64
@@ -138,7 +141,7 @@ func NewEventBus() EventBus {
 	}
 }
 
-func (e *EventBus) Poll(handler func(event Event)) bool {
+func (e *EventBus) Poll(handler EventHandler) bool {
 	if e.rbEvent.IsEmpty() {
 		return false
 	}
@@ -148,6 +151,7 @@ func (e *EventBus) Poll(handler func(event Event)) bool {
 	}
 	handler(event)
 	event.UpdatedAt = uint64(time.Now().UnixNano())
+	// logging the event (TBD)
 	return true
 }
 
@@ -158,11 +162,19 @@ func (e *EventBus) PublishDepthSnapshot(depthSnapshot model.DepthSnapshot) {
 	e.nextEventID++
 }
 
+func (e *EventBus) ReadDepthSnapshot(index uint64) model.DepthSnapshot {
+	return e.arenaDepthSnapshot.Read(index)
+}
+
 func (e *EventBus) PublishDepthUpdate(depthUpdate model.DepthUpdate) {
 	idx := e.arenaDepthUpdate.Write(depthUpdate)
 	now := uint64(time.Now().UnixNano())
 	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
+}
+
+func (e *EventBus) ReadDepthUpdate(index uint64) model.DepthUpdate {
+	return e.arenaDepthUpdate.Read(index)
 }
 
 func (e *EventBus) PublishTick(tick model.Tick) {
@@ -172,6 +184,10 @@ func (e *EventBus) PublishTick(tick model.Tick) {
 	e.nextEventID++
 }
 
+func (e *EventBus) ReadTick(index uint64) model.Tick {
+	return e.arenaTick.Read(index)
+}
+
 func (e *EventBus) PublishOrderUpdate(orderUpdate model.OrderUpdate) {
 	idx := e.arenaOrderUpdate.Write(orderUpdate)
 	now := uint64(time.Now().UnixNano())
@@ -179,9 +195,17 @@ func (e *EventBus) PublishOrderUpdate(orderUpdate model.OrderUpdate) {
 	e.nextEventID++
 }
 
+func (e *EventBus) ReadOrderUpdate(index uint64) model.OrderUpdate {
+	return e.arenaOrderUpdate.Read(index)
+}
+
 func (e *EventBus) PublishOrderFill(orderFill model.OrderFill) {
 	idx := e.arenaOrderFill.Write(orderFill)
 	now := uint64(time.Now().UnixNano())
 	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
+}
+
+func (e *EventBus) ReadOrderFill(index uint64) model.OrderFill {
+	return e.arenaOrderFill.Read(index)
 }
