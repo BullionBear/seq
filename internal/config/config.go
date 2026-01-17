@@ -16,7 +16,8 @@ type Config struct {
 
 // ConfigCatalog contains catalog configuration
 type ConfigCatalog struct {
-	BaseURL string `yaml:"base_url"`
+	BaseURL  string `yaml:"base_url"`
+	APIToken string `yaml:"api_token"`
 }
 
 // ConfigLogger contains logger configuration

@@ -1,5 +1,7 @@
 package cpanel
 
+import "time"
+
 // Symbol represents a trading symbol from the LynxLinkage API
 type Symbol struct {
 	ID              int      `json:"id"`
@@ -42,4 +44,14 @@ type SymbolParams struct {
 	ProductSlug  *string `json:"product_slug,omitempty"`
 	BaseTokenID  *int    `json:"base_token_id,omitempty"`
 	QuoteTokenID *int    `json:"quote_token_id,omitempty"`
+}
+
+// APIKey represents an API key response from the LynxLinkage API
+type Account struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	Exchange  string    `json:"exchange"`
+	Name      string    `json:"name"`
+	MasterIs  int       `json:"master_is"`
+	CreatedAt time.Time `json:"created_at"`
 }

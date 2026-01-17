@@ -12,16 +12,18 @@ import (
 )
 
 type CpanelClient struct {
-	baseURL string
-	client  *fasthttp.Client
+	baseURL  string
+	client   *fasthttp.Client
+	apiToken string
 }
 
-func NewCpanelClient(baseURL string) *CpanelClient {
+func NewCpanelClient(baseURL string, apiToken string) *CpanelClient {
 	return &CpanelClient{
 		baseURL: baseURL,
 		client: &fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
+		apiToken: apiToken,
 	}
 }
 
@@ -92,6 +94,59 @@ func (c *CpanelClient) GetSymbol(ctx context.Context, params SymbolParams) ([]Sy
 
 	// Deserialize response using sonic
 	var result []Symbol
+	err = sonic.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetAPIKeys fetches API keys from GET /api/v1/apikey endpoint
+// Requires Bearer token authentication
+func (c *CpanelClient) GetAccounts(ctx context.Context) ([]Account, error) {
+	// Build the URL
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointAPIKey)
+
+	// Acquire request and response objects from pool
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	// Set request URI and method
+	req.SetRequestURI(reqURL)
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	// Set Bearer token authorization header
+	if c.apiToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
+	}
+
+	// Set timeout from context if available
+	timeout := 10 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, fmt.Errorf("context deadline exceeded")
+		}
+	}
+
+	// Execute the request
+	err := c.client.DoTimeout(req, resp, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	// Check response status
+	statusCode := resp.StatusCode()
+	if statusCode != fasthttp.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", statusCode, resp.Body())
+	}
+
+	// Deserialize response using sonic
+	var result []Account
 	err = sonic.Unmarshal(resp.Body(), &result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)

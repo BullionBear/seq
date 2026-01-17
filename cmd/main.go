@@ -57,7 +57,7 @@ func main() {
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
 
 	// Initialize Catelog service (InstrumentCatalog)
-	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL)
+	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	if catalogService == nil {
 		log.Error().Msg("Failed to initialize catalog service")
 		os.Exit(1)
