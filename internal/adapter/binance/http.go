@@ -2,9 +2,12 @@ package binance
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strconv"
-	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/BullionBear/seq/internal/evbus"
@@ -21,7 +24,8 @@ type BinanceHTTPClient struct {
 	catalog  *catalog.Catalog
 	eventBus *evbus.EventBus
 	client   fasthttp.Client
-	builder  strings.Builder
+	buffer   bytes.Buffer
+	baseURL  string
 }
 
 func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) BinanceHTTPClient {
@@ -31,6 +35,7 @@ func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) Bi
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
+		baseURL: BaseURL,
 	}
 }
 
@@ -42,16 +47,16 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	if err != nil {
 		return err
 	}
-	c.builder.Reset()
-	c.builder.Grow(len(BaseURL) + len(EndpointDepth) + len(symbol.Name) + 32) // Pre-allocate capacity
-	c.builder.WriteString(BaseURL)
-	c.builder.WriteString(EndpointDepth)
-	c.builder.WriteByte('?')
-	c.builder.WriteString("symbol=")
-	c.builder.WriteString(symbol.Name)
+	c.buffer.Reset()
+	c.buffer.Grow(len(c.baseURL) + len(EndpointDepth) + len(symbol.Name) + 32)
+	c.buffer.WriteString(c.baseURL)
+	c.buffer.WriteString(EndpointDepth)
+	c.buffer.WriteByte('?')
+	c.buffer.WriteString("symbol=")
+	c.buffer.WriteString(symbol.Name)
 	if limit > 0 {
-		c.builder.WriteString("&limit=")
-		c.builder.WriteString(strconv.Itoa(limit))
+		c.buffer.WriteString("&limit=")
+		c.buffer.WriteString(strconv.Itoa(limit))
 	}
 
 	// Acquire request and response from fasthttp's internal pools (zero-allocation)
@@ -61,7 +66,8 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	defer fasthttp.ReleaseResponse(resp)
 
 	// Set request URI and method
-	req.SetRequestURI(c.builder.String())
+	// Set request URI and method
+	req.SetRequestURIBytes(c.buffer.Bytes())
 	req.Header.SetMethod(fasthttp.MethodGet)
 	req.Header.Set("Accept", "application/json")
 
@@ -269,4 +275,118 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType m
 	if err != nil {
 		return err
 	}
+
+	// Build query string
+	c.buffer.Reset()
+	c.buffer.Grow(256) // Heuristic alloc
+
+	c.buffer.WriteString(c.baseURL)
+	c.buffer.WriteString(EndpointCreateOrder)
+	c.buffer.WriteByte('?')
+
+	queryStart := c.buffer.Len()
+
+	// symbol
+	c.buffer.WriteString("symbol=")
+	c.buffer.WriteString(symbol.Name)
+
+	// side
+	c.buffer.WriteString("&side=")
+	switch side {
+	case model.SideBuy:
+		c.buffer.WriteString("BUY")
+	case model.SideSell:
+		c.buffer.WriteString("SELL")
+	}
+
+	// type
+	c.buffer.WriteString("&type=")
+	isLimitMaker := false
+	switch orderType {
+	case model.OrderTypeLimit:
+		if timeInForce == model.TimeInForcePO {
+			c.buffer.WriteString("LIMIT_MAKER")
+			isLimitMaker = true
+		} else {
+			c.buffer.WriteString("LIMIT")
+		}
+	case model.OrderTypeMarket:
+		c.buffer.WriteString("MARKET")
+	}
+
+	// timeInForce
+	if orderType == model.OrderTypeLimit && !isLimitMaker {
+		c.buffer.WriteString("&timeInForce=")
+		switch timeInForce {
+		case model.TimeInForceGTC:
+			c.buffer.WriteString("GTC")
+		case model.TimeInForceIOC:
+			c.buffer.WriteString("IOC")
+		case model.TimeInForceFOK:
+			c.buffer.WriteString("FOK")
+		}
+	}
+
+	// quantity
+	c.buffer.WriteString("&quantity=")
+	c.buffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
+
+	// price
+	if orderType == model.OrderTypeLimit {
+		c.buffer.WriteString("&price=")
+		c.buffer.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
+	}
+
+	// timestamp
+	c.buffer.WriteString("&timestamp=")
+	c.buffer.WriteString(strconv.FormatInt(time.Now().UnixMilli(), 10))
+
+	// recvWindow
+	c.buffer.WriteString("&recvWindow=5000")
+
+	// newOrderRespType
+	c.buffer.WriteString("&newOrderRespType=ACK")
+
+	// Sign
+	signature := c.hmacSha256(c.buffer.Bytes()[queryStart:], acct.APISecret)
+	c.buffer.WriteString("&signature=")
+	c.buffer.WriteString(signature)
+
+	// Prepare request
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	// Method POST
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.Set("X-MBX-APIKEY", acct.APIKey)
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+
+	// URL
+	req.SetRequestURIBytes(c.buffer.Bytes())
+
+	err = c.client.Do(req, resp)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != fasthttp.StatusOK {
+		return &HTTPError{
+			StatusCode: resp.StatusCode(),
+			Body:       string(resp.Body()),
+		}
+	}
+
+	return nil
+}
+
+func (c *BinanceHTTPClient) hmacSha256(data []byte, secret string) string {
+	h := hmac.New(sha256.New, unsafeStringBytes(secret))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func unsafeStringBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

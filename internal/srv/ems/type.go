@@ -1,8 +1,6 @@
 package ems
 
 import (
-	"time"
-
 	"github.com/BullionBear/seq/internal/srv"
 )
 
@@ -47,8 +45,8 @@ type Order struct {
 	Quantity      float64
 	ExecutedQty   float64
 	Status        Status
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	CreatedAt     uint64
+	UpdatedAt     uint64
 }
 
 type OrderUpdate struct {
@@ -57,7 +55,7 @@ type OrderUpdate struct {
 	AfterStatus       Status
 	BeforeExecutedQty float64
 	AfterExecutedQty  float64
-	UpdatedAt         time.Time
+	UpdatedAt         uint64
 }
 
 func (o *OrderUpdate) Reset() {
@@ -65,25 +63,25 @@ func (o *OrderUpdate) Reset() {
 	o.AfterStatus = StatusUninitialized
 	o.BeforeExecutedQty = 0
 	o.AfterExecutedQty = 0
-	o.UpdatedAt = time.Time{}
+	o.UpdatedAt = 0
 }
 
-type OrderFill struct {
+type Fill struct {
 	ClientOrderID int
 	FillID        int
 	FilledQty     float64
 	FilledPrice   float64
 	FeeCcyID      int
 	FeeQty        float64
-	FilledAt      time.Time
+	FilledAt      uint64
 }
 
-func (f *OrderFill) Reset() {
+func (f *Fill) Reset() {
 	f.ClientOrderID = 0
 	f.FillID = 0
 	f.FilledQty = 0
 	f.FilledPrice = 0
 	f.FeeQty = 0
 	f.FeeCcyID = 0
-	f.FilledAt = time.Time{}
+	f.FilledAt = 0
 }

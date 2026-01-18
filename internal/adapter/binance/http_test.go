@@ -1,10 +1,15 @@
 package binance
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/srv/catalog"
+	"github.com/BullionBear/seq/internal/srv/catalog/cpanel"
 	"github.com/BullionBear/seq/pkg/model"
 	"github.com/bytedance/sonic"
 )
@@ -133,4 +138,116 @@ func BenchmarkSonicUnmarshal(b *testing.B) {
 			b.Fatalf("Error: %v", err)
 		}
 	}
+}
+
+func TestReqCreateOrder(t *testing.T) {
+	// Setup mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+		if r.Header.Get("X-MBX-APIKEY") != "test-api-key" {
+			t.Errorf("Expected API key test-api-key, got %s", r.Header.Get("X-MBX-APIKEY"))
+		}
+
+		query := r.URL.Query()
+		if query.Get("symbol") != "BTCUSDT" {
+			t.Errorf("Expected symbol BTCUSDT, got %s", query.Get("symbol"))
+		}
+		if query.Get("side") != "BUY" {
+			t.Errorf("Expected side BUY, got %s", query.Get("side"))
+		}
+		if query.Get("quantity") != "1.5" {
+			t.Errorf("Expected quantity 1.5, got %s", query.Get("quantity"))
+		}
+		if query.Get("signature") == "" {
+			t.Error("Expected signature to be present")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"orderId": 12345}`))
+	}))
+	defer server.Close()
+
+	// Setup Dependecies
+	eb := evbus.NewEventBus()
+	cat := &catalog.Catalog{}
+
+	// Inject Catalog Data
+	symbols := make(map[int]cpanel.Symbol)
+	symbols[1] = cpanel.Symbol{
+		ID:   1,
+		Name: "BTCUSDT",
+	}
+
+	accounts := make(map[int]cpanel.Account)
+	accounts[10] = cpanel.Account{
+		ID:        10,
+		APIKey:    "test-api-key",
+		APISecret: "test-secret",
+	}
+
+	setPrivateField(cat, "symbols", symbols)
+	setPrivateField(cat, "accounts", accounts)
+
+	// Create Client with Test Server URL
+	client := NewBinanceHTTPClient(cat, &eb)
+
+	// Inject baseURL (private field)
+	setPrivateField(&client, "baseURL", server.URL)
+
+	// Execute
+	err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForceGTC, 1.5, 50000.0)
+	if err != nil {
+		t.Fatalf("ReqCreateOrder failed: %v", err)
+	}
+}
+
+func setPrivateField(obj interface{}, fieldName string, value interface{}) {
+	v := reflect.ValueOf(obj).Elem()
+	f := v.FieldByName(fieldName)
+	f = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem()
+	f.Set(reflect.ValueOf(value))
+}
+
+func TestReqCreateOrder_PostOnly(t *testing.T) {
+// Setup mock server
+server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+query := r.URL.Query()
+if query.Get("type") != "LIMIT_MAKER" {
+t.Errorf("Expected type LIMIT_MAKER, got %s", query.Get("type"))
+}
+if query.Get("timeInForce") != "" {
+t.Errorf("Expected empty timeInForce, got %s", query.Get("timeInForce"))
+}
+// Basic checks
+if query.Get("symbol") != "BTCUSDT" {
+t.Errorf("Expected symbol BTCUSDT, got %s", query.Get("symbol"))
+}
+
+w.WriteHeader(http.StatusOK)
+w.Write([]byte(`{"orderId": 123456}`))
+}))
+defer server.Close()
+
+eb := evbus.NewEventBus()
+cat := &catalog.Catalog{}
+
+symbols := make(map[int]cpanel.Symbol)
+symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+
+accounts := make(map[int]cpanel.Account)
+accounts[10] = cpanel.Account{ID: 10, APIKey: "k", APISecret: "s"}
+
+setPrivateField(cat, "symbols", symbols)
+setPrivateField(cat, "accounts", accounts)
+
+client := NewBinanceHTTPClient(cat, &eb)
+setPrivateField(&client, "baseURL", server.URL)
+
+// Execute with PO
+err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForcePO, 1.5, 50000.0)
+if err != nil {
+t.Fatalf("ReqCreateOrder failed: %v", err)
+}
 }
