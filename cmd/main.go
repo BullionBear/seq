@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/engine"
-	"github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/impl"
 )

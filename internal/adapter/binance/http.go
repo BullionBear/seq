@@ -10,9 +10,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/internal/srv/catalog"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/valyala/fasthttp"
 )
 

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/internal/srv/catalog"
-	"github.com/BullionBear/seq/internal/srv/catalog/cpanel"
+	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/bytedance/sonic"
 )
 
@@ -211,43 +211,43 @@ func setPrivateField(obj interface{}, fieldName string, value interface{}) {
 }
 
 func TestReqCreateOrder_PostOnly(t *testing.T) {
-// Setup mock server
-server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-query := r.URL.Query()
-if query.Get("type") != "LIMIT_MAKER" {
-t.Errorf("Expected type LIMIT_MAKER, got %s", query.Get("type"))
-}
-if query.Get("timeInForce") != "" {
-t.Errorf("Expected empty timeInForce, got %s", query.Get("timeInForce"))
-}
-// Basic checks
-if query.Get("symbol") != "BTCUSDT" {
-t.Errorf("Expected symbol BTCUSDT, got %s", query.Get("symbol"))
-}
+	// Setup mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Get("type") != "LIMIT_MAKER" {
+			t.Errorf("Expected type LIMIT_MAKER, got %s", query.Get("type"))
+		}
+		if query.Get("timeInForce") != "" {
+			t.Errorf("Expected empty timeInForce, got %s", query.Get("timeInForce"))
+		}
+		// Basic checks
+		if query.Get("symbol") != "BTCUSDT" {
+			t.Errorf("Expected symbol BTCUSDT, got %s", query.Get("symbol"))
+		}
 
-w.WriteHeader(http.StatusOK)
-w.Write([]byte(`{"orderId": 123456}`))
-}))
-defer server.Close()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"orderId": 123456}`))
+	}))
+	defer server.Close()
 
-eb := evbus.NewEventBus()
-cat := &catalog.Catalog{}
+	eb := evbus.NewEventBus()
+	cat := &catalog.Catalog{}
 
-symbols := make(map[int]cpanel.Symbol)
-symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]cpanel.Symbol)
+	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
 
-accounts := make(map[int]cpanel.Account)
-accounts[10] = cpanel.Account{ID: 10, APIKey: "k", APISecret: "s"}
+	accounts := make(map[int]cpanel.Account)
+	accounts[10] = cpanel.Account{ID: 10, APIKey: "k", APISecret: "s"}
 
-setPrivateField(cat, "symbols", symbols)
-setPrivateField(cat, "accounts", accounts)
+	setPrivateField(cat, "symbols", symbols)
+	setPrivateField(cat, "accounts", accounts)
 
-client := NewBinanceHTTPClient(cat, &eb)
-setPrivateField(&client, "baseURL", server.URL)
+	client := NewBinanceHTTPClient(cat, &eb)
+	setPrivateField(&client, "baseURL", server.URL)
 
-// Execute with PO
-err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForcePO, 1.5, 50000.0)
-if err != nil {
-t.Fatalf("ReqCreateOrder failed: %v", err)
-}
+	// Execute with PO
+	err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForcePO, 1.5, 50000.0)
+	if err != nil {
+		t.Fatalf("ReqCreateOrder failed: %v", err)
+	}
 }
