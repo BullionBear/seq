@@ -9,7 +9,7 @@ const (
 	DataTypeTick
 	// Execution Data
 	DataTypeOrderUpdate
-	DataTypeOrderFill
+	DataTypeFill
 	// Reconciliation Data
 	DataTypeBalanceSnapshot
 	DataTypeBalanceUpdate

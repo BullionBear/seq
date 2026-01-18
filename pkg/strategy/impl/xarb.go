@@ -51,6 +51,6 @@ func (x *XArb) OnOrderUpdate(orderUpdate model.OrderUpdate) error {
 	return nil
 }
 
-func (x *XArb) OnOrderFill(orderFill model.OrderFill) error {
+func (x *XArb) OnFill(fill model.Fill) error {
 	return nil
 }

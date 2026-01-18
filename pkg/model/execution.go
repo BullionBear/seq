@@ -9,7 +9,7 @@ type OrderUpdate struct {
 	UpdatedAt     time.Time
 }
 
-type OrderFill struct {
+type Fill struct {
 	ClientOrderID int
 	FillID        int
 	FilledQty     float64

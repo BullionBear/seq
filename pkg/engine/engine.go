@@ -53,9 +53,9 @@ func (e *Engine) handle(event evbus.Event) {
 	case model.DataTypeOrderUpdate:
 		orderUpdate := e.eventBus.ReadOrderUpdate(event.Ref.Index)
 		e.strategy.OnOrderUpdate(orderUpdate)
-	case model.DataTypeOrderFill:
-		orderFill := e.eventBus.ReadOrderFill(event.Ref.Index)
-		e.strategy.OnOrderFill(orderFill)
+	case model.DataTypeFill:
+		fill := e.eventBus.ReadFill(event.Ref.Index)
+		e.strategy.OnFill(fill)
 	}
 }
 

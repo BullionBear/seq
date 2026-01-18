@@ -127,7 +127,7 @@ type EventBus struct {
 	arenaDepthUpdate   Arena[model.DepthUpdate]
 	arenaTick          Arena[model.Tick]
 	arenaOrderUpdate   Arena[model.OrderUpdate]
-	arenaOrderFill     Arena[model.OrderFill]
+	arenaFill          Arena[model.Fill]
 
 	PriceLevels [MaxDepthLevels]model.PriceLevel
 	offset      int
@@ -141,7 +141,7 @@ func NewEventBus() EventBus {
 		arenaDepthUpdate:   NewArena[model.DepthUpdate](2048),
 		arenaTick:          NewArena[model.Tick](2048),
 		arenaOrderUpdate:   NewArena[model.OrderUpdate](1024),
-		arenaOrderFill:     NewArena[model.OrderFill](1024),
+		arenaFill:          NewArena[model.Fill](1024),
 
 		PriceLevels: [MaxDepthLevels]model.PriceLevel{},
 		offset:      0,
@@ -216,13 +216,13 @@ func (e *EventBus) ReadOrderUpdate(index uint64) model.OrderUpdate {
 	return e.arenaOrderUpdate.Read(index)
 }
 
-func (e *EventBus) PublishOrderFill(orderFill model.OrderFill) {
-	idx := e.arenaOrderFill.Write(orderFill)
+func (e *EventBus) PublishFill(fill model.Fill) {
+	idx := e.arenaFill.Write(fill)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadOrderFill(index uint64) model.OrderFill {
-	return e.arenaOrderFill.Read(index)
+func (e *EventBus) ReadFill(index uint64) model.Fill {
+	return e.arenaFill.Read(index)
 }

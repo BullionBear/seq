@@ -3,9 +3,12 @@ package binance
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/srv/catalog"
+	"github.com/BullionBear/seq/pkg/model"
+	"github.com/bytedance/sonic"
 	"github.com/valyala/fasthttp"
 )
 
@@ -18,7 +21,8 @@ type BinanceHTTPClient struct {
 
 func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) BinanceHTTPClient {
 	return BinanceHTTPClient{
-		catalog: catalog,
+		catalog:  catalog,
+		eventBus: eventBus,
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
@@ -71,15 +75,81 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 		}
 	}
 
+	// Deserialize depth response
+	var binanceDepth binanceDepthResponse
+	err = sonic.Unmarshal(resp.Body(), &binanceDepth)
+	if err != nil {
+		return err
+	}
+
+	// Allocate price levels using event bus
+	asksCount := len(binanceDepth.Asks)
+	bidsCount := len(binanceDepth.Bids)
+	totalLevels := asksCount + bidsCount
+	priceLevels := c.eventBus.AllocPriceLevels(totalLevels)
+
+	// Parse asks
+	asks := priceLevels[:asksCount]
+	for i, ask := range binanceDepth.Asks {
+		if len(ask) < 2 {
+			continue
+		}
+		price, err := strconv.ParseFloat(ask[0], 64)
+		if err != nil {
+			return err
+		}
+		quantity, err := strconv.ParseFloat(ask[1], 64)
+		if err != nil {
+			return err
+		}
+		asks[i] = model.PriceLevel{
+			Price:    price,
+			Quantity: quantity,
+		}
+	}
+
+	// Parse bids
+	bids := priceLevels[asksCount : asksCount+bidsCount]
+	for i, bid := range binanceDepth.Bids {
+		if len(bid) < 2 {
+			continue
+		}
+		price, err := strconv.ParseFloat(bid[0], 64)
+		if err != nil {
+			return err
+		}
+		quantity, err := strconv.ParseFloat(bid[1], 64)
+		if err != nil {
+			return err
+		}
+		bids[i] = model.PriceLevel{
+			Price:    price,
+			Quantity: quantity,
+		}
+	}
+
+	// Create depth snapshot
+	depthSnapshot := model.DepthSnapshot{
+		SymbolID:  symbolId,
+		DepthID:   int(binanceDepth.LastUpdateID),
+		Timestamp: uint64(time.Now().UnixNano()),
+		Asks:      asks,
+		Bids:      bids,
+	}
+
+	// Publish to event bus
+	c.eventBus.PublishDepthSnapshot(depthSnapshot)
 	return nil
 }
 
-// HTTPError represents an HTTP error response
-type HTTPError struct {
-	StatusCode int
-	Body       string
-}
+func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType model.OrderType, side model.Side, timeInForce model.TimeInForce, quantity float64, price float64) error {
+	symbol, err := c.catalog.GetSymbol(symbolId)
+	if err != nil {
+		return err
+	}
 
-func (e *HTTPError) Error() string {
-	return "HTTP error: " + strconv.Itoa(e.StatusCode) + " - " + e.Body
+	acct, err := c.catalog.GetAccount(acctID)
+	if err != nil {
+		return err
+	}
 }

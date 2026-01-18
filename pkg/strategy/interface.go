@@ -16,5 +16,5 @@ type Strategy interface {
 	OnTick(tick model.Tick) error
 	// execution handlers
 	OnOrderUpdate(orderUpdate model.OrderUpdate) error
-	OnOrderFill(orderFill model.OrderFill) error
+	OnFill(fill model.Fill) error
 }
