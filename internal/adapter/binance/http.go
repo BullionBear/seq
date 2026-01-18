@@ -82,7 +82,7 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 
 	// Deserialize depth response
 	var depth model.DepthSnapshot
-	err = c.UnmarshalDepthSnapshot(resp.Body(), &depth)
+	err = c.unmarshalDepthSnapshot(resp.Body(), &depth)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	return nil
 }
 
-func (c *BinanceHTTPClient) UnmarshalDepthSnapshot(data []byte, depth *model.DepthSnapshot) error {
+func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *model.DepthSnapshot) error {
 	// Parse lastUpdateId
 	const lastUpdateIdKey = "\"lastUpdateId\""
 	idx := bytes.Index(data, []byte(lastUpdateIdKey))
@@ -259,7 +259,6 @@ func (c *BinanceHTTPClient) UnmarshalDepthSnapshot(data []byte, depth *model.Dep
 	return nil
 }
 
-/*
 func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType model.OrderType, side model.Side, timeInForce model.TimeInForce, quantity float64, price float64) error {
 	symbol, err := c.catalog.GetSymbol(symbolId)
 	if err != nil {
@@ -271,4 +270,3 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType m
 		return err
 	}
 }
-*/

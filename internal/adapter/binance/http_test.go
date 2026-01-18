@@ -36,7 +36,7 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
 }`)
 
 	var depth model.DepthSnapshot
-	err := client.UnmarshalDepthSnapshot(jsonBody, &depth)
+	err := client.unmarshalDepthSnapshot(jsonBody, &depth)
 	if err != nil {
 		t.Fatalf("UnmarshalDepthSnapshot failed: %v", err)
 	}
@@ -90,7 +90,7 @@ func BenchmarkUnmarshalDepthSnapshot(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		var depth model.DepthSnapshot
-		err := client.UnmarshalDepthSnapshot(jsonBody, &depth)
+		err := client.unmarshalDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)
 		}

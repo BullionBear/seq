@@ -46,12 +46,15 @@ type SymbolParams struct {
 	QuoteTokenID *int    `json:"quote_token_id,omitempty"`
 }
 
-// APIKey represents an API key response from the LynxLinkage API
+// Account represents an API key response from the LynxLinkage API
 type Account struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
-	Exchange  string    `json:"exchange"`
-	Name      string    `json:"name"`
-	MasterIs  int       `json:"master_is"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int       `json:"id"`
+	UserID     int       `json:"user_id"`
+	Exchange   string    `json:"exchange"`
+	Name       string    `json:"name"`
+	APIKey     string    `json:"api_key"`
+	APISecret  string    `json:"api_secret"`
+	Passphrase string    `json:"passphrase"`
+	MasterIs   int       `json:"master_is"`
+	CreatedAt  time.Time `json:"created_at"`
 }
