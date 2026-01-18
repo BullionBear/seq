@@ -5,9 +5,9 @@ import (
 	"runtime"
 
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/pkg/logger"
-	"github.com/BullionBear/seq/pkg/model"
-	"github.com/BullionBear/seq/pkg/strategy"
+	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
 

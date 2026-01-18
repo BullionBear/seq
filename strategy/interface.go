@@ -1,6 +1,6 @@
 package strategy
 
-import "github.com/BullionBear/seq/pkg/model"
+import "github.com/BullionBear/seq/core/model"
 
 type Strategy interface {
 	// lifecycle methods

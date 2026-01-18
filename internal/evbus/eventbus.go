@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/BullionBear/seq/pkg/model"
+	"github.com/BullionBear/seq/core/model"
 )
 
 const (

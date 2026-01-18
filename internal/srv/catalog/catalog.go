@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/BullionBear/seq/internal/srv/catalog/cpanel"
-	"github.com/BullionBear/seq/pkg/logger"
+	"github.com/BullionBear/seq/core/logger"
 )
 
 var log = logger.Get()

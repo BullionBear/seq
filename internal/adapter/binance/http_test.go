@@ -10,7 +10,7 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/srv/catalog"
 	"github.com/BullionBear/seq/internal/srv/catalog/cpanel"
-	"github.com/BullionBear/seq/pkg/model"
+	"github.com/BullionBear/seq/core/model"
 	"github.com/bytedance/sonic"
 )
 

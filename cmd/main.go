@@ -10,10 +10,10 @@ import (
 
 	"github.com/BullionBear/seq/env"
 	"github.com/BullionBear/seq/internal/srv/catalog"
-	"github.com/BullionBear/seq/pkg/engine"
-	"github.com/BullionBear/seq/pkg/logger"
-	"github.com/BullionBear/seq/pkg/strategy"
-	"github.com/BullionBear/seq/pkg/strategy/impl"
+	"github.com/BullionBear/seq/engine"
+	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/strategy"
+	"github.com/BullionBear/seq/strategy/impl"
 )
 
 func main() {

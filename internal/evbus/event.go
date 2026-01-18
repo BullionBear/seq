@@ -1,7 +1,7 @@
 package evbus
 
 import (
-	"github.com/BullionBear/seq/pkg/model"
+	"github.com/BullionBear/seq/core/model"
 )
 
 type EventRef struct {

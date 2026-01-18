@@ -1,8 +1,8 @@
 package impl
 
 import (
-	"github.com/BullionBear/seq/pkg/model"
-	"github.com/BullionBear/seq/pkg/strategy"
+	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/strategy"
 )
 
 var _ strategy.Strategy = &XArb{}
