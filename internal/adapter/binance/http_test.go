@@ -10,6 +10,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/bytedance/sonic"
 )
@@ -40,7 +41,7 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
   ]
 }`)
 
-	var depth model.DepthSnapshot
+	var depth event.DepthSnapshot
 	err := client.unmarshalDepthSnapshot(jsonBody, &depth)
 	if err != nil {
 		t.Fatalf("UnmarshalDepthSnapshot failed: %v", err)
@@ -94,7 +95,7 @@ func BenchmarkUnmarshalDepthSnapshot(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		var depth model.DepthSnapshot
+		var depth event.DepthSnapshot
 		err := client.unmarshalDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)

@@ -1,6 +1,6 @@
 package strategy
 
-import "github.com/BullionBear/seq/core/model"
+import "github.com/BullionBear/seq/core/model/event"
 
 type Strategy interface {
 	// lifecycle methods
@@ -11,10 +11,10 @@ type Strategy interface {
 	OnDispose() error                    // called once when the strategy is disposed
 	// event handlers
 	// market data handlers
-	OnDepthSnapshot(depthSnapshot model.DepthSnapshot) error
-	OnDepthUpdate(depthUpdate model.DepthUpdate) error
-	OnTick(tick model.Tick) error
+	OnDepthSnapshot(depthSnapshot event.DepthSnapshot) error
+	OnDepthUpdate(depthUpdate event.DepthUpdate) error
+	OnTick(tick event.Tick) error
 	// execution handlers
-	OnOrderUpdate(orderUpdate model.OrderUpdate) error
-	OnFill(fill model.Fill) error
+	OnOrderUpdate(orderUpdate event.OrderUpdate) error
+	OnFill(fill event.Fill) error
 }

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
 )
 
 const (
@@ -123,13 +123,13 @@ type EventBus struct {
 
 	rbEvent RingBuffer
 
-	arenaDepthSnapshot Arena[model.DepthSnapshot]
-	arenaDepthUpdate   Arena[model.DepthUpdate]
-	arenaTick          Arena[model.Tick]
-	arenaOrderUpdate   Arena[model.OrderUpdate]
-	arenaFill          Arena[model.Fill]
+	arenaDepthSnapshot Arena[event.DepthSnapshot]
+	arenaDepthUpdate   Arena[event.DepthUpdate]
+	arenaTick          Arena[event.Tick]
+	arenaOrderUpdate   Arena[event.OrderUpdate]
+	arenaFill          Arena[event.Fill]
 
-	PriceLevels [MaxDepthLevels]model.PriceLevel
+	PriceLevels [MaxDepthLevels]event.PriceLevel
 	offset      int
 }
 
@@ -137,18 +137,18 @@ func NewEventBus() EventBus {
 	return EventBus{
 		nextEventID:        0,
 		rbEvent:            NewRingBuffer(4096),
-		arenaDepthSnapshot: NewArena[model.DepthSnapshot](16),
-		arenaDepthUpdate:   NewArena[model.DepthUpdate](2048),
-		arenaTick:          NewArena[model.Tick](2048),
-		arenaOrderUpdate:   NewArena[model.OrderUpdate](1024),
-		arenaFill:          NewArena[model.Fill](1024),
+		arenaDepthSnapshot: NewArena[event.DepthSnapshot](16),
+		arenaDepthUpdate:   NewArena[event.DepthUpdate](2048),
+		arenaTick:          NewArena[event.Tick](2048),
+		arenaOrderUpdate:   NewArena[event.OrderUpdate](1024),
+		arenaFill:          NewArena[event.Fill](1024),
 
-		PriceLevels: [MaxDepthLevels]model.PriceLevel{},
+		PriceLevels: [MaxDepthLevels]event.PriceLevel{},
 		offset:      0,
 	}
 }
 
-func (e *EventBus) AllocPriceLevels(size int) []model.PriceLevel {
+func (e *EventBus) AllocPriceLevels(size int) []event.PriceLevel {
 	offset := e.offset
 	e.offset += size
 	if e.offset >= MaxDepthLevels {
@@ -172,57 +172,57 @@ func (e *EventBus) Poll(handler EventHandler) bool {
 	return true
 }
 
-func (e *EventBus) PublishDepthSnapshot(depthSnapshot model.DepthSnapshot) {
+func (e *EventBus) PublishDepthSnapshot(depthSnapshot event.DepthSnapshot) {
 	idx := e.arenaDepthSnapshot.Write(depthSnapshot)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthSnapshot, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthSnapshot, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadDepthSnapshot(index uint64) model.DepthSnapshot {
+func (e *EventBus) ReadDepthSnapshot(index uint64) event.DepthSnapshot {
 	return e.arenaDepthSnapshot.Read(index)
 }
 
-func (e *EventBus) PublishDepthUpdate(depthUpdate model.DepthUpdate) {
+func (e *EventBus) PublishDepthUpdate(depthUpdate event.DepthUpdate) {
 	idx := e.arenaDepthUpdate.Write(depthUpdate)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeDepthUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadDepthUpdate(index uint64) model.DepthUpdate {
+func (e *EventBus) ReadDepthUpdate(index uint64) event.DepthUpdate {
 	return e.arenaDepthUpdate.Read(index)
 }
 
-func (e *EventBus) PublishTick(tick model.Tick) {
+func (e *EventBus) PublishTick(tick event.Tick) {
 	idx := e.arenaTick.Write(tick)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeTick, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeTick, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadTick(index uint64) model.Tick {
+func (e *EventBus) ReadTick(index uint64) event.Tick {
 	return e.arenaTick.Read(index)
 }
 
-func (e *EventBus) PublishOrderUpdate(orderUpdate model.OrderUpdate) {
+func (e *EventBus) PublishOrderUpdate(orderUpdate event.OrderUpdate) {
 	idx := e.arenaOrderUpdate.Write(orderUpdate)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeOrderUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeOrderUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadOrderUpdate(index uint64) model.OrderUpdate {
+func (e *EventBus) ReadOrderUpdate(index uint64) event.OrderUpdate {
 	return e.arenaOrderUpdate.Read(index)
 }
 
-func (e *EventBus) PublishFill(fill model.Fill) {
+func (e *EventBus) PublishFill(fill event.Fill) {
 	idx := e.arenaFill.Write(fill)
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: model.DataTypeFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadFill(index uint64) model.Fill {
+func (e *EventBus) ReadFill(index uint64) event.Fill {
 	return e.arenaFill.Read(index)
 }

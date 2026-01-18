@@ -1,7 +1,7 @@
 package impl
 
 import (
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/strategy"
 )
 
@@ -35,22 +35,22 @@ func (x *XArb) OnDispose() error {
 	return nil
 }
 
-func (x *XArb) OnDepthSnapshot(depthSnapshot model.DepthSnapshot) error {
+func (x *XArb) OnDepthSnapshot(depthSnapshot event.DepthSnapshot) error {
 	return nil
 }
 
-func (x *XArb) OnDepthUpdate(depthUpdate model.DepthUpdate) error {
+func (x *XArb) OnDepthUpdate(depthUpdate event.DepthUpdate) error {
 	return nil
 }
 
-func (x *XArb) OnTick(tick model.Tick) error {
+func (x *XArb) OnTick(tick event.Tick) error {
 	return nil
 }
 
-func (x *XArb) OnOrderUpdate(orderUpdate model.OrderUpdate) error {
+func (x *XArb) OnOrderUpdate(orderUpdate event.OrderUpdate) error {
 	return nil
 }
 
-func (x *XArb) OnFill(fill model.Fill) error {
+func (x *XArb) OnFill(fill event.Fill) error {
 	return nil
 }

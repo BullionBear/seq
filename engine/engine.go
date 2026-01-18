@@ -4,9 +4,9 @@ import (
 	"context"
 	"runtime"
 
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/core/logger"
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
@@ -17,8 +17,8 @@ type Engine struct {
 	strategy strategy.Strategy
 }
 
-func NewEngine(strategy strategy.Strategy) Engine {
-	return Engine{
+func NewEngine(strategy strategy.Strategy) *Engine {
+	return &Engine{
 		log:      logger.Get(),
 		eventBus: evbus.NewEventBus(),
 		strategy: strategy,
@@ -39,22 +39,22 @@ func (e *Engine) stop() {
 	e.strategy.OnDispose()
 }
 
-func (e *Engine) handle(event evbus.Event) {
-	switch event.Ref.DataType {
-	case model.DataTypeDepthSnapshot:
-		depthSnapshot := e.eventBus.ReadDepthSnapshot(event.Ref.Index)
+func (e *Engine) handle(ev evbus.Event) {
+	switch ev.Ref.DataType {
+	case event.DataTypeDepthSnapshot:
+		depthSnapshot := e.eventBus.ReadDepthSnapshot(ev.Ref.Index)
 		e.strategy.OnDepthSnapshot(depthSnapshot)
-	case model.DataTypeDepthUpdate:
-		depthUpdate := e.eventBus.ReadDepthUpdate(event.Ref.Index)
+	case event.DataTypeDepthUpdate:
+		depthUpdate := e.eventBus.ReadDepthUpdate(ev.Ref.Index)
 		e.strategy.OnDepthUpdate(depthUpdate)
-	case model.DataTypeTick:
-		tick := e.eventBus.ReadTick(event.Ref.Index)
+	case event.DataTypeTick:
+		tick := e.eventBus.ReadTick(ev.Ref.Index)
 		e.strategy.OnTick(tick)
-	case model.DataTypeOrderUpdate:
-		orderUpdate := e.eventBus.ReadOrderUpdate(event.Ref.Index)
+	case event.DataTypeOrderUpdate:
+		orderUpdate := e.eventBus.ReadOrderUpdate(ev.Ref.Index)
 		e.strategy.OnOrderUpdate(orderUpdate)
-	case model.DataTypeFill:
-		fill := e.eventBus.ReadFill(event.Ref.Index)
+	case event.DataTypeFill:
+		fill := e.eventBus.ReadFill(ev.Ref.Index)
 		e.strategy.OnFill(fill)
 	}
 }

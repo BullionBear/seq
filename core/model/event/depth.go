@@ -1,4 +1,4 @@
-package model
+package event
 
 type PriceLevel struct {
 	Price    float64
@@ -9,6 +9,7 @@ type DepthUpdate struct {
 	SymbolID        int
 	PreviousDepthID int
 	DepthID         int
+	CurrentDepthID  int
 	NextDepthID     int
 	Timestamp       uint64
 	Asks            []PriceLevel

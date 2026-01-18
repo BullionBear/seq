@@ -1,11 +1,11 @@
 package evbus
 
 import (
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
 )
 
 type EventRef struct {
-	DataType model.DataType
+	DataType event.DataType
 	Index    uint64
 }
 

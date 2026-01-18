@@ -12,6 +12,7 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/valyala/fasthttp"
 )
@@ -87,7 +88,7 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	}
 
 	// Deserialize depth response
-	var depth model.DepthSnapshot
+	var depth event.DepthSnapshot
 	err = c.unmarshalDepthSnapshot(resp.Body(), &depth)
 	if err != nil {
 		return err
@@ -98,7 +99,7 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	return nil
 }
 
-func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *model.DepthSnapshot) error {
+func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.DepthSnapshot) error {
 	// Parse lastUpdateId
 	const lastUpdateIdKey = "\"lastUpdateId\""
 	idx := bytes.Index(data, []byte(lastUpdateIdKey))
@@ -142,7 +143,7 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *model.Dep
 
 	// Helper to parse double array [[string, string], ...]
 	// We do 2 passes: 1 to count, 2 to fill
-	parseOrderList := func(key string) ([]model.PriceLevel, error) {
+	parseOrderList := func(key string) ([]event.PriceLevel, error) {
 		keyIdx := bytes.Index(data, []byte(key))
 		if keyIdx == -1 {
 			return nil, nil // or error? standard json unmarshal puts empty if missing
@@ -236,7 +237,7 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *model.Dep
 			}
 			curr++ // skip closing "
 
-			levels[itemIdx] = model.PriceLevel{
+			levels[itemIdx] = event.PriceLevel{
 				Price:    price,
 				Quantity: qty,
 			}
