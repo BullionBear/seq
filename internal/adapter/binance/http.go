@@ -11,9 +11,10 @@ import (
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -266,7 +267,7 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.Dep
 	return nil
 }
 
-func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType model.OrderType, side model.Side, timeInForce model.TimeInForce, quantity float64, price float64) error {
+func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType common.OrderType, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) error {
 	symbol, err := c.catalog.GetSymbol(symbolId)
 	if err != nil {
 		return err
@@ -294,9 +295,9 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType m
 	// side
 	c.buffer.WriteString("&side=")
 	switch side {
-	case model.SideBuy:
+	case common.SideBuy:
 		c.buffer.WriteString("BUY")
-	case model.SideSell:
+	case common.SideSell:
 		c.buffer.WriteString("SELL")
 	}
 
@@ -304,26 +305,26 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType m
 	c.buffer.WriteString("&type=")
 	isLimitMaker := false
 	switch orderType {
-	case model.OrderTypeLimit:
-		if timeInForce == model.TimeInForcePO {
+	case common.OrderTypeLimit:
+		if timeInForce == common.TimeInForcePO {
 			c.buffer.WriteString("LIMIT_MAKER")
 			isLimitMaker = true
 		} else {
 			c.buffer.WriteString("LIMIT")
 		}
-	case model.OrderTypeMarket:
+	case common.OrderTypeMarket:
 		c.buffer.WriteString("MARKET")
 	}
 
 	// timeInForce
-	if orderType == model.OrderTypeLimit && !isLimitMaker {
+	if orderType == common.OrderTypeLimit && !isLimitMaker {
 		c.buffer.WriteString("&timeInForce=")
 		switch timeInForce {
-		case model.TimeInForceGTC:
+		case common.TimeInForceGTC:
 			c.buffer.WriteString("GTC")
-		case model.TimeInForceIOC:
+		case common.TimeInForceIOC:
 			c.buffer.WriteString("IOC")
-		case model.TimeInForceFOK:
+		case common.TimeInForceFOK:
 			c.buffer.WriteString("FOK")
 		}
 	}
@@ -333,7 +334,7 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType m
 	c.buffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
 
 	// price
-	if orderType == model.OrderTypeLimit {
+	if orderType == common.OrderTypeLimit {
 		c.buffer.WriteString("&price=")
 		c.buffer.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
 	}

@@ -1,12 +1,12 @@
 package event
 
 import (
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/common"
 )
 
 type OrderUpdate struct {
 	OrderID     int
-	Status      model.Status
+	OrderStatus common.OrderStatus
 	ExecutedQty float64
 	UpdatedAt   uint64
 }

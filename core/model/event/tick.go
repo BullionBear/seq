@@ -1,11 +1,11 @@
 package event
 
-import "github.com/BullionBear/seq/core/model"
+import "github.com/BullionBear/seq/core/model/common"
 
 type Tick struct {
 	SymbolID  int
 	Timestamp uint64
-	Side      model.Side
+	Side      common.Side
 	Price     float64
 	Qty       float64
 }

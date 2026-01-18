@@ -1,4 +1,4 @@
-package model
+package common
 
 type Exchange int
 
@@ -14,17 +14,17 @@ const (
 	ProductTypePerpetual
 )
 
-type Status int
+type OrderStatus int
 
 const (
-	StatusUninitialized Status = iota
-	StatusInitialized
-	StatusInFlight
-	StatusAccepted
-	StatusPartiallyFilled
-	StatusFilled
-	StatusCanceled
-	StatusRejected
+	OrderStatusUninitialized OrderStatus = iota
+	OrderStatusInitialized
+	OrderStatusInFlight
+	OrderStatusAccepted
+	OrderStatusPartiallyFilled
+	OrderStatusFilled
+	OrderStatusCanceled
+	OrderStatusRejected
 )
 
 type Side int

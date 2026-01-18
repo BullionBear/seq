@@ -9,7 +9,7 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
-	"github.com/BullionBear/seq/core/model"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/bytedance/sonic"
@@ -198,7 +198,7 @@ func TestReqCreateOrder(t *testing.T) {
 	setPrivateField(&client, "baseURL", server.URL)
 
 	// Execute
-	err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForceGTC, 1.5, 50000.0)
+	err := client.ReqCreateOrder(10, 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForceGTC, 1.5, 50000.0)
 	if err != nil {
 		t.Fatalf("ReqCreateOrder failed: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	setPrivateField(&client, "baseURL", server.URL)
 
 	// Execute with PO
-	err := client.ReqCreateOrder(10, 1, model.OrderTypeLimit, model.SideBuy, model.TimeInForcePO, 1.5, 50000.0)
+	err := client.ReqCreateOrder(10, 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForcePO, 1.5, 50000.0)
 	if err != nil {
 		t.Fatalf("ReqCreateOrder failed: %v", err)
 	}
