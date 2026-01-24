@@ -39,7 +39,7 @@ func (e *Engine) stop() {
 	e.strategy.OnDispose()
 }
 
-func (e *Engine) handle(ev evbus.Event) {
+func (e *Engine) dispatch(ev evbus.Event) {
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
 		depthSnapshot := e.eventBus.ReadDepthSnapshot(ev.Ref.Index)
@@ -66,7 +66,7 @@ func (e *Engine) Run(ctx context.Context, config *strategy.StrategyConfig) {
 			case <-ctx.Done():
 				return
 			default:
-				hasWork := e.eventBus.Poll(e.handle)
+				hasWork := e.eventBus.Poll(e.dispatch)
 				if !hasWork {
 					runtime.Gosched()
 				}
