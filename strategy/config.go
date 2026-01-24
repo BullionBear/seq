@@ -7,10 +7,9 @@ import (
 )
 
 type StrategyConfig struct {
-	Logger  ConfigLogger  `yaml:"logger"`
-	Catalog ConfigCatalog `yaml:"catalog"`
-	EMS     ConfigEMS     `yaml:"ems"`
-	PMS     ConfigPMS     `yaml:"pms"`
+	Logger   ConfigLogger   `yaml:"logger"`
+	Catalog  ConfigCatalog  `yaml:"catalog"`
+	Strategy map[string]any `yaml:"strategy"`
 }
 
 // ConfigCatalog contains catalog configuration
