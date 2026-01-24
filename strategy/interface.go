@@ -10,11 +10,11 @@ type Strategy interface {
 	OnStop() error                       // called once when the strategy is stopped
 	OnDispose() error                    // called once when the strategy is disposed
 	// event handlers
-	// market data handlers
-	OnDepthSnapshot(depthSnapshot event.DepthSnapshot) error
 	OnDepthUpdate(depthUpdate event.DepthUpdate) error
 	OnTick(tick event.Tick) error
-	// execution handlers
+	// order event handlers
 	OnOrderUpdate(orderUpdate event.OrderUpdate) error
 	OnFill(fill event.Fill) error
+	// balance event handlers
+	OnBalanceUpdate(balanceUpdate event.BalanceUpdate) error
 }

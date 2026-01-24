@@ -41,9 +41,6 @@ func (e *Engine) stop() {
 
 func (e *Engine) dispatch(ev evbus.Event) {
 	switch ev.Ref.DataType {
-	case event.DataTypeDepthSnapshot:
-		depthSnapshot := e.eventBus.ReadDepthSnapshot(ev.Ref.Index)
-		e.strategy.OnDepthSnapshot(depthSnapshot)
 	case event.DataTypeDepthUpdate:
 		depthUpdate := e.eventBus.ReadDepthUpdate(ev.Ref.Index)
 		e.strategy.OnDepthUpdate(depthUpdate)

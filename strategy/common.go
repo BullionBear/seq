@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"github.com/BullionBear/seq/core/model/common"
+	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/rs/zerolog"
 )
@@ -52,11 +53,32 @@ func (s *StrategyCommon) UnsubscribeOrderFill(acctID int) {
 func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
 }
 
-func (s *StrategyCommon) SubscribeTradeTick(symbolID int) {
+func (s *StrategyCommon) SubscribeTick(symbolID int) {
 }
 
 func (s *StrategyCommon) UnsubscribeDepthDelta(symbolID int) {
 }
 
-func (s *StrategyCommon) UnsubscribeTradeTick(symbolID int) {
+func (s *StrategyCommon) UnsubscribeTick(symbolID int) {
+}
+
+// virtual methods
+func (s *StrategyCommon) OnDepthUpdate(depthUpdate event.DepthUpdate) error {
+	return nil
+}
+
+func (s *StrategyCommon) OnTick(tick event.Tick) error {
+	return nil
+}
+
+func (s *StrategyCommon) OnOrderUpdate(orderUpdate event.OrderUpdate) error {
+	return nil
+}
+
+func (s *StrategyCommon) OnFill(fill event.Fill) error {
+	return nil
+}
+
+func (s *StrategyCommon) OnBalanceUpdate(balanceUpdate event.BalanceUpdate) error {
+	return nil
 }

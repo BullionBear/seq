@@ -35,10 +35,6 @@ func (x *XArb) OnDispose() error {
 	return nil
 }
 
-func (x *XArb) OnDepthSnapshot(depthSnapshot event.DepthSnapshot) error {
-	return nil
-}
-
 func (x *XArb) OnDepthUpdate(depthUpdate event.DepthUpdate) error {
 	return nil
 }
