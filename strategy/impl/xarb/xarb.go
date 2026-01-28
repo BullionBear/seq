@@ -1,6 +1,9 @@
 package xarb
 
 import (
+	"context"
+	"time"
+
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
@@ -59,21 +62,25 @@ func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 
 func (x *XArb) OnStart() {
 	x.SubscribeDepthDelta(x.quotingSymbol.ID)
+	log.Info().Msgf("Subscribed to depth delta for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
 	x.SubscribeDepthDelta(x.hedgingSymbol.ID)
+	log.Info().Msgf("Subscribed to depth delta for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
+	x.Connect(context.Background())
 }
 
 func (x *XArb) OnReady() {
 }
 
 func (x *XArb) OnStop() {
-	x.UnsubscribeDepthDelta(x.quotingSymbol.ID)
-	x.UnsubscribeDepthDelta(x.hedgingSymbol.ID)
+	x.Disconnect()
 }
 
 func (x *XArb) OnDispose() {
 }
 
 func (x *XArb) OnDepthUpdate(depthUpdate event.DepthUpdate) {
+	log.Info().Msgf("Depth update: %d %d %d %d", depthUpdate.SymbolID, depthUpdate.DepthID, len(depthUpdate.Bids), len(depthUpdate.Asks))
+	log.Info().Msgf("Depth update timestamp: %s", time.Unix(int64(depthUpdate.Timestamp/1_000_000_000), int64(depthUpdate.Timestamp%1_000_000_000)).Format(time.RFC3339Nano))
 }
 
 func (x *XArb) OnTick(tick event.Tick) {

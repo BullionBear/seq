@@ -1,6 +1,8 @@
 package strategy
 
 import (
+	"context"
+
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
@@ -58,27 +60,28 @@ func (s *StrategyCommon) SubscribeBalanceUpdate(acctID int) {
 func (s *StrategyCommon) SubscribeOrderFill(acctID int) {
 }
 
-func (s *StrategyCommon) UnsubscribeOrderUpdate(acctID int) {
-}
-
-func (s *StrategyCommon) UnsubscribeBalanceUpdate(acctID int) {
-}
-
-func (s *StrategyCommon) UnsubscribeOrderFill(acctID int) {
-}
-
 // Public subscription methods
 func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
-	s.dataClientRouter.SubscribeDepthDelta(symbolID)
+	err := s.dataClientRouter.SubscribeDepthDelta(symbolID)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to subscribe to depth delta for symbol: %d", symbolID)
+	}
 }
 
 func (s *StrategyCommon) SubscribeTick(symbolID int) {
 }
 
-func (s *StrategyCommon) UnsubscribeDepthDelta(symbolID int) {
+// Connect methods
+func (s *StrategyCommon) Connect(ctx context.Context) {
+	err := s.dataClientRouter.Connect(ctx)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to connect to data client router")
+	}
 }
 
-func (s *StrategyCommon) UnsubscribeTick(symbolID int) {
+// Disconnect methods
+func (s *StrategyCommon) Disconnect() {
+	s.dataClientRouter.Disconnect()
 }
 
 // virtual methods

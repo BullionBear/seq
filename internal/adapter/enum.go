@@ -3,13 +3,15 @@ package adapter
 type Exchange int
 
 const (
-	ExchangeBinance Exchange = iota
+	ExchangeUnknown Exchange = iota
+	ExchangeBinance
 	ExchangeBybit
 )
 
 type ProductType int
 
 const (
-	ProductTypeSpot ProductType = iota
+	ProductTypeUnknown ProductType = iota
+	ProductTypeSpot
 	ProductTypePerpetual
 )
