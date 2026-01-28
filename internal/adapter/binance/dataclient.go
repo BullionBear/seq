@@ -9,7 +9,7 @@ func NewBinanceSpotDataClient() BinanceSpotDataClient {
 	return BinanceSpotDataClient{}
 }
 
-func (c *BinanceSpotDataClient) SubscribeDepth(symbolID int, limit int) {
+func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int) {
 }
 
 func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int) {

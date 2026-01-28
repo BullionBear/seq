@@ -27,16 +27,16 @@ func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *Da
 	}
 }
 
-func (r *DataClientRouter) SubscribeDepth(symbolID int, limit int) error {
+func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		r.binanceSpotDataClient.SubscribeDepth(symbolID, limit)
+		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		r.bybitSpotDataClient.SubscribeDepth(symbolID, limit)
+		r.bybitSpotDataClient.SubscribeDepthUpdate(symbolID)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}

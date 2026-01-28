@@ -9,7 +9,7 @@ func NewBybitDataClient() BybitDataClient {
 	return BybitDataClient{}
 }
 
-func (c *BybitDataClient) SubscribeDepth(symbolID int, limit int) {
+func (c *BybitDataClient) SubscribeDepthUpdate(symbolID int) {
 }
 
 func (c *BybitDataClient) SubscribeTrade(symbolID int) {

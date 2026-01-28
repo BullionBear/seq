@@ -69,6 +69,7 @@ func (s *StrategyCommon) UnsubscribeOrderFill(acctID int) {
 
 // Public subscription methods
 func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
+	s.dataClientRouter.SubscribeDepthDelta(symbolID)
 }
 
 func (s *StrategyCommon) SubscribeTick(symbolID int) {

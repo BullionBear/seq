@@ -15,7 +15,6 @@ var log = logger.Get()
 
 type Engine struct {
 	eventBus *evbus.EventBus
-
 	catalog  *catalog.Catalog
 	strategy strategy.Strategy
 }
