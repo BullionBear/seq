@@ -77,22 +77,17 @@ func (s *StrategyCommon) UnsubscribeTick(symbolID int) {
 }
 
 // virtual methods
-func (s *StrategyCommon) OnDepthUpdate(depthUpdate event.DepthUpdate) error {
-	return nil
+func (s *StrategyCommon) OnDepthUpdate(depthUpdate event.DepthUpdate) {
 }
 
-func (s *StrategyCommon) OnTick(tick event.Tick) error {
-	return nil
+func (s *StrategyCommon) OnTick(tick event.Tick) {
 }
 
-func (s *StrategyCommon) OnOrderUpdate(orderUpdate event.OrderUpdate) error {
-	return nil
+func (s *StrategyCommon) OnOrderUpdate(orderUpdate event.OrderUpdate) {
 }
 
-func (s *StrategyCommon) OnFill(fill event.Fill) error {
-	return nil
+func (s *StrategyCommon) OnFill(fill event.Fill) {
 }
 
-func (s *StrategyCommon) OnBalanceUpdate(balanceUpdate event.BalanceUpdate) error {
-	return nil
+func (s *StrategyCommon) OnBalanceUpdate(balanceUpdate event.BalanceUpdate) {
 }

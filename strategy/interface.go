@@ -6,17 +6,17 @@ type Strategy interface {
 	// SetCommon injects the StrategyCommon into the strategy
 	SetCommon(common *StrategyCommon)
 	// lifecycle methods
-	OnInit(config *StrategyConfig) error // called once when the strategy is initialized
-	OnStart() error                      // called once when the strategy is started
-	OnReady() error                      // called once when the strategy is ready to start
-	OnStop() error                       // called once when the strategy is stopped
-	OnDispose() error                    // called once when the strategy is disposed
+	OnInit(config *StrategyConfig) // called once when the strategy is initialized
+	OnStart()                      // called once when the strategy is started
+	OnReady()                      // called once when the strategy is ready to start
+	OnStop()                       // called once when the strategy is stopped
+	OnDispose()                    // called once when the strategy is disposed
 	// event handlers
-	OnDepthUpdate(depthUpdate event.DepthUpdate) error
-	OnTick(tick event.Tick) error
+	OnDepthUpdate(depthUpdate event.DepthUpdate)
+	OnTick(tick event.Tick)
 	// order event handlers
-	OnOrderUpdate(orderUpdate event.OrderUpdate) error
-	OnFill(fill event.Fill) error
+	OnOrderUpdate(orderUpdate event.OrderUpdate)
+	OnFill(fill event.Fill)
 	// balance event handlers
-	OnBalanceUpdate(balanceUpdate event.BalanceUpdate) error
+	OnBalanceUpdate(balanceUpdate event.BalanceUpdate)
 }
