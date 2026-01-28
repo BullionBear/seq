@@ -36,20 +36,24 @@ func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 	yamlData, err := yaml.Marshal(config.Strategy)
 	if err != nil {
 		x.logger.Error().Err(err).Msg("failed to marshal strategy config")
+		return
 	}
 	if err := yaml.Unmarshal(yamlData, &xarbConfig); err != nil {
 		x.logger.Error().Err(err).Msg("failed to unmarshal strategy config")
+		return
 	}
-	quotingSymbol, err := x.GetCatalog().GetSymbolByName(xarbConfig.QuotingSymbolName)
+	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
 	if err != nil {
 		x.logger.Error().Err(err).Msg("failed to get quoting symbol")
+		return
 	}
-	hedgingSymbol, err := x.GetCatalog().GetSymbolByName(xarbConfig.HedgingSymbolName)
+	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.HedgingSymbolUniversalTicker)
 	if err != nil {
 		x.logger.Error().Err(err).Msg("failed to get hedging symbol")
+		return
 	}
-	x.logger.Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.Name, quotingSymbol.ID)
-	x.logger.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.Name, hedgingSymbol.ID)
+	x.logger.Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
+	x.logger.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
 }

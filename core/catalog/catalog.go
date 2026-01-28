@@ -48,6 +48,7 @@ func (c *Catalog) LoadAllSymbols() error {
 	}
 	for _, symbol := range symbols {
 		c.symbols[symbol.ID] = symbol
+		log.Info().Msgf("Loaded symbol: %s(%d)", symbol.UniversalTicker, symbol.ID)
 		c.exchanges[symbol.Exchange.ID] = symbol.Exchange
 		c.products[symbol.Product.ID] = symbol.Product
 		c.tokens[symbol.BaseToken.ID] = symbol.BaseToken
@@ -84,13 +85,13 @@ func (c *Catalog) GetSymbol(symbolID int) (*cpanel.Symbol, error) {
 	return &symbol, nil
 }
 
-func (c *Catalog) GetSymbolByName(symbolName string) (*cpanel.Symbol, error) {
+func (c *Catalog) GetSymbolByUniversalTicker(universalTicker string) (*cpanel.Symbol, error) {
 	for _, symbol := range c.symbols {
-		if symbol.Name == symbolName {
+		if symbol.UniversalTicker == universalTicker {
 			return &symbol, nil
 		}
 	}
-	return nil, fmt.Errorf("symbol not found for symbolName: %s", symbolName)
+	return nil, fmt.Errorf("symbol not found for universalTicker: %s", universalTicker)
 }
 
 func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
