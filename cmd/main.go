@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/engine"
 	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/impl"
+	"github.com/BullionBear/seq/strategy/impl/xarb"
 )
 
 func main() {
@@ -69,13 +69,13 @@ func main() {
 	}
 	log.Info().Msg("Catalog service initialized successfully")
 
-	strategyImpl := impl.NewXArb()
+	strategyImpl := xarb.NewXArb()
 
 	// Create context that cancels on SIGINT (Ctrl+C) or SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	engine := engine.NewEngine(strategyImpl)
+	engine := engine.NewEngine(strategyImpl, catalogService)
 	engine.Init(cfg)
 	engine.Start()
 	go engine.Run(ctx, cfg)

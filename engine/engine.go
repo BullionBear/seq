@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime"
 
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
@@ -15,17 +16,22 @@ type Engine struct {
 	log      zerolog.Logger
 	eventBus evbus.EventBus
 	strategy strategy.Strategy
+	catalog  *catalog.Catalog
 }
 
-func NewEngine(strategy strategy.Strategy) *Engine {
+func NewEngine(strat strategy.Strategy, cat *catalog.Catalog) *Engine {
 	return &Engine{
 		log:      logger.Get(),
 		eventBus: evbus.NewEventBus(),
-		strategy: strategy,
+		strategy: strat,
+		catalog:  cat,
 	}
 }
 
 func (e *Engine) Init(config *strategy.StrategyConfig) {
+	// Inject StrategyCommon into the strategy before initialization
+	common := strategy.NewStrategyCommon(e.catalog)
+	e.strategy.SetCommon(common)
 	e.strategy.OnInit(config)
 }
 

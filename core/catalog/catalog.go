@@ -84,6 +84,15 @@ func (c *Catalog) GetSymbol(symbolID int) (*cpanel.Symbol, error) {
 	return &symbol, nil
 }
 
+func (c *Catalog) GetSymbolByName(symbolName string) (*cpanel.Symbol, error) {
+	for _, symbol := range c.symbols {
+		if symbol.Name == symbolName {
+			return &symbol, nil
+		}
+	}
+	return nil, fmt.Errorf("symbol not found for symbolName: %s", symbolName)
+}
+
 func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
 	account, ok := c.accounts[accountID]
 	if !ok {

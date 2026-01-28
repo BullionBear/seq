@@ -1,16 +1,30 @@
 package strategy
 
 import (
+	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/rs/zerolog"
 )
 
 type StrategyCommon struct {
-	log              zerolog.Logger
-	dataClientRouter adapter.DataClientRouter
-	executionRouter  adapter.ExecutionRouter
+	log     zerolog.Logger
+	catalog *catalog.Catalog
+	// dataClientRouter adapter.DataClientRouter
+	// executionRouter  adapter.ExecutionRouter
+}
+
+func NewStrategyCommon(catalog *catalog.Catalog) *StrategyCommon {
+	return &StrategyCommon{
+		log:     logger.Get(),
+		catalog: catalog,
+	}
+}
+
+// Getters
+func (s *StrategyCommon) GetCatalog() *catalog.Catalog {
+	return s.catalog
 }
 
 // Order management methods

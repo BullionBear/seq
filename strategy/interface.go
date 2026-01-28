@@ -3,6 +3,8 @@ package strategy
 import "github.com/BullionBear/seq/core/model/event"
 
 type Strategy interface {
+	// SetCommon injects the StrategyCommon into the strategy
+	SetCommon(common *StrategyCommon)
 	// lifecycle methods
 	OnInit(config *StrategyConfig) error // called once when the strategy is initialized
 	OnStart() error                      // called once when the strategy is started
