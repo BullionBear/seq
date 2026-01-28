@@ -43,6 +43,10 @@ func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
 	return nil
 }
 
+func (r *DataClientRouter) ReqDepthSnapshot(symbolID int) error {
+	return nil
+}
+
 func (r *DataClientRouter) SubscribeTrade(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {

@@ -71,7 +71,7 @@ func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
 func (s *StrategyCommon) SubscribeTick(symbolID int) {
 }
 
-// Connect methods
+// Operations methods
 func (s *StrategyCommon) Connect(ctx context.Context) {
 	err := s.dataClientRouter.Connect(ctx)
 	if err != nil {
@@ -79,9 +79,13 @@ func (s *StrategyCommon) Connect(ctx context.Context) {
 	}
 }
 
-// Disconnect methods
 func (s *StrategyCommon) Disconnect() {
 	s.dataClientRouter.Disconnect()
+}
+
+// Request methods
+func (s *StrategyCommon) ReqDepthSnapshot(symbolID int) error {
+	return s.dataClientRouter.ReqDepthSnapshot(symbolID)
 }
 
 // virtual methods
@@ -98,4 +102,7 @@ func (s *StrategyCommon) OnFill(fill event.Fill) {
 }
 
 func (s *StrategyCommon) OnBalanceUpdate(balanceUpdate event.BalanceUpdate) {
+}
+
+func (s *StrategyCommon) OnReqDepthSnapshot(depthSnapshot event.DepthSnapshot) {
 }
