@@ -5,22 +5,21 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/strategy"
-	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
+
+var log = logger.Get()
 
 var _ strategy.Strategy = &XArb{}
 
 type XArb struct {
 	*strategy.StrategyCommon
-	logger        zerolog.Logger
 	quotingSymbol cpanel.Symbol
 	hedgingSymbol cpanel.Symbol
 }
 
 func NewXArb() *XArb {
 	return &XArb{
-		logger:        logger.Get(),
 		quotingSymbol: cpanel.Symbol{},
 		hedgingSymbol: cpanel.Symbol{},
 	}
@@ -35,25 +34,25 @@ func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 	var xarbConfig XArbConfig
 	yamlData, err := yaml.Marshal(config.Strategy)
 	if err != nil {
-		x.logger.Error().Err(err).Msg("failed to marshal strategy config")
+		log.Error().Err(err).Msg("failed to marshal strategy config")
 		return
 	}
 	if err := yaml.Unmarshal(yamlData, &xarbConfig); err != nil {
-		x.logger.Error().Err(err).Msg("failed to unmarshal strategy config")
+		log.Error().Err(err).Msg("failed to unmarshal strategy config")
 		return
 	}
 	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
 	if err != nil {
-		x.logger.Error().Err(err).Msg("failed to get quoting symbol")
+		log.Error().Err(err).Msg("failed to get quoting symbol")
 		return
 	}
 	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.HedgingSymbolUniversalTicker)
 	if err != nil {
-		x.logger.Error().Err(err).Msg("failed to get hedging symbol")
+		log.Error().Err(err).Msg("failed to get hedging symbol")
 		return
 	}
-	x.logger.Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
-	x.logger.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
+	log.Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
+	log.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
 }

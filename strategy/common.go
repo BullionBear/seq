@@ -5,11 +5,11 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/rs/zerolog"
 )
 
+var log = logger.Get()
+
 type StrategyCommon struct {
-	log     zerolog.Logger
 	catalog *catalog.Catalog
 	// dataClientRouter adapter.DataClientRouter
 	// executionRouter  adapter.ExecutionRouter
@@ -17,7 +17,6 @@ type StrategyCommon struct {
 
 func NewStrategyCommon(catalog *catalog.Catalog) *StrategyCommon {
 	return &StrategyCommon{
-		log:     logger.Get(),
 		catalog: catalog,
 	}
 }
