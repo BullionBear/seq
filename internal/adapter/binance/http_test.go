@@ -19,7 +19,7 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
 	// Setup
 	eb := evbus.NewEventBus()
 	cat := &catalog.Catalog{} // Mock catalog not needed for unmarshal
-	client := NewBinanceHTTPClient(cat, &eb)
+	client := NewBinanceHTTPClient(cat, eb)
 
 	jsonBody := []byte(`{
   "lastUpdateId": 1027024,
@@ -72,7 +72,7 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
 func BenchmarkUnmarshalDepthSnapshot(b *testing.B) {
 	eb := evbus.NewEventBus()
 	cat := &catalog.Catalog{}
-	client := NewBinanceHTTPClient(cat, &eb)
+	client := NewBinanceHTTPClient(cat, eb)
 
 	jsonBody := []byte(`{
   "lastUpdateId": 1027024,
@@ -171,7 +171,7 @@ func TestReqCreateOrder(t *testing.T) {
 	defer server.Close()
 
 	// Setup Dependecies
-	eb := evbus.NewEventBus()
+	eb := *evbus.NewEventBus()
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
@@ -231,7 +231,7 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	eb := evbus.NewEventBus()
+	eb := *evbus.NewEventBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)

@@ -5,19 +5,24 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/internal/adapter"
+	"github.com/BullionBear/seq/internal/evbus"
 )
 
 var log = logger.Get()
 
 type StrategyCommon struct {
-	catalog *catalog.Catalog
-	// dataClientRouter adapter.DataClientRouter
+	eventBus         *evbus.EventBus
+	catalog          *catalog.Catalog
+	dataClientRouter *adapter.DataClientRouter
 	// executionRouter  adapter.ExecutionRouter
 }
 
-func NewStrategyCommon(catalog *catalog.Catalog) *StrategyCommon {
+func NewStrategyCommon(catalog *catalog.Catalog, eventBus *evbus.EventBus) *StrategyCommon {
 	return &StrategyCommon{
-		catalog: catalog,
+		eventBus:         eventBus,
+		catalog:          catalog,
+		dataClientRouter: adapter.NewDataClientRouter(catalog, eventBus),
 	}
 }
 

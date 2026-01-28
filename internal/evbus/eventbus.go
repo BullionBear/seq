@@ -133,8 +133,8 @@ type EventBus struct {
 	offset      int
 }
 
-func NewEventBus() EventBus {
-	return EventBus{
+func NewEventBus() *EventBus {
+	return &EventBus{
 		nextEventID:        0,
 		rbEvent:            NewRingBuffer(4096),
 		arenaDepthSnapshot: NewArena[event.DepthSnapshot](16),

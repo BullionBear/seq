@@ -1,6 +1,8 @@
 package strategy
 
-import "github.com/BullionBear/seq/core/model/event"
+import (
+	"github.com/BullionBear/seq/core/model/event"
+)
 
 type Strategy interface {
 	// SetCommon injects the StrategyCommon into the strategy
