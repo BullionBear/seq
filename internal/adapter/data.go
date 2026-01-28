@@ -34,7 +34,7 @@ func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID)
+		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, &binance.DepthSubscriptionOptions{})
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
 		r.bybitSpotDataClient.SubscribeDepthUpdate(symbolID)
 	default:
