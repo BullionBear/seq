@@ -38,3 +38,6 @@ migrate
 # Log files
 logs/
 *.log
+
+# Tests
+tests/

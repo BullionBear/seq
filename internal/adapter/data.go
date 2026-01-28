@@ -14,7 +14,7 @@ type DataClientRouter struct {
 	catalog  *catalog.Catalog
 	eventBus *evbus.EventBus
 
-	binanceSpotDataClient binance.BinanceSpotDataClient
+	binanceSpotDataClient *binance.BinanceSpotDataClient
 	bybitSpotDataClient   bybit.BybitDataClient
 }
 
@@ -22,7 +22,7 @@ func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *Da
 	return &DataClientRouter{
 		catalog:               catalog,
 		eventBus:              eventBus,
-		binanceSpotDataClient: binance.NewBinanceSpotDataClient(),
+		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
 		bybitSpotDataClient:   bybit.NewBybitDataClient(),
 	}
 }
@@ -60,8 +60,20 @@ func (r *DataClientRouter) SubscribeTrade(symbolID int) error {
 }
 
 func (r *DataClientRouter) Connect(ctx context.Context) error {
+	// Connect Binance spot data client
+	if err := r.binanceSpotDataClient.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect Binance spot data client: %w", err)
+	}
+
+	// Connect Bybit data client
+	if err := r.bybitSpotDataClient.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect Bybit data client: %w", err)
+	}
+
 	return nil
 }
 
 func (r *DataClientRouter) Disconnect() {
+	r.binanceSpotDataClient.Disconnect()
+	r.bybitSpotDataClient.Disconnect()
 }
