@@ -8,34 +8,43 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/strategy"
+	"github.com/BullionBear/seq/strategy/actor"
 	"gopkg.in/yaml.v3"
 )
 
 var log = logger.Get()
 
-var _ strategy.Strategy = &XArb{}
+// Ensure XArb implements the Actor interface
+var _ actor.Actor = (*XArb)(nil)
 
+// XArb is a cross-exchange arbitrage strategy.
 type XArb struct {
-	*strategy.StrategyCommon
-	quotingSymbol cpanel.Symbol
-	hedgingSymbol cpanel.Symbol
+	*strategy.StrategyBase // Embed StrategyBase for Actor + StrategyCommon
+	quotingSymbol          cpanel.Symbol
+	hedgingSymbol          cpanel.Symbol
 }
 
+// NewXArb creates a new XArb strategy.
 func NewXArb() *XArb {
 	return &XArb{
+		StrategyBase:  strategy.NewStrategyBase("xarb"),
 		quotingSymbol: cpanel.Symbol{},
 		hedgingSymbol: cpanel.Symbol{},
 	}
 }
 
-func (x *XArb) SetCommon(common *strategy.StrategyCommon) {
-	x.StrategyCommon = common
-}
+// OnInit initializes the strategy with configuration.
+func (x *XArb) OnInit() {
+	// Get strategy-specific config from StrategyBase
+	strategyConfig := x.StrategyConfig()
+	if strategyConfig == nil {
+		log.Error().Msg("strategy config is nil")
+		return
+	}
 
-func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 	// Convert map[string]any to XArbConfig struct via YAML re-marshaling
 	var xarbConfig XArbConfig
-	yamlData, err := yaml.Marshal(config.Strategy)
+	yamlData, err := yaml.Marshal(strategyConfig)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to marshal strategy config")
 		return
@@ -44,6 +53,7 @@ func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 		log.Error().Err(err).Msg("failed to unmarshal strategy config")
 		return
 	}
+
 	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get quoting symbol")
@@ -60,6 +70,7 @@ func (x *XArb) OnInit(config *strategy.StrategyConfig) {
 	x.hedgingSymbol = *hedgingSymbol
 }
 
+// OnStart subscribes to market data and connects.
 func (x *XArb) OnStart() {
 	x.SubscribeDepthDelta(x.quotingSymbol.ID)
 	log.Info().Msgf("Subscribed to depth delta for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
@@ -68,26 +79,13 @@ func (x *XArb) OnStart() {
 	x.Connect(context.Background())
 }
 
-func (x *XArb) OnReady() {
-}
-
+// OnStop disconnects from market data.
 func (x *XArb) OnStop() {
 	x.Disconnect()
 }
 
-func (x *XArb) OnDispose() {
-}
-
-func (x *XArb) OnDepthUpdate(depthUpdate event.DepthUpdate) {
-	log.Info().Msgf("Depth update: %d %d %d %d", depthUpdate.SymbolID, depthUpdate.DepthID, len(depthUpdate.Bids), len(depthUpdate.Asks))
-	log.Info().Msgf("Depth update timestamp: %s", time.Unix(int64(depthUpdate.Timestamp/1_000_000_000), int64(depthUpdate.Timestamp%1_000_000_000)).Format(time.RFC3339Nano))
-}
-
-func (x *XArb) OnTick(tick event.Tick) {
-}
-
-func (x *XArb) OnOrderUpdate(orderUpdate event.OrderUpdate) {
-}
-
-func (x *XArb) OnFill(fill event.Fill) {
+// OnDepthUpdate processes depth updates.
+func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
+	log.Info().Msgf("Depth update: %d %d %d %d", update.SymbolID, update.DepthID, len(update.Bids), len(update.Asks))
+	log.Info().Msgf("Depth update timestamp: %s", time.Unix(int64(update.Timestamp/1_000_000_000), int64(update.Timestamp%1_000_000_000)).Format(time.RFC3339Nano))
 }

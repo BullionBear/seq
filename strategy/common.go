@@ -9,22 +9,44 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/strategy/actor"
+	"github.com/BullionBear/seq/strategy/actor/ems"
+	"github.com/BullionBear/seq/strategy/actor/ob"
 )
 
 var log = logger.Get()
 
+// StrategyCommon provides the common infrastructure for all strategies.
+// It owns and manages internal actors (OrderBook, EMS) and provides
+// a clean facade API for strategies to interact with market data and orders.
 type StrategyCommon struct {
 	eventBus         *evbus.EventBus
 	catalog          *catalog.Catalog
 	dataClientRouter *adapter.DataClientRouter
-	// executionRouter  adapter.ExecutionRouter
+
+	// Internal actors (facade owns these)
+	orderBook *ob.OrderBook
+	ems       *ems.EMS
 }
 
+// NewStrategyCommon creates a new StrategyCommon with internal actors.
+// It registers the actors with the EventBus for event processing.
 func NewStrategyCommon(catalog *catalog.Catalog, eventBus *evbus.EventBus) *StrategyCommon {
+	// Create internal actors
+	orderBook := ob.NewOrderBook()
+	emsActor := ems.NewEMS()
+	emsActor.SetEventBus(eventBus)
+
+	// Register actors with EventBus
+	actor.Register(eventBus, orderBook)
+	actor.Register(eventBus, emsActor)
+
 	return &StrategyCommon{
 		eventBus:         eventBus,
 		catalog:          catalog,
 		dataClientRouter: adapter.NewDataClientRouter(catalog, eventBus),
+		orderBook:        orderBook,
+		ems:              emsActor,
 	}
 }
 
@@ -33,21 +55,91 @@ func (s *StrategyCommon) GetCatalog() *catalog.Catalog {
 	return s.catalog
 }
 
-// Order management methods
+// ============================================================================
+// OrderBook Service Methods (delegated to OrderBook agent)
+// ============================================================================
+
+// GetBestBid returns the best bid price and quantity for the given symbol.
+func (s *StrategyCommon) GetBestBid(symbolID int) (price, qty float64, ok bool) {
+	return s.orderBook.GetBestBid(symbolID)
+}
+
+// GetBestAsk returns the best ask price and quantity for the given symbol.
+func (s *StrategyCommon) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
+	return s.orderBook.GetBestAsk(symbolID)
+}
+
+// GetDepth returns the top N levels of bids and asks for the given symbol.
+func (s *StrategyCommon) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
+	return s.orderBook.GetDepth(symbolID, levels)
+}
+
+// GetMidPrice returns the mid price for the given symbol.
+func (s *StrategyCommon) GetMidPrice(symbolID int) (price float64, ok bool) {
+	return s.orderBook.GetMidPrice(symbolID)
+}
+
+// GetSpread returns the bid-ask spread for the given symbol.
+func (s *StrategyCommon) GetSpread(symbolID int) (spread float64, ok bool) {
+	return s.orderBook.GetSpread(symbolID)
+}
+
+// ============================================================================
+// Order Management Methods (delegated to EMS agent)
+// ============================================================================
+
+// SubmitLimitOrder submits a new limit order and returns the client order ID.
 func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) int {
-	return 0
+	req := actor.LimitOrderRequest{
+		AccountID:   acctID,
+		SymbolID:    symbolID,
+		Side:        side,
+		TimeInForce: timeInForce,
+		Quantity:    quantity,
+		Price:       price,
+	}
+	clientOrderID, err := s.ems.SubmitLimitOrder(req)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to submit limit order")
+		return -1
+	}
+	return clientOrderID
 }
 
+// SubmitMarketOrder submits a new market order and returns the client order ID.
 func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common.Side, quantity float64) int {
-	return 0
+	req := actor.MarketOrderRequest{
+		AccountID: acctID,
+		SymbolID:  symbolID,
+		Side:      side,
+		Quantity:  quantity,
+	}
+	clientOrderID, err := s.ems.SubmitMarketOrder(req)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to submit market order")
+		return -1
+	}
+	return clientOrderID
 }
 
-func (s *StrategyCommon) CancelOrder(acctID int, symbolID int, clientOrderID int) error {
-	return nil
+// CancelOrder cancels an existing order.
+func (s *StrategyCommon) CancelOrder(clientOrderID int) error {
+	return s.ems.CancelOrder(clientOrderID)
 }
 
-func (s *StrategyCommon) GetOrder(acctID int, symbolID int, clientOrderID int) (common.Order, error) {
-	return common.Order{}, nil
+// GetOrder retrieves an order by its client order ID.
+func (s *StrategyCommon) GetOrder(clientOrderID int) (common.Order, error) {
+	return s.ems.GetOrder(clientOrderID)
+}
+
+// GetOpenOrders returns all currently open orders.
+func (s *StrategyCommon) GetOpenOrders() []common.Order {
+	return s.ems.GetOpenOrders()
+}
+
+// GetOrdersBySymbol returns all orders for a specific symbol.
+func (s *StrategyCommon) GetOrdersBySymbol(symbolID int) []common.Order {
+	return s.ems.GetOrdersBySymbol(symbolID)
 }
 
 // Private subscription methods
@@ -86,23 +178,4 @@ func (s *StrategyCommon) Disconnect() {
 // Request methods
 func (s *StrategyCommon) ReqDepthSnapshot(symbolID int) error {
 	return s.dataClientRouter.ReqDepthSnapshot(symbolID)
-}
-
-// virtual methods
-func (s *StrategyCommon) OnDepthUpdate(depthUpdate event.DepthUpdate) {
-}
-
-func (s *StrategyCommon) OnTick(tick event.Tick) {
-}
-
-func (s *StrategyCommon) OnOrderUpdate(orderUpdate event.OrderUpdate) {
-}
-
-func (s *StrategyCommon) OnFill(fill event.Fill) {
-}
-
-func (s *StrategyCommon) OnBalanceUpdate(balanceUpdate event.BalanceUpdate) {
-}
-
-func (s *StrategyCommon) OnReqDepthSnapshot(depthSnapshot event.DepthSnapshot) {
 }
