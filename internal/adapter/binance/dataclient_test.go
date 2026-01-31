@@ -162,7 +162,8 @@ func TestProcessDepthUpdate(t *testing.T) {
 		t.Errorf("Expected DataTypeDepthUpdate, got %v", receivedEvent.Ref.DataType)
 	}
 
-	depthUpdate := eb.ReadDepthUpdate(receivedEvent.Ref.Index)
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	depthUpdate := evbus.DeserializeDepthUpdate(buf)
 
 	if depthUpdate.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", depthUpdate.SymbolID)
@@ -236,7 +237,8 @@ func TestProcessTrade(t *testing.T) {
 		t.Errorf("Expected DataTypeTick, got %v", receivedEvent.Ref.DataType)
 	}
 
-	tick := eb.ReadTick(receivedEvent.Ref.Index)
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	tick := evbus.DeserializeTick(buf)
 
 	if tick.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", tick.SymbolID)
@@ -277,7 +279,8 @@ func TestProcessTrade(t *testing.T) {
 		t.Fatal("Expected second trade event to be published")
 	}
 
-	tick = eb.ReadTick(receivedEvent.Ref.Index)
+	buf = eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	tick = evbus.DeserializeTick(buf)
 
 	if tick.Side != common.SideBuy {
 		t.Errorf("Expected SideBuy (m=false), got %v", tick.Side)
@@ -692,7 +695,8 @@ loop:
 		default:
 			ok := eb.Poll(func(e evbus.Event) {
 				if e.Ref.DataType == event.DataTypeTick {
-					tick := eb.ReadTick(e.Ref.Index)
+					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
+					tick := evbus.DeserializeTick(buf)
 					t.Logf("Received trade: Price=%.2f, Qty=%.4f, Side=%v",
 						tick.Price, tick.Qty, tick.Side)
 					receivedCount++
@@ -755,7 +759,8 @@ loop:
 		default:
 			ok := eb.Poll(func(e evbus.Event) {
 				if e.Ref.DataType == event.DataTypeDepthUpdate {
-					depth := eb.ReadDepthUpdate(e.Ref.Index)
+					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
+					depth := evbus.DeserializeDepthUpdate(buf)
 					t.Logf("Received depth update: DepthID=%d, Bids=%d, Asks=%d",
 						depth.DepthID, len(depth.Bids), len(depth.Asks))
 					receivedCount++
@@ -824,7 +829,8 @@ loop:
 			ok := eb.Poll(func(e evbus.Event) {
 				switch e.Ref.DataType {
 				case event.DataTypeTick:
-					tick := eb.ReadTick(e.Ref.Index)
+					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
+					tick := evbus.DeserializeTick(buf)
 					if tick.SymbolID == 1 {
 						btcTrades++
 					} else if tick.SymbolID == 2 {

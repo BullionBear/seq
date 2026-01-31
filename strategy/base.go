@@ -20,7 +20,8 @@ var _ actor.Actor = (*StrategyBase)(nil)
 //	func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
 //	    switch ev.Ref.DataType {
 //	    case event.DataTypeDepthUpdate:
-//	        x.OnDepthUpdate(bus.ReadDepthUpdate(ev.Ref.Index))
+//	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+//	        x.OnDepthUpdate(evbus.DeserializeDepthUpdate(buf))
 //	    // ... etc
 //	    }
 //	}
@@ -84,19 +85,24 @@ func (s *StrategyBase) SubscribedTypes() []event.DataType {
 func (s *StrategyBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
-		snapshot := bus.ReadDepthSnapshot(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		s.OnDepthSnapshot(snapshot)
 	case event.DataTypeDepthUpdate:
-		update := bus.ReadDepthUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		update := evbus.DeserializeDepthUpdate(buf)
 		s.OnDepthUpdate(update)
 	case event.DataTypeTick:
-		tick := bus.ReadTick(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		tick := evbus.DeserializeTick(buf)
 		s.OnTick(tick)
 	case event.DataTypeOrderUpdate:
-		orderUpdate := bus.ReadOrderUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		s.OnOrderUpdate(orderUpdate)
 	case event.DataTypeFill:
-		fill := bus.ReadFill(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		fill := evbus.DeserializeFill(buf)
 		s.OnFill(fill)
 	// TODO: Add DataTypeBalanceUpdate when EventBus supports it
 	}

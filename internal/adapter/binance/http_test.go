@@ -15,7 +15,7 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-func TestUnmarshalDepthSnapshot(t *testing.T) {
+func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	// Setup
 	eb := evbus.NewEventBus()
 	cat := &catalog.Catalog{} // Mock catalog not needed for unmarshal
@@ -41,10 +41,10 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
   ]
 }`)
 
-	var depth event.DepthSnapshot
-	err := client.unmarshalDepthSnapshot(jsonBody, &depth)
+	var depth event.ReqDepthSnapshot
+	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
 	if err != nil {
-		t.Fatalf("UnmarshalDepthSnapshot failed: %v", err)
+		t.Fatalf("unmarshalReqDepthSnapshot failed: %v", err)
 	}
 
 	if depth.DepthID != 1027024 {
@@ -69,7 +69,7 @@ func TestUnmarshalDepthSnapshot(t *testing.T) {
 	}
 }
 
-func BenchmarkUnmarshalDepthSnapshot(b *testing.B) {
+func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
 	eb := evbus.NewEventBus()
 	cat := &catalog.Catalog{}
 	client := NewBinanceHTTPClient(cat, eb)
@@ -95,8 +95,8 @@ func BenchmarkUnmarshalDepthSnapshot(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		var depth event.DepthSnapshot
-		err := client.unmarshalDepthSnapshot(jsonBody, &depth)
+		var depth event.ReqDepthSnapshot
+		err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)
 		}

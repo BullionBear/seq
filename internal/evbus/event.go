@@ -6,7 +6,8 @@ import (
 
 type EventRef struct {
 	DataType event.DataType
-	Index    uint64
+	Index    uint64 // offset in arena
+	Length   uint64 // size of data in bytes
 }
 
 // Event wraps data with metadata. Data is embedded as a value type
@@ -22,10 +23,10 @@ type Event struct {
 // Each consumer tracks its own sequence (last processed event ID) for
 // coordinating arena memory release across multiple consumers.
 type Consumer struct {
-	Name     string                   // unique identifier for this consumer
-	Types    map[event.DataType]bool  // subscribed types (nil or empty = all types)
-	Handler  EventHandler             // callback function for handling events
-	Sequence uint64                   // last processed event sequence (EventID)
+	Name     string                  // unique identifier for this consumer
+	Types    map[event.DataType]bool // subscribed types (nil or empty = all types)
+	Handler  EventHandler            // callback function for handling events
+	Sequence uint64                  // last processed event sequence (EventID)
 }
 
 // NewConsumer creates a new consumer with the given name, subscribed types, and handler.

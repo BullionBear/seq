@@ -152,9 +152,30 @@ func (s *StrategyCommon) SubscribeBalanceUpdate(acctID int) {
 func (s *StrategyCommon) SubscribeOrderFill(acctID int) {
 }
 
+// IsSymbolReady returns true if the orderbook for a symbol is ready.
+func (s *StrategyCommon) IsSymbolReady(symbolID int) bool {
+	return s.orderBook.IsSymbolReady(symbolID)
+}
+
+// GetBookState returns the state of the orderbook for a symbol.
+func (s *StrategyCommon) GetBookState(symbolID int) (ob.BookState, bool) {
+	return s.orderBook.GetBookState(symbolID)
+}
+
 // Public subscription methods
 func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
-	err := s.dataRouter.SubscribeDepthUpdate(symbolID)
+	// Get symbol from catalog to get price precision
+	symbol, err := s.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to get symbol from catalog: %d", symbolID)
+		return
+	}
+
+	// Register symbol with orderbook (with price precision from catalog)
+	s.orderBook.RegisterSymbol(symbolID, symbol.PricePrecision)
+
+	// Subscribe to depth updates via data router
+	err = s.dataRouter.SubscribeDepthUpdate(symbolID)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to subscribe to depth update for symbol: %d", symbolID)
 	}

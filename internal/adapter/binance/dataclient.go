@@ -445,8 +445,15 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	// Parse asks
 	depthUpdate.Asks = c.parsePriceLevels(data, "a")
 
-	// Publish to event bus
-	c.eventBus.PublishDepthUpdate(depthUpdate)
+	// Publish to event bus using new generic API
+	size := evbus.DepthUpdateSize(&depthUpdate)
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeDepthUpdate(buf, &depthUpdate)
+	c.eventBus.Publish(evbus.EventRef{
+		DataType: event.DataTypeDepthUpdate,
+		Index:    offset,
+		Length:   size,
+	})
 }
 
 // processTrade parses and publishes a trade event
@@ -487,8 +494,15 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 		tick.Side = common.SideBuy
 	}
 
-	// Publish to event bus
-	c.eventBus.PublishTick(tick)
+	// Publish to event bus using new generic API
+	size := evbus.TickSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeTick(buf, &tick)
+	c.eventBus.Publish(evbus.EventRef{
+		DataType: event.DataTypeTick,
+		Index:    offset,
+		Length:   size,
+	})
 }
 
 // parsePriceLevels parses an array of [price, qty] arrays from JSON
