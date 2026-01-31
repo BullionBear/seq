@@ -76,20 +76,28 @@ func (r *DataRouter) SubscribeTrade(symbolID int) error {
 }
 
 func (r *DataRouter) Connect(ctx context.Context) error {
-	// Connect Binance spot data client
-	if err := r.binanceSpotDataClient.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect Binance spot data client: %w", err)
+	// Only connect clients that have subscriptions
+	if r.binanceSpotDataClient.HasSub() {
+		if err := r.binanceSpotDataClient.Connect(ctx); err != nil {
+			return fmt.Errorf("failed to connect Binance spot data client: %w", err)
+		}
 	}
 
-	// Connect Bybit data client
-	if err := r.bybitSpotDataClient.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect Bybit data client: %w", err)
+	if r.bybitSpotDataClient.HasSub() {
+		if err := r.bybitSpotDataClient.Connect(ctx); err != nil {
+			return fmt.Errorf("failed to connect Bybit data client: %w", err)
+		}
 	}
 
 	return nil
 }
 
 func (r *DataRouter) Disconnect() {
-	r.binanceSpotDataClient.Disconnect()
-	r.bybitSpotDataClient.Disconnect()
+	// Only disconnect clients that were connected
+	if r.binanceSpotDataClient.HasSub() {
+		r.binanceSpotDataClient.Disconnect()
+	}
+	if r.bybitSpotDataClient.HasSub() {
+		r.bybitSpotDataClient.Disconnect()
+	}
 }

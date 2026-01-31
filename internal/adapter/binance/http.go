@@ -43,7 +43,7 @@ func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) Bi
 
 // GetDepth fetches order book depth from Binance API
 // Uses zero-allocation approach with strings.Builder for URL construction
-func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
+func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Build URL using strings.Builder (zero-allocation string concatenation)
 	symbol, err := c.catalog.GetSymbol(symbolId)
 	if err != nil {
@@ -89,22 +89,22 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 	}
 
 	// Deserialize depth response
-	var depth event.DepthSnapshot
-	err = c.unmarshalDepthSnapshot(resp.Body(), &depth)
+	var reqDepthSnapshot event.ReqDepthSnapshot
+	err = c.unmarshalDepthSnapshot(resp.Body(), &reqDepthSnapshot)
 	if err != nil {
 		return err
 	}
 
 	// Set symbolID and timestamp
-	depth.SymbolID = symbolId
-	depth.Timestamp = uint64(time.Now().UnixNano())
+	reqDepthSnapshot.SymbolID = symbolId
+	reqDepthSnapshot.Timestamp = uint64(time.Now().UnixNano())
 
 	// Publish to event bus
 	c.eventBus.PublishDepthSnapshot(depth)
 	return nil
 }
 
-func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.DepthSnapshot) error {
+func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.ReqDepthSnapshot) error {
 	// Parse lastUpdateId
 	const lastUpdateIdKey = "\"lastUpdateId\""
 	idx := bytes.Index(data, []byte(lastUpdateIdKey))

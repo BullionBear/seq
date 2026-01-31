@@ -80,6 +80,13 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus
 	}
 }
 
+// HasSub returns true if there are any subscriptions configured
+func (c *BinanceSpotDataClient) HasSub() bool {
+	c.subsLock.RLock()
+	defer c.subsLock.RUnlock()
+	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0
+}
+
 // SubscribeDepthUpdate subscribes to depth update stream for a symbol
 // If options is nil, defaults to PushRate100ms
 func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, options *DepthSubscriptionOptions) {
@@ -114,7 +121,7 @@ func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int) {
 // ReqDepth requests a depth snapshot via HTTP REST API
 // This delegates to the internal HTTP client
 func (c *BinanceSpotDataClient) ReqDepthSnapshot(symbolID int, limit int) error {
-	return c.httpClient.ReqDepth(symbolID, limit)
+	return c.httpClient.ReqDepthSnapshot(symbolID, limit)
 }
 
 // Connect establishes the WebSocket connection and starts processing
