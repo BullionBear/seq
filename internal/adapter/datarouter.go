@@ -10,7 +10,7 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 )
 
-type DataClientRouter struct {
+type DataRouter struct {
 	catalog  *catalog.Catalog
 	eventBus *evbus.EventBus
 
@@ -19,8 +19,8 @@ type DataClientRouter struct {
 	bybitSpotDataClient   bybit.BybitDataClient
 }
 
-func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataClientRouter {
-	return &DataClientRouter{
+func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRouter {
+	return &DataRouter{
 		catalog:               catalog,
 		eventBus:              eventBus,
 		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
@@ -29,7 +29,7 @@ func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *Da
 	}
 }
 
-func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
+func (r *DataRouter) SubscribeDepthDelta(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
 	return nil
 }
 
-func (r *DataClientRouter) ReqDepthSnapshot(symbolID int) error {
+func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func (r *DataClientRouter) ReqDepthSnapshot(symbolID int) error {
 	}
 }
 
-func (r *DataClientRouter) SubscribeTrade(symbolID int) error {
+func (r *DataRouter) SubscribeTrade(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (r *DataClientRouter) SubscribeTrade(symbolID int) error {
 	return nil
 }
 
-func (r *DataClientRouter) Connect(ctx context.Context) error {
+func (r *DataRouter) Connect(ctx context.Context) error {
 	// Connect Binance spot data client
 	if err := r.binanceSpotDataClient.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect Binance spot data client: %w", err)
@@ -91,7 +91,7 @@ func (r *DataClientRouter) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (r *DataClientRouter) Disconnect() {
+func (r *DataRouter) Disconnect() {
 	r.binanceSpotDataClient.Disconnect()
 	r.bybitSpotDataClient.Disconnect()
 }

@@ -20,9 +20,9 @@ var log = logger.Get()
 // It owns and manages internal actors (OrderBook, EMS) and provides
 // a clean facade API for strategies to interact with market data and orders.
 type StrategyCommon struct {
-	eventBus         *evbus.EventBus
-	catalog          *catalog.Catalog
-	dataClientRouter *adapter.DataClientRouter
+	eventBus   *evbus.EventBus
+	catalog    *catalog.Catalog
+	dataRouter *adapter.DataRouter
 
 	// Internal actors (facade owns these)
 	orderBook *ob.OrderBook
@@ -42,11 +42,11 @@ func NewStrategyCommon(catalog *catalog.Catalog, eventBus *evbus.EventBus) *Stra
 	actor.Register(eventBus, emsActor)
 
 	return &StrategyCommon{
-		eventBus:         eventBus,
-		catalog:          catalog,
-		dataClientRouter: adapter.NewDataClientRouter(catalog, eventBus),
-		orderBook:        orderBook,
-		ems:              emsActor,
+		eventBus:   eventBus,
+		catalog:    catalog,
+		dataRouter: adapter.NewDataRouter(catalog, eventBus),
+		orderBook:  orderBook,
+		ems:        emsActor,
 	}
 }
 
@@ -154,7 +154,7 @@ func (s *StrategyCommon) SubscribeOrderFill(acctID int) {
 
 // Public subscription methods
 func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
-	err := s.dataClientRouter.SubscribeDepthDelta(symbolID)
+	err := s.dataRouter.SubscribeDepthDelta(symbolID)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to subscribe to depth delta for symbol: %d", symbolID)
 	}
@@ -165,17 +165,17 @@ func (s *StrategyCommon) SubscribeTick(symbolID int) {
 
 // Operations methods
 func (s *StrategyCommon) Connect(ctx context.Context) {
-	err := s.dataClientRouter.Connect(ctx)
+	err := s.dataRouter.Connect(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to connect to data client router")
 	}
 }
 
 func (s *StrategyCommon) Disconnect() {
-	s.dataClientRouter.Disconnect()
+	s.dataRouter.Disconnect()
 }
 
 // Request methods
 func (s *StrategyCommon) ReqDepthSnapshot(symbolID int) error {
-	return s.dataClientRouter.ReqDepthSnapshot(symbolID)
+	return s.dataRouter.ReqDepthSnapshot(symbolID)
 }
