@@ -27,14 +27,14 @@ func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRout
 	}
 }
 
-func (r *DataRouter) SubscribeDepthDelta(symbolID int) error {
+func (r *DataRouter) SubscribeDepthUpdate(symbolID int) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, &binance.DepthSubscriptionOptions{})
+		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, nil)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
 		r.bybitSpotDataClient.SubscribeDepthUpdate(symbolID)
 	default:

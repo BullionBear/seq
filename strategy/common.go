@@ -153,10 +153,10 @@ func (s *StrategyCommon) SubscribeOrderFill(acctID int) {
 }
 
 // Public subscription methods
-func (s *StrategyCommon) SubscribeDepthDelta(symbolID int) {
-	err := s.dataRouter.SubscribeDepthDelta(symbolID)
+func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
+	err := s.dataRouter.SubscribeDepthUpdate(symbolID)
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to subscribe to depth delta for symbol: %d", symbolID)
+		log.Error().Err(err).Msgf("Failed to subscribe to depth update for symbol: %d", symbolID)
 	}
 }
 

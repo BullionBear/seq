@@ -73,10 +73,10 @@ func (x *XArb) OnInit() {
 
 // OnStart subscribes to market data and connects.
 func (x *XArb) OnStart() {
-	x.SubscribeDepthDelta(x.quotingSymbol.ID)
-	log.Info().Msgf("Subscribed to depth delta for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
-	x.SubscribeDepthDelta(x.hedgingSymbol.ID)
-	log.Info().Msgf("Subscribed to depth delta for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
+	x.SubscribeDepthUpdate(x.quotingSymbol.ID)
+	log.Info().Msgf("Subscribed to depth update for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
+	x.SubscribeDepthUpdate(x.hedgingSymbol.ID)
+	log.Info().Msgf("Subscribed to depth update for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
 	x.Connect(context.Background())
 
 	// Request depth snapshots after connection is established
