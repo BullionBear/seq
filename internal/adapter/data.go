@@ -15,6 +15,7 @@ type DataClientRouter struct {
 	eventBus *evbus.EventBus
 
 	binanceSpotDataClient *binance.BinanceSpotDataClient
+	binanceHTTPClient     binance.BinanceHTTPClient
 	bybitSpotDataClient   bybit.BybitDataClient
 }
 
@@ -23,6 +24,7 @@ func NewDataClientRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *Da
 		catalog:               catalog,
 		eventBus:              eventBus,
 		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
+		binanceHTTPClient:     binance.NewBinanceHTTPClient(catalog, eventBus),
 		bybitSpotDataClient:   bybit.NewBybitDataClient(),
 	}
 }
@@ -44,7 +46,19 @@ func (r *DataClientRouter) SubscribeDepthDelta(symbolID int) error {
 }
 
 func (r *DataClientRouter) ReqDepthSnapshot(symbolID int) error {
-	return nil
+	symbol, err := r.catalog.GetSymbol(symbolID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
+		return r.binanceHTTPClient.ReqDepth(symbolID, 1000) // Request 1000 levels
+	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
+		// TODO: Implement Bybit depth snapshot
+		return fmt.Errorf("bybit depth snapshot not implemented")
+	default:
+		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
+	}
 }
 
 func (r *DataClientRouter) SubscribeTrade(symbolID int) error {

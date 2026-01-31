@@ -1,14 +1,32 @@
 package evbus
 
 import (
-	"math"
+	"encoding/binary"
 	"time"
+	"unsafe"
 
+	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
 )
 
 const (
-	MaxDepthLevels = 2048
+	// DefaultByteArenaCapacity is the default capacity for the byte arena (1MB)
+	DefaultByteArenaCapacity = 1024 * 1024
+
+	// Size constants for fixed-size event types
+	sizeOfTick        = unsafe.Sizeof(event.Tick{})
+	sizeOfOrderUpdate = unsafe.Sizeof(event.OrderUpdate{})
+	sizeOfFill        = unsafe.Sizeof(event.Fill{})
+	sizeOfPriceLevel  = unsafe.Sizeof(event.PriceLevel{})
+
+	// Header sizes for variable-size events (without slice data)
+	// DepthUpdate: SymbolID(8) + PreviousDepthID(8) + DepthID(8) + CurrentDepthID(8) + NextDepthID(8) + Timestamp(8) = 48 bytes
+	// Plus AsksLen(4) + BidsLen(4) = 8 bytes for length prefix
+	sizeOfDepthUpdateHeader = 48 + 8
+
+	// DepthSnapshot: SymbolID(8) + DepthID(8) + Timestamp(8) = 24 bytes
+	// Plus AsksLen(4) + BidsLen(4) = 8 bytes for length prefix
+	sizeOfDepthSnapshotHeader = 24 + 8
 )
 
 // EventHandler is a function type for handling events
@@ -86,79 +104,13 @@ func (rb *RingBuffer) Reset() {
 	rb.rbWrite = 0
 }
 
-type Arena[T any] struct {
-	items   []T
-	read    uint64
-	write   uint64
-	mask    uint64
-	minRead uint64 // minimum read position across all consumers
-}
-
-func NewArena[T any](size uint64) Arena[T] {
-	// If size is not a power of 2, round up to the next power of 2
-	if size&(size-1) != 0 {
-		size = 1 << uint64(math.Ceil(math.Log2(float64(size))))
-	}
-	return Arena[T]{
-		items:   make([]T, size), // Allocate actual array
-		write:   0,
-		mask:    size - 1,
-		minRead: 0,
-	}
-}
-
-func (a *Arena[T]) Read(index uint64) T {
-	// Mask-based indexing handles overflow automatically:
-	// Even if read overflows (after 2^64 operations), read&mask wraps correctly
-	return a.items[index&a.mask]
-}
-
-func (a *Arena[T]) Write(item T) uint64 {
-	index := a.write & a.mask
-	a.items[index] = item
-	a.write++
-	return index
-}
-
-// CanWrite returns true if writing would not overwrite unprocessed data.
-// This checks if the write position has wrapped around to data that
-// hasn't been released by all consumers yet.
-func (a *Arena[T]) CanWrite() bool {
-	// Can write if we haven't wrapped around to minRead
-	return a.write-a.minRead < uint64(len(a.items))
-}
-
-// Release updates the minimum read position, indicating that all consumers
-// have processed up to this index. Arena slots before this can be safely overwritten.
-func (a *Arena[T]) Release(upTo uint64) {
-	if upTo > a.minRead {
-		a.minRead = upTo
-	}
-}
-
-// MinRead returns the minimum read position across all consumers.
-func (a *Arena[T]) MinRead() uint64 {
-	return a.minRead
-}
-
-// Size returns the capacity of the arena.
-func (a *Arena[T]) Size() uint64 {
-	return uint64(len(a.items))
-}
-
 type EventBus struct {
 	nextEventID uint64
 
 	rbEvent RingBuffer
 
-	arenaDepthSnapshot Arena[event.DepthSnapshot]
-	arenaDepthUpdate   Arena[event.DepthUpdate]
-	arenaTick          Arena[event.Tick]
-	arenaOrderUpdate   Arena[event.OrderUpdate]
-	arenaFill          Arena[event.Fill]
-
-	PriceLevels [MaxDepthLevels]event.PriceLevel
-	offset      int
+	// Single byte arena for all event data (cache-friendly)
+	byteArena *mem.CircularByteArena
 
 	// Multi-consumer support
 	consumers   []*Consumer
@@ -167,17 +119,20 @@ type EventBus struct {
 
 func NewEventBus() *EventBus {
 	return &EventBus{
-		nextEventID:        0,
-		rbEvent:            NewRingBuffer(4096),
-		arenaDepthSnapshot: NewArena[event.DepthSnapshot](16),
-		arenaDepthUpdate:   NewArena[event.DepthUpdate](2048),
-		arenaTick:          NewArena[event.Tick](2048),
-		arenaOrderUpdate:   NewArena[event.OrderUpdate](1024),
-		arenaFill:          NewArena[event.Fill](1024),
+		nextEventID: 0,
+		rbEvent:     NewRingBuffer(4096),
+		byteArena:   mem.NewCircularByteArena(DefaultByteArenaCapacity),
+		consumers:   make([]*Consumer, 0),
+		minSequence: 0,
+	}
+}
 
-		PriceLevels: [MaxDepthLevels]event.PriceLevel{},
-		offset:      0,
-
+// NewEventBusWithCapacity creates a new EventBus with the specified byte arena capacity.
+func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
+	return &EventBus{
+		nextEventID: 0,
+		rbEvent:     NewRingBuffer(4096),
+		byteArena:   mem.NewCircularByteArena(arenaCapacity),
 		consumers:   make([]*Consumer, 0),
 		minSequence: 0,
 	}
@@ -241,32 +196,16 @@ func (e *EventBus) MinSequence() uint64 {
 	return e.minSequence
 }
 
-// ReleaseArenas releases memory in all arenas up to the current minSequence.
-// This should be called after Release() to propagate the sequence to all arenas.
-// Note: Arena release is based on the event index stored in each arena, not the
-// global event sequence. This is a simplified implementation that releases based
-// on minSequence as a proxy for time progression.
+// ReleaseArenas is kept for backward compatibility.
+// With CircularByteArena, memory management is handled automatically
+// through write-time overwrite detection.
 func (e *EventBus) ReleaseArenas() {
-	e.arenaDepthSnapshot.Release(e.minSequence)
-	e.arenaDepthUpdate.Release(e.minSequence)
-	e.arenaTick.Release(e.minSequence)
-	e.arenaOrderUpdate.Release(e.minSequence)
-	e.arenaFill.Release(e.minSequence)
+	// No-op: CircularByteArena handles overwrite detection internally
 }
 
 // ConsumerCount returns the number of registered consumers.
 func (e *EventBus) ConsumerCount() int {
 	return len(e.consumers)
-}
-
-func (e *EventBus) AllocPriceLevels(size int) []event.PriceLevel {
-	offset := e.offset
-	e.offset += size
-	if e.offset >= MaxDepthLevels {
-		offset = 0
-		e.offset = size
-	}
-	return e.PriceLevels[offset:e.offset]
 }
 
 func (e *EventBus) Poll(handler EventHandler) bool {
@@ -283,57 +222,307 @@ func (e *EventBus) Poll(handler EventHandler) bool {
 	return true
 }
 
-func (e *EventBus) PublishDepthSnapshot(depthSnapshot event.DepthSnapshot) {
-	idx := e.arenaDepthSnapshot.Write(depthSnapshot)
-	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthSnapshot, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
-	e.nextEventID++
-}
-
-func (e *EventBus) ReadDepthSnapshot(index uint64) event.DepthSnapshot {
-	return e.arenaDepthSnapshot.Read(index)
-}
-
-func (e *EventBus) PublishDepthUpdate(depthUpdate event.DepthUpdate) {
-	idx := e.arenaDepthUpdate.Write(depthUpdate)
-	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
-	e.nextEventID++
-}
-
-func (e *EventBus) ReadDepthUpdate(index uint64) event.DepthUpdate {
-	return e.arenaDepthUpdate.Read(index)
-}
-
+// PublishTick publishes a Tick event using unsafe pointer casting.
 func (e *EventBus) PublishTick(tick event.Tick) {
-	idx := e.arenaTick.Write(tick)
+	size := uint64(sizeOfTick)
+	offset := e.byteArena.Reserve(size)
+
+	// Write using unsafe pointer casting
+	data := (*[sizeOfTick]byte)(unsafe.Pointer(&tick))[:]
+	e.byteArena.WriteAt(offset, data)
+
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeTick, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeTick, Index: offset}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadTick(index uint64) event.Tick {
-	return e.arenaTick.Read(index)
+// ReadTick reads a Tick event using unsafe pointer casting.
+func (e *EventBus) ReadTick(offset uint64) event.Tick {
+	data := e.byteArena.ReadSlice(offset, uint64(sizeOfTick))
+	return *(*event.Tick)(unsafe.Pointer(&data[0]))
 }
 
+// PublishOrderUpdate publishes an OrderUpdate event using unsafe pointer casting.
 func (e *EventBus) PublishOrderUpdate(orderUpdate event.OrderUpdate) {
-	idx := e.arenaOrderUpdate.Write(orderUpdate)
+	size := uint64(sizeOfOrderUpdate)
+	offset := e.byteArena.Reserve(size)
+
+	// Write using unsafe pointer casting
+	data := (*[sizeOfOrderUpdate]byte)(unsafe.Pointer(&orderUpdate))[:]
+	e.byteArena.WriteAt(offset, data)
+
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeOrderUpdate, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeOrderUpdate, Index: offset}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadOrderUpdate(index uint64) event.OrderUpdate {
-	return e.arenaOrderUpdate.Read(index)
+// ReadOrderUpdate reads an OrderUpdate event using unsafe pointer casting.
+func (e *EventBus) ReadOrderUpdate(offset uint64) event.OrderUpdate {
+	data := e.byteArena.ReadSlice(offset, uint64(sizeOfOrderUpdate))
+	return *(*event.OrderUpdate)(unsafe.Pointer(&data[0]))
 }
 
+// PublishFill publishes a Fill event using unsafe pointer casting.
 func (e *EventBus) PublishFill(fill event.Fill) {
-	idx := e.arenaFill.Write(fill)
+	size := uint64(sizeOfFill)
+	offset := e.byteArena.Reserve(size)
+
+	// Write using unsafe pointer casting
+	data := (*[sizeOfFill]byte)(unsafe.Pointer(&fill))[:]
+	e.byteArena.WriteAt(offset, data)
+
 	now := uint64(time.Now().UnixNano())
-	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeFill, Index: idx}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeFill, Index: offset}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
 	e.nextEventID++
 }
 
-func (e *EventBus) ReadFill(index uint64) event.Fill {
-	return e.arenaFill.Read(index)
+// ReadFill reads a Fill event using unsafe pointer casting.
+func (e *EventBus) ReadFill(offset uint64) event.Fill {
+	data := e.byteArena.ReadSlice(offset, uint64(sizeOfFill))
+	return *(*event.Fill)(unsafe.Pointer(&data[0]))
+}
+
+// PublishDepthSnapshot publishes a DepthSnapshot with inline PriceLevel data.
+// Layout: [SymbolID(8)][DepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)][Asks...][Bids...]
+func (e *EventBus) PublishDepthSnapshot(snapshot event.DepthSnapshot) {
+	asksLen := uint32(len(snapshot.Asks))
+	bidsLen := uint32(len(snapshot.Bids))
+
+	// Calculate total size: header + asks data + bids data
+	totalSize := uint64(sizeOfDepthSnapshotHeader) +
+		uint64(asksLen)*uint64(sizeOfPriceLevel) +
+		uint64(bidsLen)*uint64(sizeOfPriceLevel)
+
+	offset := e.byteArena.Reserve(totalSize)
+
+	// Write header fields using little-endian encoding
+	buf := make([]byte, totalSize)
+	pos := 0
+
+	// SymbolID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(snapshot.SymbolID))
+	pos += 8
+
+	// DepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(snapshot.DepthID))
+	pos += 8
+
+	// Timestamp (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], snapshot.Timestamp)
+	pos += 8
+
+	// AsksLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], asksLen)
+	pos += 4
+
+	// BidsLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], bidsLen)
+	pos += 4
+
+	// Write Asks inline using unsafe
+	for i := range snapshot.Asks {
+		priceLevelBytes := (*[sizeOfPriceLevel]byte)(unsafe.Pointer(&snapshot.Asks[i]))[:]
+		copy(buf[pos:], priceLevelBytes)
+		pos += int(sizeOfPriceLevel)
+	}
+
+	// Write Bids inline using unsafe
+	for i := range snapshot.Bids {
+		priceLevelBytes := (*[sizeOfPriceLevel]byte)(unsafe.Pointer(&snapshot.Bids[i]))[:]
+		copy(buf[pos:], priceLevelBytes)
+		pos += int(sizeOfPriceLevel)
+	}
+
+	e.byteArena.WriteAt(offset, buf)
+
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthSnapshot, Index: offset}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
+}
+
+// ReadDepthSnapshot reads a DepthSnapshot with slices pointing directly into the buffer.
+func (e *EventBus) ReadDepthSnapshot(offset uint64) event.DepthSnapshot {
+	// Read header to get lengths
+	headerData := e.byteArena.ReadSlice(offset, uint64(sizeOfDepthSnapshotHeader))
+
+	pos := 0
+	symbolID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	depthID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	timestamp := binary.LittleEndian.Uint64(headerData[pos:])
+	pos += 8
+
+	asksLen := binary.LittleEndian.Uint32(headerData[pos:])
+	pos += 4
+
+	bidsLen := binary.LittleEndian.Uint32(headerData[pos:])
+
+	// Calculate offsets for asks and bids data
+	asksOffset := offset + uint64(sizeOfDepthSnapshotHeader)
+	bidsOffset := asksOffset + uint64(asksLen)*uint64(sizeOfPriceLevel)
+
+	// Create slices pointing directly into the buffer
+	var asks []event.PriceLevel
+	var bids []event.PriceLevel
+
+	if asksLen > 0 {
+		asksData := e.byteArena.ReadSlice(asksOffset, uint64(asksLen)*uint64(sizeOfPriceLevel))
+		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&asksData[0])), asksLen)
+	}
+
+	if bidsLen > 0 {
+		bidsData := e.byteArena.ReadSlice(bidsOffset, uint64(bidsLen)*uint64(sizeOfPriceLevel))
+		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&bidsData[0])), bidsLen)
+	}
+
+	return event.DepthSnapshot{
+		SymbolID:  symbolID,
+		DepthID:   depthID,
+		Timestamp: timestamp,
+		Asks:      asks,
+		Bids:      bids,
+	}
+}
+
+// PublishDepthUpdate publishes a DepthUpdate with inline PriceLevel data.
+// Layout: [SymbolID(8)][PreviousDepthID(8)][DepthID(8)][CurrentDepthID(8)][NextDepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)][Asks...][Bids...]
+func (e *EventBus) PublishDepthUpdate(update event.DepthUpdate) {
+	asksLen := uint32(len(update.Asks))
+	bidsLen := uint32(len(update.Bids))
+
+	// Calculate total size: header + asks data + bids data
+	totalSize := uint64(sizeOfDepthUpdateHeader) +
+		uint64(asksLen)*uint64(sizeOfPriceLevel) +
+		uint64(bidsLen)*uint64(sizeOfPriceLevel)
+
+	offset := e.byteArena.Reserve(totalSize)
+
+	// Write header fields using little-endian encoding
+	buf := make([]byte, totalSize)
+	pos := 0
+
+	// SymbolID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.SymbolID))
+	pos += 8
+
+	// PreviousDepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.PreviousDepthID))
+	pos += 8
+
+	// DepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.DepthID))
+	pos += 8
+
+	// CurrentDepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.CurrentDepthID))
+	pos += 8
+
+	// NextDepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.NextDepthID))
+	pos += 8
+
+	// Timestamp (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], update.Timestamp)
+	pos += 8
+
+	// AsksLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], asksLen)
+	pos += 4
+
+	// BidsLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], bidsLen)
+	pos += 4
+
+	// Write Asks inline using unsafe
+	for i := range update.Asks {
+		priceLevelBytes := (*[sizeOfPriceLevel]byte)(unsafe.Pointer(&update.Asks[i]))[:]
+		copy(buf[pos:], priceLevelBytes)
+		pos += int(sizeOfPriceLevel)
+	}
+
+	// Write Bids inline using unsafe
+	for i := range update.Bids {
+		priceLevelBytes := (*[sizeOfPriceLevel]byte)(unsafe.Pointer(&update.Bids[i]))[:]
+		copy(buf[pos:], priceLevelBytes)
+		pos += int(sizeOfPriceLevel)
+	}
+
+	e.byteArena.WriteAt(offset, buf)
+
+	now := uint64(time.Now().UnixNano())
+	e.rbEvent.Write(Event{Ref: EventRef{DataType: event.DataTypeDepthUpdate, Index: offset}, EventID: e.nextEventID, CreatedAt: now, UpdatedAt: now})
+	e.nextEventID++
+}
+
+// ReadDepthUpdate reads a DepthUpdate with slices pointing directly into the buffer.
+func (e *EventBus) ReadDepthUpdate(offset uint64) event.DepthUpdate {
+	// Read header to get lengths
+	headerData := e.byteArena.ReadSlice(offset, uint64(sizeOfDepthUpdateHeader))
+
+	pos := 0
+	symbolID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	previousDepthID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	depthID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	currentDepthID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	nextDepthID := int(binary.LittleEndian.Uint64(headerData[pos:]))
+	pos += 8
+
+	timestamp := binary.LittleEndian.Uint64(headerData[pos:])
+	pos += 8
+
+	asksLen := binary.LittleEndian.Uint32(headerData[pos:])
+	pos += 4
+
+	bidsLen := binary.LittleEndian.Uint32(headerData[pos:])
+
+	// Calculate offsets for asks and bids data
+	asksOffset := offset + uint64(sizeOfDepthUpdateHeader)
+	bidsOffset := asksOffset + uint64(asksLen)*uint64(sizeOfPriceLevel)
+
+	// Create slices pointing directly into the buffer
+	var asks []event.PriceLevel
+	var bids []event.PriceLevel
+
+	if asksLen > 0 {
+		asksData := e.byteArena.ReadSlice(asksOffset, uint64(asksLen)*uint64(sizeOfPriceLevel))
+		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&asksData[0])), asksLen)
+	}
+
+	if bidsLen > 0 {
+		bidsData := e.byteArena.ReadSlice(bidsOffset, uint64(bidsLen)*uint64(sizeOfPriceLevel))
+		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&bidsData[0])), bidsLen)
+	}
+
+	return event.DepthUpdate{
+		SymbolID:        symbolID,
+		PreviousDepthID: previousDepthID,
+		DepthID:         depthID,
+		CurrentDepthID:  currentDepthID,
+		NextDepthID:     nextDepthID,
+		Timestamp:       timestamp,
+		Asks:            asks,
+		Bids:            bids,
+	}
+}
+
+func (e *EventBus) ReadReqDepthSnapshot(offset uint64) event.ReqDepthSnapshot {
+	// Read header to get lengths
+	return event.ReqDepthSnapshot{
+		SymbolID:  0,
+		DepthID:   0,
+		Timestamp: 0,
+		Asks:      nil,
+		Bids:      nil,
+	}
 }

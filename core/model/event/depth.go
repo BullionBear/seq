@@ -23,3 +23,11 @@ type DepthSnapshot struct {
 	Asks      []PriceLevel
 	Bids      []PriceLevel
 }
+
+type ReqDepthSnapshot struct {
+	SymbolID  int
+	DepthID   int
+	Timestamp uint64
+	Asks      []PriceLevel
+	Bids      []PriceLevel
+}

@@ -4,10 +4,13 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy/actor"
 )
+
+var log = logger.Get()
 
 // Ensure OrderBook implements the Actor interface
 var _ actor.Actor = (*OrderBook)(nil)
@@ -44,6 +47,7 @@ func NewOrderBook() *OrderBook {
 
 // Handle processes depth-related events to update the order book state.
 func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
+	log.Debug().Msgf("Orderbook Actor: Handle called with event type: %d", ev.Ref.DataType)
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
 		snapshot := bus.ReadDepthSnapshot(ev.Ref.Index)
@@ -51,12 +55,24 @@ func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	case event.DataTypeDepthUpdate:
 		update := bus.ReadDepthUpdate(ev.Ref.Index)
 		ob.onDepthUpdate(update)
+	case event.DataTypeReqDepthSnapshot:
+		snapshot := bus.ReadReqDepthSnapshot(ev.Ref.Index)
+		ob.onReqDepthSnapshot(snapshot)
 	}
+}
+
+func (ob *OrderBook) onReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
+	log.Info().Msgf("Orderbook Actor: Req depth snapshot received: symbolID=%d", snapshot.SymbolID)
 }
 
 func (ob *OrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
+
+	log.Info().Msgf("Orderbook Actor: Depth snapshot received: symbolID=%d, bids=%d, asks=%d", snapshot.SymbolID, len(snapshot.Bids), len(snapshot.Asks))
 
 	// Create or replace the orderbook for this symbol
 	book := &SymbolOrderBook{
@@ -89,8 +105,10 @@ func (ob *OrderBook) onDepthUpdate(update event.DepthUpdate) {
 	book, exists := ob.books[update.SymbolID]
 	if !exists {
 		// No snapshot received yet, skip update
+		log.Debug().Msgf("Orderbook Actor: Skipping depth update (no snapshot yet): symbolID=%d", update.SymbolID)
 		return
 	}
+	log.Info().Msgf("Orderbook Actor: Depth update: %d %d %d %d", update.SymbolID, update.DepthID, len(update.Bids), len(update.Asks))
 
 	// Apply bid updates
 	for _, level := range update.Bids {

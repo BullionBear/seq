@@ -13,8 +13,17 @@ var _ actor.Actor = (*StrategyBase)(nil)
 // It implements the Actor interface and embeds StrategyCommon for
 // convenience methods (GetBestBid, SubmitOrder, etc.).
 //
-// Strategies should embed StrategyBase and override the typed event
-// callbacks (OnDepthUpdate, OnTick, etc.) for their trading logic.
+// IMPORTANT: Go doesn't have virtual method dispatch, so strategies that embed
+// StrategyBase MUST override the Handle() method to dispatch events to their
+// own typed callbacks. See XArb for an example:
+//
+//	func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
+//	    switch ev.Ref.DataType {
+//	    case event.DataTypeDepthUpdate:
+//	        x.OnDepthUpdate(bus.ReadDepthUpdate(ev.Ref.Index))
+//	    // ... etc
+//	    }
+//	}
 type StrategyBase struct {
 	*StrategyCommon // Provides service methods: GetBestBid, SubmitOrder, etc.
 	name            string

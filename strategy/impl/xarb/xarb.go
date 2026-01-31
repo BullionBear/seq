@@ -7,6 +7,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/actor"
 	"gopkg.in/yaml.v3"
@@ -77,6 +78,27 @@ func (x *XArb) OnStart() {
 	x.SubscribeDepthDelta(x.hedgingSymbol.ID)
 	log.Info().Msgf("Subscribed to depth delta for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
 	x.Connect(context.Background())
+
+	// Request depth snapshots after connection is established
+	// This initializes the OrderBook state so updates can be applied
+	/*
+		go func() {
+			// Wait a bit for WebSocket to be fully connected
+			time.Sleep(500 * time.Millisecond)
+
+			if err := x.ReqDepthSnapshot(x.quotingSymbol.ID); err != nil {
+				log.Error().Err(err).Msgf("Failed to request depth snapshot for quoting symbol: %d", x.quotingSymbol.ID)
+			} else {
+				log.Info().Msgf("Requested depth snapshot for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
+			}
+
+			if err := x.ReqDepthSnapshot(x.hedgingSymbol.ID); err != nil {
+				log.Error().Err(err).Msgf("Failed to request depth snapshot for hedging symbol: %d", x.hedgingSymbol.ID)
+			} else {
+				log.Info().Msgf("Requested depth snapshot for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
+			}
+		}()
+	*/
 }
 
 // OnStop disconnects from market data.
@@ -84,8 +106,44 @@ func (x *XArb) OnStop() {
 	x.Disconnect()
 }
 
+// Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.
+// This is necessary because Go doesn't have virtual method dispatch.
+func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
+	switch ev.Ref.DataType {
+	case event.DataTypeDepthSnapshot:
+		snapshot := bus.ReadDepthSnapshot(ev.Ref.Index)
+		x.OnDepthSnapshot(snapshot)
+	case event.DataTypeDepthUpdate:
+		update := bus.ReadDepthUpdate(ev.Ref.Index)
+		x.OnDepthUpdate(update)
+	case event.DataTypeTick:
+		tick := bus.ReadTick(ev.Ref.Index)
+		x.OnTick(tick)
+	case event.DataTypeOrderUpdate:
+		orderUpdate := bus.ReadOrderUpdate(ev.Ref.Index)
+		x.OnOrderUpdate(orderUpdate)
+	case event.DataTypeFill:
+		fill := bus.ReadFill(ev.Ref.Index)
+		x.OnFill(fill)
+	}
+}
+
+// OnDepthSnapshot processes depth snapshots.
+func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
+	log.Info().Msgf("Depth snapshot: %d %d %d %d", snapshot.SymbolID, snapshot.DepthID, len(snapshot.Bids), len(snapshot.Asks))
+}
+
 // OnDepthUpdate processes depth updates.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	log.Info().Msgf("Depth update: %d %d %d %d", update.SymbolID, update.DepthID, len(update.Bids), len(update.Asks))
 	log.Info().Msgf("Depth update timestamp: %s", time.Unix(int64(update.Timestamp/1_000_000_000), int64(update.Timestamp%1_000_000_000)).Format(time.RFC3339Nano))
 }
+
+// OnTick processes tick events.
+func (x *XArb) OnTick(tick event.Tick) {}
+
+// OnOrderUpdate processes order updates.
+func (x *XArb) OnOrderUpdate(update event.OrderUpdate) {}
+
+// OnFill processes fill events.
+func (x *XArb) OnFill(fill event.Fill) {}

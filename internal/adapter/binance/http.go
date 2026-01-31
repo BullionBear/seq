@@ -95,6 +95,10 @@ func (c *BinanceHTTPClient) ReqDepth(symbolId int, limit int) error {
 		return err
 	}
 
+	// Set symbolID and timestamp
+	depth.SymbolID = symbolId
+	depth.Timestamp = uint64(time.Now().UnixNano())
+
 	// Publish to event bus
 	c.eventBus.PublishDepthSnapshot(depth)
 	return nil
@@ -190,8 +194,8 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.Dep
 			return nil, nil
 		}
 
-		// Alloc
-		levels := c.eventBus.AllocPriceLevels(count)
+		// Allocate slice for price levels
+		levels := make([]event.PriceLevel, count)
 
 		// Pass 2: Parse
 		curr = arrayStart + 1

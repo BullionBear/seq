@@ -446,8 +446,8 @@ func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []even
 		return nil
 	}
 
-	// Allocate from event bus arena
-	levels := c.eventBus.AllocPriceLevels(count)
+	// Allocate slice for price levels
+	levels := make([]event.PriceLevel, count)
 
 	// Second pass: parse values
 	idx := 0
