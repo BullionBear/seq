@@ -165,12 +165,17 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	symbolID := update.SymbolID
 	o.updateCount++
 
-	// Track sequence gap
-	expectedPrevID := o.lastReceivedDepthID
-	receivedPrevID := update.PreviousDepthID
-	receivedDepthID := update.DepthID
+	// Track sequence using the correct fields:
+	// - PreviousDepthID = U - 1 (one before first update ID)
+	// - DepthID = U (first update ID in event)
+	// - CurrentDepthID = u (final update ID in event)
+	// For consecutive updates: prev_u == current_U - 1, so prev_u == current_PreviousDepthID
+	expectedPrevID := o.lastReceivedDepthID     // This should be prev update's final ID (u)
+	receivedPrevID := update.PreviousDepthID    // Current update's U - 1
+	receivedFirstID := update.DepthID           // Current update's U (first update ID)
+	receivedFinalID := update.CurrentDepthID    // Current update's u (final update ID)
 	gapFromLastReceived := receivedPrevID - expectedPrevID
-	depthIDJump := receivedDepthID - receivedPrevID
+	updateSpan := receivedFinalID - receivedFirstID + 1 // How many individual changes in this update
 
 	// Check orderbook state
 	bookState, exists := o.GetBookState(symbolID)
@@ -182,39 +187,41 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	// Log every depth update with detailed sequence tracking
 	log.Info().
 		Int("symbolID", symbolID).
-		Int("depthID", receivedDepthID).
+		Int("firstDepthID", receivedFirstID).
+		Int("finalDepthID", receivedFinalID).
 		Int("prevDepthID", receivedPrevID).
-		Int("lastReceivedDepthID", expectedPrevID).
+		Int("lastFinalDepthID", expectedPrevID).
 		Int("snapshotDepthID", o.snapshotDepthID).
-		Int("gapFromLastReceived", gapFromLastReceived).
-		Int("depthIDJump", depthIDJump).
+		Int("sequenceGap", gapFromLastReceived).
+		Int("updateSpan", updateSpan).
 		Int("bidsCount", len(update.Bids)).
 		Int("asksCount", len(update.Asks)).
 		Str("bookState", bookState.String()).
 		Int("updateCount", o.updateCount).
 		Msg("OBTest: Depth update received")
 
-	// Log gap information (gaps are expected for 100ms aggregated streams)
-	// Only warn if the gap is unusually large (> 100 depthIDs suggests potential issue)
+	// Log gap information
+	// For consecutive updates: gap should be 0 (prev_u == current_U - 1)
+	// A gap > 0 means we missed some updates
 	if expectedPrevID > 0 && gapFromLastReceived != 0 {
-		if gapFromLastReceived > 100 || gapFromLastReceived < 0 {
+		if gapFromLastReceived > 0 {
 			log.Warn().
-				Int("expectedPrevID", expectedPrevID).
-				Int("receivedPrevID", receivedPrevID).
-				Int("gap", gapFromLastReceived).
-				Msg("OBTest: Large gap detected - may indicate missed updates")
+				Int("lastFinalDepthID", expectedPrevID).
+				Int("currentPrevDepthID", receivedPrevID).
+				Int("missedUpdates", gapFromLastReceived).
+				Msg("OBTest: Sequence gap detected - missed updates")
 		} else {
 			log.Debug().
-				Int("expectedPrevID", expectedPrevID).
-				Int("receivedPrevID", receivedPrevID).
-				Int("gap", gapFromLastReceived).
-				Msg("OBTest: Normal aggregation gap (expected for 100ms stream)")
+				Int("lastFinalDepthID", expectedPrevID).
+				Int("currentPrevDepthID", receivedPrevID).
+				Int("overlap", -gapFromLastReceived).
+				Msg("OBTest: Overlapping update (normal after snapshot)")
 		}
 	}
 
-	// Update tracking
+	// Update tracking - store the FINAL depth ID (u) for sequence tracking
 	o.lastReceivedPrevID = receivedPrevID
-	o.lastReceivedDepthID = receivedDepthID
+	o.lastReceivedDepthID = receivedFinalID  // Track final ID (u), not first ID (U)
 
 	// If waiting for snapshot and not already in flight, request snapshot
 	if bookState == ob.StateWaitForSnapshot && !o.IsBookInFlight {
