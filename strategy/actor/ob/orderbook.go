@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy/actor"
@@ -33,12 +34,12 @@ type SymbolOrderBook struct {
 	Bids *OrderedPriceMap // descending order (best bid = highest price first)
 	Asks *OrderedPriceMap // ascending order (best ask = lowest price first)
 
-	// Ring buffers for zero-copy storage
-	BidLevelBuffer *PriceLevelRingBuffer
-	AskLevelBuffer *PriceLevelRingBuffer
+	// Arenas for zero-copy storage of price levels
+	BidLevelArena *PriceLevelArena
+	AskLevelArena *PriceLevelArena
 
-	// Update buffer (for WaitForSnapshot/Updating states)
-	UpdateBuffer *DepthUpdateRingBuffer
+	// Update buffer (for WaitForSnapshot/Updating states) - SPSC ring buffer
+	UpdateBuffer *mem.SPSCRingBuffer[DepthUpdateBuffer]
 
 	LastUpdated uint64
 }
@@ -53,9 +54,9 @@ func NewSymbolOrderBook(symbolID int, pricePrecision int) *SymbolOrderBook {
 		DepthID:        0,
 		Bids:           NewOrderedPriceMap(true),  // descending
 		Asks:           NewOrderedPriceMap(false), // ascending
-		BidLevelBuffer: NewPriceLevelRingBuffer(DefaultPriceLevelBufferSize),
-		AskLevelBuffer: NewPriceLevelRingBuffer(DefaultPriceLevelBufferSize),
-		UpdateBuffer:   NewDepthUpdateRingBuffer(DefaultDepthUpdateBufferSize),
+		BidLevelArena:  NewPriceLevelArena(DefaultPriceLevelBufferSize),
+		AskLevelArena:  NewPriceLevelArena(DefaultPriceLevelBufferSize),
+		UpdateBuffer:   mem.NewSPSCRingBuffer[DepthUpdateBuffer](DefaultDepthUpdateBufferSize),
 		LastUpdated:    0,
 	}
 }
@@ -71,12 +72,12 @@ func (sob *SymbolOrderBook) TickToPrice(tick int64) float64 {
 }
 
 // convertEventLevels converts event.PriceLevel slice to internal PriceLevel slice
-func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, buffer *PriceLevelRingBuffer) []PriceLevel {
+func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, arena *PriceLevelArena) []PriceLevel {
 	if len(eventLevels) == 0 {
 		return nil
 	}
 
-	levels := buffer.Allocate(len(eventLevels))
+	levels := arena.Allocate(len(eventLevels))
 	for i, el := range eventLevels {
 		levels[i].PriceTick = sob.PriceToTick(el.Price)
 		levels[i].Quantity = el.Quantity
@@ -95,11 +96,11 @@ func (sob *SymbolOrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
 		Msg("SymbolOrderBook: Processing snapshot")
 
 	// Convert and load bids
-	bidLevels := sob.convertEventLevels(snapshot.Bids, sob.BidLevelBuffer)
+	bidLevels := sob.convertEventLevels(snapshot.Bids, sob.BidLevelArena)
 	sob.Bids.SetFromSlice(bidLevels)
 
 	// Convert and load asks
-	askLevels := sob.convertEventLevels(snapshot.Asks, sob.AskLevelBuffer)
+	askLevels := sob.convertEventLevels(snapshot.Asks, sob.AskLevelArena)
 	sob.Asks.SetFromSlice(askLevels)
 
 	// Update state
@@ -122,7 +123,7 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 		log().Debug().
 			Int("symbolID", sob.SymbolID).
 			Int("depthID", update.DepthID).
-			Int("buffered", sob.UpdateBuffer.Count()).
+			Uint64("buffered", sob.UpdateBuffer.Count()).
 			Msg("SymbolOrderBook: Buffered update (waiting for snapshot)")
 
 	case StateUpdating:
@@ -173,8 +174,8 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 // bufferUpdate adds an update to the buffer
 func (sob *SymbolOrderBook) bufferUpdate(update event.DepthUpdate) {
 	// Convert price levels to internal format
-	bidLevels := sob.convertEventLevels(update.Bids, sob.BidLevelBuffer)
-	askLevels := sob.convertEventLevels(update.Asks, sob.AskLevelBuffer)
+	bidLevels := sob.convertEventLevels(update.Bids, sob.BidLevelArena)
+	askLevels := sob.convertEventLevels(update.Asks, sob.AskLevelArena)
 
 	// For Binance:
 	// - PreviousDepthID = U - 1
@@ -189,15 +190,20 @@ func (sob *SymbolOrderBook) bufferUpdate(update event.DepthUpdate) {
 		Asks:            askLevels,
 	}
 
-	sob.UpdateBuffer.Push(bufferedUpdate)
+	// Write to SPSC ring buffer (will return false if full, but we log anyway)
+	if !sob.UpdateBuffer.Write(bufferedUpdate) {
+		log().Warn().
+			Int("symbolID", sob.SymbolID).
+			Msg("SymbolOrderBook: Update buffer full, dropping update")
+	}
 }
 
 // processBufferedUpdates processes buffered updates in order
 func (sob *SymbolOrderBook) processBufferedUpdates() {
 	processed := 0
 	for !sob.UpdateBuffer.IsEmpty() {
-		update := sob.UpdateBuffer.Peek()
-		if update == nil {
+		update, ok := sob.UpdateBuffer.Peek()
+		if !ok {
 			break
 		}
 
@@ -207,12 +213,12 @@ func (sob *SymbolOrderBook) processBufferedUpdates() {
 		// This means the update's range covers our current position
 		if update.PreviousDepthID <= sob.DepthID && update.FinalDepthID > sob.DepthID {
 			// This update is applicable
-			sob.applyBufferedUpdate(update)
-			sob.UpdateBuffer.Pop()
+			sob.applyBufferedUpdate(&update)
+			sob.UpdateBuffer.Read() // consume the item
 			processed++
 		} else if update.FinalDepthID <= sob.DepthID {
 			// Stale update - discard
-			sob.UpdateBuffer.Pop()
+			sob.UpdateBuffer.Read() // consume the item
 		} else {
 			// Future update - can't apply yet, stop processing
 			break

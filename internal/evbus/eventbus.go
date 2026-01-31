@@ -1,6 +1,7 @@
 package evbus
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/BullionBear/seq/core/mem"
@@ -10,87 +11,28 @@ import (
 const (
 	// DefaultByteArenaCapacity is the default capacity for the byte arena (1MB)
 	DefaultByteArenaCapacity = 1024 * 1024
+
+	// DefaultEventRingBufferSize is the default size for the event ring buffer
+	DefaultEventRingBufferSize = 4096
 )
 
 // EventHandler is a function type for handling events
 type EventHandler func(event Event)
 
-type RingBuffer struct {
-	items   []Event
-	rbRead  uint64
-	rbMask  uint64
-	rbWrite uint64
-}
-
-// NewRingBuffer creates a new ring buffer with the specified size.
-// Size will be rounded up to the next power of 2 for efficient masking.
-func NewRingBuffer(size uint64) RingBuffer {
-	// Round up to next power of 2
-	actualSize := uint64(1)
-	for actualSize < size {
-		actualSize <<= 1
-	}
-
-	return RingBuffer{
-		items:   make([]Event, actualSize),
-		rbRead:  0,
-		rbMask:  actualSize - 1,
-		rbWrite: 0,
-	}
-}
-
-// Write writes an item to the ring buffer.
-// Returns true if successful, false if the buffer is full.
-func (rb *RingBuffer) Write(item Event) bool {
-	if rb.IsFull() {
-		return false
-	}
-	rb.items[rb.rbWrite&rb.rbMask] = item
-	rb.rbWrite++
-	return true
-}
-
-// Read reads an item from the ring buffer.
-// Returns the item and true if successful, false if the buffer is empty.
-func (rb *RingBuffer) Read() (Event, bool) {
-	if rb.IsEmpty() {
-		return Event{}, false
-	}
-	item := rb.items[rb.rbRead&rb.rbMask]
-	rb.rbRead++
-	return item, true
-}
-
-// IsEmpty returns true if the ring buffer is empty.
-func (rb *RingBuffer) IsEmpty() bool {
-	return rb.rbRead == rb.rbWrite
-}
-
-// IsFull returns true if the ring buffer is full.
-func (rb *RingBuffer) IsFull() bool {
-	return rb.Count() == uint64(len(rb.items))
-}
-
-// Count returns the number of items currently in the ring buffer.
-func (rb *RingBuffer) Count() uint64 {
-	return rb.rbWrite - rb.rbRead
-}
-
-// Size returns the capacity of the ring buffer.
-func (rb *RingBuffer) Size() uint64 {
-	return uint64(len(rb.items))
-}
-
-// Reset clears the ring buffer by resetting read and write pointers.
-func (rb *RingBuffer) Reset() {
-	rb.rbRead = 0
-	rb.rbWrite = 0
-}
-
+// EventBus is the central event distribution system.
+// It uses a lock-free MPSC (Multiple Producer Single Consumer) ring buffer
+// for events, allowing multiple goroutines to publish events concurrently
+// while a single consumer (the dispatch loop) processes them.
+//
+// Thread safety:
+//   - Publish can be called from multiple goroutines concurrently
+//   - Dispatch should be called from a single goroutine
+//   - Allocate is NOT thread-safe (arena access should be serialized or use per-producer arenas)
 type EventBus struct {
 	nextEventID uint64
 
-	rbEvent RingBuffer
+	// MPSC ring buffer for events - supports concurrent producers
+	rbEvent *mem.MPSCRingBuffer[Event]
 
 	// Single byte arena for all event data (cache-friendly)
 	byteArena *mem.CircularByteArena
@@ -100,10 +42,11 @@ type EventBus struct {
 	minSequence uint64 // minimum sequence across all consumers (for arena release)
 }
 
+// NewEventBus creates a new EventBus with default capacity.
 func NewEventBus() *EventBus {
 	return &EventBus{
 		nextEventID: 0,
-		rbEvent:     NewRingBuffer(4096),
+		rbEvent:     mem.NewMPSCRingBuffer[Event](DefaultEventRingBufferSize),
 		byteArena:   mem.NewCircularByteArena(DefaultByteArenaCapacity),
 		consumers:   make([]*Consumer, 0),
 		minSequence: 0,
@@ -114,7 +57,7 @@ func NewEventBus() *EventBus {
 func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
 	return &EventBus{
 		nextEventID: 0,
-		rbEvent:     NewRingBuffer(4096),
+		rbEvent:     mem.NewMPSCRingBuffer[Event](DefaultEventRingBufferSize),
 		byteArena:   mem.NewCircularByteArena(arenaCapacity),
 		consumers:   make([]*Consumer, 0),
 		minSequence: 0,
@@ -216,15 +159,17 @@ func (e *EventBus) Allocate(size uint64) (offset uint64, buffer []byte) {
 
 // Publish publishes an EventRef to the ring buffer. The caller should have
 // already serialized data into the arena buffer obtained via Allocate.
+// This method is thread-safe and can be called from multiple goroutines.
 func (e *EventBus) Publish(ref EventRef) {
 	now := uint64(time.Now().UnixNano())
+	// Use atomic increment to get unique event ID for concurrent publishers
+	eventID := atomic.AddUint64(&e.nextEventID, 1) - 1
 	e.rbEvent.Write(Event{
 		Ref:       ref,
-		EventID:   e.nextEventID,
+		EventID:   eventID,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
-	e.nextEventID++
 }
 
 // ReadBuffer returns a []byte slice at the given offset/length for consumers

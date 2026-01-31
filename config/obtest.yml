@@ -1,6 +1,6 @@
 logger:
   level: debug
-  output: file  # "stdout" or "file"
+  output: stdout  # "stdout" or "file"
   path: /home/yite/BullionBear/seq/logs/obtest.log  # Required when output is "file"
   max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
   max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
