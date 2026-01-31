@@ -16,9 +16,10 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 const (
 	// WebSocket connection settings
@@ -132,12 +133,12 @@ func (c *BinanceSpotDataClient) Connect(ctx context.Context) error {
 	// Build combined stream URL
 	streams := c.buildStreamList()
 	if len(streams) == 0 {
-		log.Warn().Msg("No subscriptions configured, skipping Binance connection")
+		log().Warn().Msg("No subscriptions configured, skipping Binance connection")
 		return nil
 	}
 
 	url := c.buildStreamURL(streams)
-	log.Info().Str("url", url).Int("streams", len(streams)).Msg("Connecting to Binance WebSocket")
+	log().Info().Str("url", url).Int("streams", len(streams)).Msg("Connecting to Binance WebSocket")
 
 	// Create event handler
 	handler := &wsEventHandler{client: c}
@@ -170,7 +171,7 @@ func (c *BinanceSpotDataClient) Connect(ctx context.Context) error {
 	// Start ping loop to keep connection alive
 	go c.pingLoop()
 
-	log.Info().Msg("Connected to Binance WebSocket")
+	log().Info().Msg("Connected to Binance WebSocket")
 	return nil
 }
 
@@ -189,7 +190,7 @@ func (c *BinanceSpotDataClient) Disconnect() {
 	c.connLock.Unlock()
 	c.connected.Store(false)
 
-	log.Info().Msg("Disconnected from Binance WebSocket")
+	log().Info().Msg("Disconnected from Binance WebSocket")
 }
 
 // buildStreamList builds the list of streams to subscribe
@@ -202,7 +203,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 	for symbolID, opts := range c.depthSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
 		if err != nil {
-			log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
 			continue
 		}
 		streamName := strings.ToLower(symbol.Name) + "@" + opts.PushRate.StreamSuffix()
@@ -216,7 +217,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 	for symbolID := range c.tradeSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
 		if err != nil {
-			log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for trade subscription")
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for trade subscription")
 			continue
 		}
 		streamName := strings.ToLower(symbol.Name) + "@" + streamTrade
@@ -245,7 +246,7 @@ func (c *BinanceSpotDataClient) buildStreamURL(streams []string) string {
 func (c *BinanceSpotDataClient) subscribeToStream(symbolID int, streamType string) {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for subscription")
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for subscription")
 		return
 	}
 
@@ -257,7 +258,7 @@ func (c *BinanceSpotDataClient) subscribeToStream(symbolID int, streamType strin
 func (c *BinanceSpotDataClient) subscribeToDepthStream(symbolID int, pushRate PushRate) {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
 		return
 	}
 
@@ -285,7 +286,7 @@ func (c *BinanceSpotDataClient) sendSubscription(symbolID int, streamName string
 
 	if conn != nil {
 		if err := conn.WriteMessage(gws.OpcodeText, c.msgBuffer.Bytes()); err != nil {
-			log.Error().Err(err).Str("stream", streamName).Msg("Failed to send subscription message")
+			log().Error().Err(err).Str("stream", streamName).Msg("Failed to send subscription message")
 		}
 	}
 }
@@ -306,7 +307,7 @@ func (c *BinanceSpotDataClient) pingLoop() {
 
 			if conn != nil {
 				if err := conn.WritePing(nil); err != nil {
-					log.Warn().Err(err).Msg("Failed to send ping")
+					log().Warn().Err(err).Msg("Failed to send ping")
 				}
 			}
 		}
@@ -321,13 +322,13 @@ func (c *BinanceSpotDataClient) handleDisconnect() {
 		return
 	}
 
-	log.Warn().Msg("WebSocket disconnected, attempting to reconnect...")
+	log().Warn().Msg("WebSocket disconnected, attempting to reconnect...")
 
 	for !c.shouldStop.Load() {
 		time.Sleep(wsReconnectInterval)
 
 		if err := c.Connect(c.ctx); err != nil {
-			log.Error().Err(err).Msg("Reconnection failed")
+			log().Error().Err(err).Msg("Reconnection failed")
 			continue
 		}
 		break
@@ -342,7 +343,7 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 		// Combined stream format: {"stream":"...","data":{...}}
 		msgData, _, _, err := jsonparser.Get(data, "data")
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to get data field from combined stream message")
+			log().Error().Err(err).Msg("Failed to get data field from combined stream message")
 			return
 		}
 		c.processStreamMessage(stream, msgData)
@@ -399,7 +400,7 @@ func (c *BinanceSpotDataClient) processStreamMessage(stream string, data []byte)
 	c.streamMapLock.RUnlock()
 
 	if !ok {
-		log.Warn().Str("stream", stream).Msg("Received message for unknown stream")
+		log().Warn().Str("stream", stream).Msg("Received message for unknown stream")
 		return
 	}
 
@@ -603,12 +604,12 @@ type wsEventHandler struct {
 }
 
 func (h *wsEventHandler) OnOpen(socket *gws.Conn) {
-	log.Info().Msg("Binance WebSocket connection opened")
+	log().Info().Msg("Binance WebSocket connection opened")
 	_ = socket.SetDeadline(time.Now().Add(wsPingInterval + wsPingWait))
 }
 
 func (h *wsEventHandler) OnClose(socket *gws.Conn, err error) {
-	log.Info().Err(err).Msg("Binance WebSocket connection closed")
+	log().Info().Err(err).Msg("Binance WebSocket connection closed")
 }
 
 func (h *wsEventHandler) OnPing(socket *gws.Conn, payload []byte) {

@@ -8,9 +8,10 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy/actor"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure OrderBook implements the Actor interface
 var _ actor.Actor = (*OrderBook)(nil)
@@ -85,7 +86,7 @@ func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, b
 
 // onDepthSnapshot handles a depth snapshot event
 func (sob *SymbolOrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
-	log.Info().
+	log().Info().
 		Int("symbolID", sob.SymbolID).
 		Int("snapshotDepthID", snapshot.DepthID).
 		Int("bids", len(snapshot.Bids)).
@@ -118,7 +119,7 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 	case StateWaitForSnapshot:
 		// Buffer the update for later processing
 		sob.bufferUpdate(update)
-		log.Debug().
+		log().Debug().
 			Int("symbolID", sob.SymbolID).
 			Int("depthID", update.DepthID).
 			Int("buffered", sob.UpdateBuffer.Count()).
@@ -139,7 +140,7 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 		if update.PreviousDepthID <= sob.DepthID && update.CurrentDepthID > sob.DepthID {
 			// This update covers our current position - apply it
 			sob.applyUpdate(update)
-			log.Debug().
+			log().Debug().
 				Int("symbolID", sob.SymbolID).
 				Int("prevDepthID", update.PreviousDepthID).
 				Int("bookDepthID", sob.DepthID).
@@ -147,7 +148,7 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 				Msg("SymbolOrderBook: Applied update")
 		} else if update.CurrentDepthID <= sob.DepthID {
 			// Stale update - ignore it
-			log.Debug().
+			log().Debug().
 				Int("symbolID", sob.SymbolID).
 				Int("bookDepthID", sob.DepthID).
 				Int("updateFinalDepthID", update.CurrentDepthID).
@@ -156,7 +157,7 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 			// Future update (PreviousDepthID > sob.DepthID) - we missed some updates
 			// This indicates real data loss - reset and wait for new snapshot
 			gap := update.PreviousDepthID - sob.DepthID
-			log.Error().
+			log().Error().
 				Int("symbolID", sob.SymbolID).
 				Int("bookDepthID", sob.DepthID).
 				Int("updatePrevDepthID", update.PreviousDepthID).
@@ -221,7 +222,7 @@ func (sob *SymbolOrderBook) processBufferedUpdates() {
 	// Transition to Ready if buffer is empty
 	if sob.UpdateBuffer.IsEmpty() && sob.State == StateUpdating {
 		sob.State = StateReady
-		log.Info().
+		log().Info().
 			Int("symbolID", sob.SymbolID).
 			Int("depthID", sob.DepthID).
 			Int("processedUpdates", processed).
@@ -326,12 +327,12 @@ func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
 	defer ob.mu.Unlock()
 
 	if _, exists := ob.books[symbolID]; exists {
-		log.Warn().Int("symbolID", symbolID).Msg("OrderBook: Symbol already registered")
+		log().Warn().Int("symbolID", symbolID).Msg("OrderBook: Symbol already registered")
 		return
 	}
 
 	ob.books[symbolID] = NewSymbolOrderBook(symbolID, pricePrecision)
-	log.Info().
+	log().Info().
 		Int("symbolID", symbolID).
 		Int("pricePrecision", pricePrecision).
 		Msg("OrderBook: Registered symbol")
@@ -339,7 +340,7 @@ func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
 
 // Handle processes depth-related events to update the order book state.
 func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	log.Debug().Msgf("Orderbook Actor: Handle called with event type: %d", ev.Ref.DataType)
+	log().Debug().Msgf("Orderbook Actor: Handle called with event type: %d", ev.Ref.DataType)
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
@@ -360,7 +361,7 @@ func (ob *OrderBook) onReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
-	log.Info().Msgf("Orderbook Actor: Req depth snapshot received: symbolID=%d", snapshot.SymbolID)
+	log().Info().Msgf("Orderbook Actor: Req depth snapshot received: symbolID=%d", snapshot.SymbolID)
 }
 
 func (ob *OrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
@@ -369,7 +370,7 @@ func (ob *OrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
 
 	book, exists := ob.books[snapshot.SymbolID]
 	if !exists {
-		log.Warn().
+		log().Warn().
 			Int("symbolID", snapshot.SymbolID).
 			Msg("OrderBook: Received snapshot for unregistered symbol")
 		return
@@ -384,7 +385,7 @@ func (ob *OrderBook) onDepthUpdate(update event.DepthUpdate) {
 
 	book, exists := ob.books[update.SymbolID]
 	if !exists {
-		log.Debug().
+		log().Debug().
 			Int("symbolID", update.SymbolID).
 			Msg("OrderBook: Received update for unregistered symbol")
 		return

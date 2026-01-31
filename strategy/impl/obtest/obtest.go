@@ -13,10 +13,11 @@ import (
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/actor"
 	"github.com/BullionBear/seq/strategy/actor/ob"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure OBTest implements the Actor interface
 var _ actor.Actor = (*OBTest)(nil)
@@ -53,7 +54,7 @@ func (o *OBTest) OnInit() {
 	// Get strategy-specific config from StrategyBase
 	strategyConfig := o.StrategyConfig()
 	if strategyConfig == nil {
-		log.Error().Msg("strategy config is nil")
+		log().Error().Msg("strategy config is nil")
 		return
 	}
 
@@ -61,42 +62,42 @@ func (o *OBTest) OnInit() {
 	var obtestConfig OBTestConfig
 	yamlData, err := yaml.Marshal(strategyConfig)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to marshal strategy config")
+		log().Error().Err(err).Msg("failed to marshal strategy config")
 		return
 	}
 	if err := yaml.Unmarshal(yamlData, &obtestConfig); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshal strategy config")
+		log().Error().Err(err).Msg("failed to unmarshal strategy config")
 		return
 	}
 
 	symbol, err := o.GetCatalog().GetSymbolByUniversalTicker(obtestConfig.SymbolUniversalTicker)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to get symbol")
+		log().Error().Err(err).Msg("failed to get symbol")
 		return
 	}
-	log.Info().Msgf("OBTest: Symbol configured: %s (ID: %d)", symbol.UniversalTicker, symbol.ID)
+	log().Info().Msgf("OBTest: Symbol configured: %s (ID: %d)", symbol.UniversalTicker, symbol.ID)
 	o.symbol = *symbol
 }
 
 // OnStart subscribes to market data and connects.
 func (o *OBTest) OnStart() {
 	o.SubscribeDepthUpdate(o.symbol.ID)
-	log.Info().Msgf("OBTest: Subscribed to depth update for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
+	log().Info().Msgf("OBTest: Subscribed to depth update for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
 	o.Connect(context.Background())
-	log.Info().Msg("OBTest: Connected to market data")
+	log().Info().Msg("OBTest: Connected to market data")
 }
 
 // OnStop disconnects from market data.
 func (o *OBTest) OnStop() {
 	o.Disconnect()
-	log.Info().Msg("OBTest: Disconnected from market data")
+	log().Info().Msg("OBTest: Disconnected from market data")
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to OBTest's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
 func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	// Log ALL incoming events at the top level for debugging
-	log.Debug().
+	log().Debug().
 		Int("dataType", int(ev.Ref.DataType)).
 		Uint64("eventID", ev.EventID).
 		Msgf("OBTest: Handle called with event type: %d", ev.Ref.DataType)
@@ -127,7 +128,7 @@ func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		o.OnReqDepthSnapshot(snapshot)
 	default:
-		log.Warn().Int("dataType", int(ev.Ref.DataType)).Msg("OBTest: Unknown event type")
+		log().Warn().Int("dataType", int(ev.Ref.DataType)).Msg("OBTest: Unknown event type")
 	}
 }
 
@@ -135,7 +136,7 @@ func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 func (o *OBTest) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 	o.snapshotDepthID = snapshot.DepthID
 
-	log.Info().
+	log().Info().
 		Int("symbolID", snapshot.SymbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("bidsCount", len(snapshot.Bids)).
@@ -147,13 +148,13 @@ func (o *OBTest) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 
 	// Print first few bid/ask levels
 	if len(snapshot.Bids) > 0 {
-		log.Debug().
+		log().Debug().
 			Float64("bestBidPrice", snapshot.Bids[0].Price).
 			Float64("bestBidQty", snapshot.Bids[0].Quantity).
 			Msg("OBTest: Best bid from snapshot")
 	}
 	if len(snapshot.Asks) > 0 {
-		log.Debug().
+		log().Debug().
 			Float64("bestAskPrice", snapshot.Asks[0].Price).
 			Float64("bestAskQty", snapshot.Asks[0].Quantity).
 			Msg("OBTest: Best ask from snapshot")
@@ -170,22 +171,22 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	// - DepthID = U (first update ID in event)
 	// - CurrentDepthID = u (final update ID in event)
 	// For consecutive updates: prev_u == current_U - 1, so prev_u == current_PreviousDepthID
-	expectedPrevID := o.lastReceivedDepthID     // This should be prev update's final ID (u)
-	receivedPrevID := update.PreviousDepthID    // Current update's U - 1
-	receivedFirstID := update.DepthID           // Current update's U (first update ID)
-	receivedFinalID := update.CurrentDepthID    // Current update's u (final update ID)
+	expectedPrevID := o.lastReceivedDepthID  // This should be prev update's final ID (u)
+	receivedPrevID := update.PreviousDepthID // Current update's U - 1
+	receivedFirstID := update.DepthID        // Current update's U (first update ID)
+	receivedFinalID := update.CurrentDepthID // Current update's u (final update ID)
 	gapFromLastReceived := receivedPrevID - expectedPrevID
 	updateSpan := receivedFinalID - receivedFirstID + 1 // How many individual changes in this update
 
 	// Check orderbook state
 	bookState, exists := o.GetBookState(symbolID)
 	if !exists {
-		log.Warn().Int("symbolID", symbolID).Msg("OBTest: Orderbook not registered")
+		log().Warn().Int("symbolID", symbolID).Msg("OBTest: Orderbook not registered")
 		return
 	}
 
 	// Log every depth update with detailed sequence tracking
-	log.Info().
+	log().Info().
 		Int("symbolID", symbolID).
 		Int("firstDepthID", receivedFirstID).
 		Int("finalDepthID", receivedFinalID).
@@ -205,13 +206,13 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	// A gap > 0 means we missed some updates
 	if expectedPrevID > 0 && gapFromLastReceived != 0 {
 		if gapFromLastReceived > 0 {
-			log.Warn().
+			log().Warn().
 				Int("lastFinalDepthID", expectedPrevID).
 				Int("currentPrevDepthID", receivedPrevID).
 				Int("missedUpdates", gapFromLastReceived).
 				Msg("OBTest: Sequence gap detected - missed updates")
 		} else {
-			log.Debug().
+			log().Debug().
 				Int("lastFinalDepthID", expectedPrevID).
 				Int("currentPrevDepthID", receivedPrevID).
 				Int("overlap", -gapFromLastReceived).
@@ -221,13 +222,13 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 
 	// Update tracking - store the FINAL depth ID (u) for sequence tracking
 	o.lastReceivedPrevID = receivedPrevID
-	o.lastReceivedDepthID = receivedFinalID  // Track final ID (u), not first ID (U)
+	o.lastReceivedDepthID = receivedFinalID // Track final ID (u), not first ID (U)
 
 	// If waiting for snapshot and not already in flight, request snapshot
 	if bookState == ob.StateWaitForSnapshot && !o.IsBookInFlight {
-		log.Info().Int("symbolID", symbolID).Msg("OBTest: Requesting depth snapshot (orderbook waiting)")
+		log().Info().Int("symbolID", symbolID).Msg("OBTest: Requesting depth snapshot (orderbook waiting)")
 		if err := o.ReqDepthSnapshot(symbolID); err != nil {
-			log.Error().Err(err).Int("symbolID", symbolID).Msg("OBTest: Failed to request depth snapshot")
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("OBTest: Failed to request depth snapshot")
 		} else {
 			o.IsBookInFlight = true
 		}
@@ -244,7 +245,7 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 			o.printSummary(symbolID)
 		}
 	} else {
-		log.Debug().
+		log().Debug().
 			Int("symbolID", symbolID).
 			Str("state", bookState.String()).
 			Bool("inFlight", o.IsBookInFlight).
@@ -255,7 +256,7 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 // OnReqDepthSnapshot processes the response to a depth snapshot request.
 func (o *OBTest) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
 	symbolID := snapshot.SymbolID
-	log.Info().
+	log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asksCount", len(snapshot.Asks)).
@@ -274,7 +275,7 @@ func (o *OBTest) printSummary(symbolID int) {
 	spread, spreadOk := o.GetSpread(symbolID)
 
 	if bidOk && askOk && midOk && spreadOk {
-		log.Info().
+		log().Info().
 			Int("symbolID", symbolID).
 			Float64("bestBid", bestBid).
 			Float64("bidQty", bidQty).
@@ -324,12 +325,12 @@ func (o *OBTest) printOrderbook(symbolID int) {
 	}
 
 	sb.WriteString(fmt.Sprintf("Timestamp: %s\n", time.Now().Format(time.RFC3339Nano)))
-	log.Info().Msg(sb.String())
+	log().Info().Msg(sb.String())
 }
 
 // OnTick processes tick events.
 func (o *OBTest) OnTick(tick event.Tick) {
-	log.Debug().
+	log().Debug().
 		Int("symbolID", tick.SymbolID).
 		Float64("price", tick.Price).
 		Float64("qty", tick.Qty).
@@ -338,7 +339,7 @@ func (o *OBTest) OnTick(tick event.Tick) {
 
 // OnOrderUpdate processes order updates.
 func (o *OBTest) OnOrderUpdate(update event.OrderUpdate) {
-	log.Debug().
+	log().Debug().
 		Int("orderID", update.OrderID).
 		Int("clientOrderID", update.ClientOrderID).
 		Int("status", int(update.OrderStatus)).
@@ -348,7 +349,7 @@ func (o *OBTest) OnOrderUpdate(update event.OrderUpdate) {
 
 // OnFill processes fill events.
 func (o *OBTest) OnFill(fill event.Fill) {
-	log.Debug().
+	log().Debug().
 		Int("orderID", fill.OrderID).
 		Int("clientOrderID", fill.ClientOrderID).
 		Float64("filledPrice", fill.FilledPrice).

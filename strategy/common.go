@@ -12,9 +12,10 @@ import (
 	"github.com/BullionBear/seq/strategy/actor"
 	"github.com/BullionBear/seq/strategy/actor/ems"
 	"github.com/BullionBear/seq/strategy/actor/ob"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // StrategyCommon provides the common infrastructure for all strategies.
 // It owns and manages internal actors (OrderBook, EMS) and provides
@@ -100,7 +101,7 @@ func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.
 	}
 	clientOrderID, err := s.ems.SubmitLimitOrder(req)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to submit limit order")
+		log().Error().Err(err).Msg("Failed to submit limit order")
 		return -1
 	}
 	return clientOrderID
@@ -116,7 +117,7 @@ func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common
 	}
 	clientOrderID, err := s.ems.SubmitMarketOrder(req)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to submit market order")
+		log().Error().Err(err).Msg("Failed to submit market order")
 		return -1
 	}
 	return clientOrderID
@@ -167,7 +168,7 @@ func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
 	// Get symbol from catalog to get price precision
 	symbol, err := s.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to get symbol from catalog: %d", symbolID)
+		log().Error().Err(err).Msgf("Failed to get symbol from catalog: %d", symbolID)
 		return
 	}
 
@@ -177,7 +178,7 @@ func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
 	// Subscribe to depth updates via data router
 	err = s.dataRouter.SubscribeDepthUpdate(symbolID)
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to subscribe to depth update for symbol: %d", symbolID)
+		log().Error().Err(err).Msgf("Failed to subscribe to depth update for symbol: %d", symbolID)
 	}
 }
 
@@ -188,7 +189,7 @@ func (s *StrategyCommon) SubscribeTick(symbolID int) {
 func (s *StrategyCommon) Connect(ctx context.Context) {
 	err := s.dataRouter.Connect(ctx)
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to connect to data client router")
+		log().Error().Err(err).Msgf("Failed to connect to data client router")
 	}
 }
 

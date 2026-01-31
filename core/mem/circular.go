@@ -2,9 +2,10 @@ package mem
 
 import (
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // CircularByteArena is a cache-friendly circular buffer for storing event data.
 // It follows the Disruptor pattern with Multi Publisher Single Consumer (MPSC).
@@ -40,7 +41,7 @@ func (a *CircularByteArena) Reserve(size uint64) uint64 {
 	// Check for overwrite condition
 	// This happens when we're about to write over data that hasn't been read yet
 	if a.wouldOverwrite(offset, size) {
-		log.Warn().
+		log().Warn().
 			Uint64("writeOff", a.writeOff).
 			Uint64("readOff", a.readOff).
 			Uint64("size", size).

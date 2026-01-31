@@ -13,10 +13,11 @@ import (
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/actor"
 	"github.com/BullionBear/seq/strategy/actor/ob"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure XArb implements the Actor interface
 var _ actor.Actor = (*XArb)(nil)
@@ -49,7 +50,7 @@ func (x *XArb) OnInit() {
 	// Get strategy-specific config from StrategyBase
 	strategyConfig := x.StrategyConfig()
 	if strategyConfig == nil {
-		log.Error().Msg("strategy config is nil")
+		log().Error().Msg("strategy config is nil")
 		return
 	}
 
@@ -57,26 +58,26 @@ func (x *XArb) OnInit() {
 	var xarbConfig XArbConfig
 	yamlData, err := yaml.Marshal(strategyConfig)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to marshal strategy config")
+		log().Error().Err(err).Msg("failed to marshal strategy config")
 		return
 	}
 	if err := yaml.Unmarshal(yamlData, &xarbConfig); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshal strategy config")
+		log().Error().Err(err).Msg("failed to unmarshal strategy config")
 		return
 	}
 
 	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to get quoting symbol")
+		log().Error().Err(err).Msg("failed to get quoting symbol")
 		return
 	}
 	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.HedgingSymbolUniversalTicker)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to get hedging symbol")
+		log().Error().Err(err).Msg("failed to get hedging symbol")
 		return
 	}
-	log.Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
-	log.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
+	log().Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
+	log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
 
@@ -88,9 +89,9 @@ func (x *XArb) OnInit() {
 // OnStart subscribes to market data and connects.
 func (x *XArb) OnStart() {
 	x.SubscribeDepthUpdate(x.quotingSymbol.ID)
-	log.Info().Msgf("Subscribed to depth update for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
+	log().Info().Msgf("Subscribed to depth update for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
 	x.SubscribeDepthUpdate(x.hedgingSymbol.ID)
-	log.Info().Msgf("Subscribed to depth update for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
+	log().Info().Msgf("Subscribed to depth update for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
 	x.Connect(context.Background())
 }
 
@@ -132,7 +133,7 @@ func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
 
 // OnDepthSnapshot processes depth snapshots.
 func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
-	log.Info().Msgf("Depth snapshot: %d %d %d %d", snapshot.SymbolID, snapshot.DepthID, len(snapshot.Bids), len(snapshot.Asks))
+	log().Info().Msgf("Depth snapshot: %d %d %d %d", snapshot.SymbolID, snapshot.DepthID, len(snapshot.Bids), len(snapshot.Asks))
 }
 
 // OnDepthUpdate processes depth updates.
@@ -142,15 +143,15 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	// Check orderbook state
 	bookState, exists := x.GetBookState(symbolID)
 	if !exists {
-		log.Warn().Int("symbolID", symbolID).Msg("Orderbook not registered")
+		log().Warn().Int("symbolID", symbolID).Msg("Orderbook not registered")
 		return
 	}
 
 	// If waiting for snapshot and not already in flight, request snapshot
 	if bookState == ob.StateWaitForSnapshot && !x.IsBookInFlight[symbolID] {
-		log.Info().Int("symbolID", symbolID).Msg("Requesting depth snapshot (orderbook waiting)")
+		log().Info().Int("symbolID", symbolID).Msg("Requesting depth snapshot (orderbook waiting)")
 		if err := x.ReqDepthSnapshot(symbolID); err != nil {
-			log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to request depth snapshot")
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to request depth snapshot")
 		} else {
 			x.IsBookInFlight[symbolID] = true
 		}
@@ -161,7 +162,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	if x.IsSymbolReady(symbolID) {
 		x.printTop5(symbolID)
 	} else {
-		log.Debug().
+		log().Debug().
 			Int("symbolID", symbolID).
 			Str("state", bookState.String()).
 			Bool("inFlight", x.IsBookInFlight[symbolID]).
@@ -172,7 +173,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 // OnReqDepthSnapshot processes the response to a depth snapshot request.
 func (x *XArb) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
 	symbolID := snapshot.SymbolID
-	log.Info().
+	log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asks", len(snapshot.Asks)).
@@ -220,7 +221,7 @@ func (x *XArb) printTop5(symbolID int) {
 	}
 
 	sb.WriteString(fmt.Sprintf("Timestamp: %s\n", time.Now().Format(time.RFC3339Nano)))
-	// log.Info().Msg(sb.String())
+	// log().Info().Msg(sb.String())
 }
 
 // OnTick processes tick events.

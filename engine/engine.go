@@ -9,19 +9,20 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/actor"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Engine orchestrates event dispatching to actors (including strategies).
 // All event-driven components implement the unified Actor interface.
 // The Engine focuses on the event loop while StrategyCommon manages the trading
 // infrastructure (OrderBook, EMS, etc.) internally via the facade pattern.
 type Engine struct {
-	eventBus       *evbus.EventBus
-	catalog        *catalog.Catalog
-	strategyActor  actor.Actor
-	config         *strategy.StrategyConfig
+	eventBus      *evbus.EventBus
+	catalog       *catalog.Catalog
+	strategyActor actor.Actor
+	config        *strategy.StrategyConfig
 }
 
 // NewEngine creates a new Engine with the given strategy actor and catalog.
@@ -44,12 +45,16 @@ func (e *Engine) Init(config *strategy.StrategyConfig) {
 	common := strategy.NewStrategyCommon(e.catalog, e.eventBus)
 
 	// Inject StrategyCommon into the strategy actor if it supports SetCommon
-	if s, ok := e.strategyActor.(interface{ SetCommon(*strategy.StrategyCommon) }); ok {
+	if s, ok := e.strategyActor.(interface {
+		SetCommon(*strategy.StrategyCommon)
+	}); ok {
 		s.SetCommon(common)
 	}
 
 	// Inject config into the strategy actor if it supports SetConfig
-	if s, ok := e.strategyActor.(interface{ SetConfig(*strategy.StrategyConfig) }); ok {
+	if s, ok := e.strategyActor.(interface {
+		SetConfig(*strategy.StrategyConfig)
+	}); ok {
 		s.SetConfig(config)
 	}
 

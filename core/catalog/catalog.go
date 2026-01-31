@@ -6,9 +6,10 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/rs/zerolog"
 )
 
-var log = logger.Get()
+func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 type Catalog struct {
 	cpanelClient *cpanel.CpanelClient
@@ -31,11 +32,11 @@ func NewCatalog(baseURL string, apiToken string) *Catalog {
 		accounts:     make(map[int]cpanel.Account, 1024),
 	}
 	if err := catalog.LoadAllSymbols(); err != nil {
-		log.Error().Err(err).Msg("Failed to load all symbols")
+		log().Error().Err(err).Msg("Failed to load all symbols")
 		return nil
 	}
 	if err := catalog.LoadAllAccounts(); err != nil {
-		log.Error().Err(err).Msg("Failed to load all accounts")
+		log().Error().Err(err).Msg("Failed to load all accounts")
 		return nil
 	}
 	return &catalog
@@ -48,13 +49,13 @@ func (c *Catalog) LoadAllSymbols() error {
 	}
 	for _, symbol := range symbols {
 		c.symbols[symbol.ID] = symbol
-		log.Info().Msgf("Loaded symbol: %s(%d)", symbol.UniversalTicker, symbol.ID)
+		log().Info().Msgf("Loaded symbol: %s(%d)", symbol.UniversalTicker, symbol.ID)
 		c.exchanges[symbol.Exchange.ID] = symbol.Exchange
 		c.products[symbol.Product.ID] = symbol.Product
 		c.tokens[symbol.BaseToken.ID] = symbol.BaseToken
 		c.tokens[symbol.QuoteToken.ID] = symbol.QuoteToken
 	}
-	log.Info().
+	log().Info().
 		Int("symbols", len(c.symbols)).
 		Int("exchanges", len(c.exchanges)).
 		Int("products", len(c.products)).
@@ -71,7 +72,7 @@ func (c *Catalog) LoadAllAccounts() error {
 	for _, account := range accounts {
 		c.accounts[account.ID] = account
 	}
-	log.Info().
+	log().Info().
 		Int("accounts", len(c.accounts)).
 		Msg("Loaded accounts")
 	return nil

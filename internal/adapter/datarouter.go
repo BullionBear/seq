@@ -15,7 +15,7 @@ type DataRouter struct {
 	eventBus *evbus.EventBus
 
 	binanceSpotDataClient *binance.BinanceSpotDataClient
-	bybitSpotDataClient   bybit.BybitDataClient
+	bybitDataClient       *bybit.BybitDataClient
 }
 
 func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRouter {
@@ -23,7 +23,7 @@ func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRout
 		catalog:               catalog,
 		eventBus:              eventBus,
 		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
-		bybitSpotDataClient:   bybit.NewBybitDataClient(),
+		bybitDataClient:       bybit.NewBybitDataClient(catalog, eventBus),
 	}
 }
 
@@ -36,7 +36,7 @@ func (r *DataRouter) SubscribeDepthUpdate(symbolID int) error {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
 		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, nil)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		r.bybitSpotDataClient.SubscribeDepthUpdate(symbolID)
+		r.bybitDataClient.SubscribeDepthUpdate(symbolID, nil)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
@@ -52,8 +52,7 @@ func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
 		return r.binanceSpotDataClient.ReqDepthSnapshot(symbolID, 1000) // Request 1000 levels
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		// TODO: Implement Bybit depth snapshot
-		return fmt.Errorf("bybit depth snapshot not implemented")
+		return r.bybitDataClient.ReqDepthSnapshot(symbolID, 1000)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
@@ -68,7 +67,7 @@ func (r *DataRouter) SubscribeTrade(symbolID int) error {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
 		r.binanceSpotDataClient.SubscribeTrade(symbolID)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		r.bybitSpotDataClient.SubscribeTrade(symbolID)
+		r.bybitDataClient.SubscribeTrade(symbolID)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
@@ -83,8 +82,8 @@ func (r *DataRouter) Connect(ctx context.Context) error {
 		}
 	}
 
-	if r.bybitSpotDataClient.HasSub() {
-		if err := r.bybitSpotDataClient.Connect(ctx); err != nil {
+	if r.bybitDataClient.HasSub() {
+		if err := r.bybitDataClient.Connect(ctx); err != nil {
 			return fmt.Errorf("failed to connect Bybit data client: %w", err)
 		}
 	}
@@ -97,7 +96,7 @@ func (r *DataRouter) Disconnect() {
 	if r.binanceSpotDataClient.HasSub() {
 		r.binanceSpotDataClient.Disconnect()
 	}
-	if r.bybitSpotDataClient.HasSub() {
-		r.bybitSpotDataClient.Disconnect()
+	if r.bybitDataClient.HasSub() {
+		r.bybitDataClient.Disconnect()
 	}
 }
