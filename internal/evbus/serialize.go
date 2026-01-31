@@ -132,6 +132,32 @@ func SerializeDepthSnapshot(buf []byte, snapshot *event.DepthSnapshot) int {
 	return pos
 }
 
+// WriteDepthSnapshotHeader writes only the header portion of a DepthSnapshot to the buffer.
+// This is used when PriceLevels are written separately (zero-allocation path).
+// Layout: [SymbolID(8)][DepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)]
+func WriteDepthSnapshotHeader(buf []byte, symbolID, depthID int, timestamp uint64, asksLen, bidsLen uint32) {
+	pos := 0
+
+	// SymbolID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(symbolID))
+	pos += 8
+
+	// DepthID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(depthID))
+	pos += 8
+
+	// Timestamp (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], timestamp)
+	pos += 8
+
+	// AsksLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], asksLen)
+	pos += 4
+
+	// BidsLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], bidsLen)
+}
+
 // DeserializeDepthSnapshot reads a DepthSnapshot from buffer.
 // The returned slices point directly into the buffer - no copy is made.
 func DeserializeDepthSnapshot(buf []byte) event.DepthSnapshot {

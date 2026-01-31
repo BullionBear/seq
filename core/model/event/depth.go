@@ -28,6 +28,8 @@ type ReqDepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
 	Timestamp uint64
-	Asks      []PriceLevel
-	Bids      []PriceLevel
+	AskLength int          // number of ask price levels
+	BidLength int          // number of bid price levels
+	Asks      []PriceLevel // points into arena buffer
+	Bids      []PriceLevel // points into arena buffer
 }

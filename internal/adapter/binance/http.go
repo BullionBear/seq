@@ -42,7 +42,7 @@ func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) Bi
 }
 
 // GetDepth fetches order book depth from Binance API
-// Uses zero-allocation approach with strings.Builder for URL construction
+// Uses zero-allocation approach: parses JSON directly into arena buffer
 func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Build URL using strings.Builder (zero-allocation string concatenation)
 	symbol, err := c.catalog.GetSymbol(symbolId)
@@ -68,7 +68,6 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	defer fasthttp.ReleaseResponse(resp)
 
 	// Set request URI and method
-	// Set request URI and method
 	req.SetRequestURIBytes(c.buffer.Bytes())
 	req.Header.SetMethod(fasthttp.MethodGet)
 	req.Header.Set("Accept", "application/json")
@@ -88,28 +87,51 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		}
 	}
 
-	// Deserialize depth response
-	var reqDepthSnapshot event.ReqDepthSnapshot
-	err = c.unmarshalReqDepthSnapshot(resp.Body(), &reqDepthSnapshot)
+	jsonData := resp.Body()
+
+	// Phase 1: Parse header and count price levels (no allocation)
+	depthID, askCount, bidCount, err := c.countDepthLevels(jsonData)
 	if err != nil {
 		return err
 	}
 
-	// Set symbolID and timestamp
-	reqDepthSnapshot.SymbolID = symbolId
-	reqDepthSnapshot.Timestamp = uint64(time.Now().UnixNano())
+	// Phase 2: Allocate arena buffer for DepthSnapshot
+	// Layout: [SymbolID(8)][DepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)][Asks...][Bids...]
+	size := uint64(evbus.SizeOfDepthSnapshotHeader) +
+		uint64(askCount)*uint64(evbus.SizeOfPriceLevel) +
+		uint64(bidCount)*uint64(evbus.SizeOfPriceLevel)
 
-	// Convert to DepthSnapshot and publish to event bus using new generic API
-	depthSnapshot := event.DepthSnapshot{
-		SymbolID:  reqDepthSnapshot.SymbolID,
-		DepthID:   reqDepthSnapshot.DepthID,
-		Timestamp: reqDepthSnapshot.Timestamp,
-		Asks:      reqDepthSnapshot.Asks,
-		Bids:      reqDepthSnapshot.Bids,
-	}
-	size := evbus.DepthSnapshotSize(&depthSnapshot)
 	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeDepthSnapshot(buf, &depthSnapshot)
+
+	// Phase 3: Parse directly into arena buffer (zero-allocation)
+	// Get pointers to the PriceLevel arrays in the buffer
+	asksStart := evbus.SizeOfDepthSnapshotHeader
+	bidsStart := asksStart + askCount*evbus.SizeOfPriceLevel
+
+	var asks []event.PriceLevel
+	var bids []event.PriceLevel
+	if askCount > 0 {
+		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[asksStart])), askCount)
+	}
+	if bidCount > 0 {
+		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[bidsStart])), bidCount)
+	}
+
+	// Parse price levels directly into arena
+	err = c.parsePriceLevelsInto(jsonData, "\"asks\"", asks)
+	if err != nil {
+		return err
+	}
+	err = c.parsePriceLevelsInto(jsonData, "\"bids\"", bids)
+	if err != nil {
+		return err
+	}
+
+	// Write header into buffer
+	timestamp := uint64(time.Now().UnixNano())
+	evbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestamp, uint32(askCount), uint32(bidCount))
+
+	// Publish to event bus
 	c.eventBus.Publish(evbus.EventRef{
 		DataType: event.DataTypeDepthSnapshot,
 		Index:    offset,
@@ -118,17 +140,17 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	return nil
 }
 
-func (c *BinanceHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapshot *event.ReqDepthSnapshot) error {
+// countDepthLevels parses JSON to extract depthID and count asks/bids (first pass, no allocation)
+func (c *BinanceHTTPClient) countDepthLevels(data []byte) (depthID, askCount, bidCount int, err error) {
 	// Parse lastUpdateId
 	const lastUpdateIdKey = "\"lastUpdateId\""
 	idx := bytes.Index(data, []byte(lastUpdateIdKey))
 	if idx == -1 {
-		return errors.New("missing lastUpdateId")
+		return 0, 0, 0, errors.New("missing lastUpdateId")
 	}
 
-	// Move past key
+	// Move past key and find colon
 	idx += len(lastUpdateIdKey)
-	// Find colon
 	for idx < len(data) && data[idx] != ':' {
 		idx++
 	}
@@ -144,142 +166,159 @@ func (c *BinanceHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnaps
 	for idx < len(data) && data[idx] >= '0' && data[idx] <= '9' {
 		idx++
 	}
-	// Note: We're not storing lastUpdateId in model.DepthSnapshot per the definition provided earlier,
-	// but the user requirement implies we are "implementing UnmarshalDepthSnapshot data".
-	// The provided model.DepthSnapshot has DepthID int, Timestamp uint64 etc.
-	// Looking at evbus.go: type DepthSnapshot struct { ... DepthID int ... }
-	// So we assume DepthID maps to lastUpdateId.
-
 	if start == idx {
-		return errors.New("invalid lastUpdateId value")
+		return 0, 0, 0, errors.New("invalid lastUpdateId value")
 	}
 
-	val, err := strconv.Atoi(unsafeString(data[start:idx]))
+	depthID, err = strconv.Atoi(unsafeString(data[start:idx]))
 	if err != nil {
-		return err
+		return 0, 0, 0, err
 	}
-	reqDepthSnapshot.DepthID = val
 
-	// Helper to parse double array [[string, string], ...]
-	// We do 2 passes: 1 to count, 2 to fill
-	parseOrderList := func(key string) ([]event.PriceLevel, error) {
-		keyIdx := bytes.Index(data, []byte(key))
-		if keyIdx == -1 {
-			return nil, nil // or error? standard json unmarshal puts empty if missing
+	// Count asks
+	askCount = c.countArrayElements(data, "\"asks\"")
+
+	// Count bids
+	bidCount = c.countArrayElements(data, "\"bids\"")
+
+	return depthID, askCount, bidCount, nil
+}
+
+// countArrayElements counts the number of sub-arrays in a JSON array
+func (c *BinanceHTTPClient) countArrayElements(data []byte, key string) int {
+	keyIdx := bytes.Index(data, []byte(key))
+	if keyIdx == -1 {
+		return 0
+	}
+
+	// Find start of array [
+	curr := keyIdx + len(key)
+	for curr < len(data) && data[curr] != '[' {
+		curr++
+	}
+	if curr >= len(data) {
+		return 0
+	}
+	curr++ // skip [
+
+	// Count sub-arrays by tracking depth
+	count := 0
+	depth := 0
+	for curr < len(data) {
+		b := data[curr]
+		if b == '[' {
+			depth++
+			if depth == 1 {
+				count++
+			}
+		} else if b == ']' {
+			depth--
+			if depth < 0 {
+				break // End of outer array
+			}
 		}
+		curr++
+	}
 
-		// Find start of array [
-		curr := keyIdx + len(key)
+	return count
+}
+
+// parsePriceLevelsInto parses price levels directly into a pre-allocated slice (zero-allocation)
+func (c *BinanceHTTPClient) parsePriceLevelsInto(data []byte, key string, levels []event.PriceLevel) error {
+	if len(levels) == 0 {
+		return nil
+	}
+
+	keyIdx := bytes.Index(data, []byte(key))
+	if keyIdx == -1 {
+		return nil
+	}
+
+	// Find start of array [
+	curr := keyIdx + len(key)
+	for curr < len(data) && data[curr] != '[' {
+		curr++
+	}
+	if curr >= len(data) {
+		return errors.New("array start not found for " + key)
+	}
+	curr++ // skip [
+
+	// Parse each price level
+	for itemIdx := 0; itemIdx < len(levels); itemIdx++ {
+		// Find start of subarray
 		for curr < len(data) && data[curr] != '[' {
 			curr++
 		}
-		if curr >= len(data) {
-			return nil, errors.New("array start not found for " + key)
-		}
-		arrayStart := curr
-
-		// Pass 1: Count
-		count := 0
 		curr++ // skip [
 
-		// This is a naive count. We assume structure [[...],[...]]
-		// We can just count occurrence of "],[" maybe? Or just count '[' after the first one?
-		// Binance format: "bids": [ [ "4.00", "12.00"], [ "3.00", "10.00" ] ]
-
-		scanIdx := curr
-		depth := 0
-		for scanIdx < len(data) {
-			b := data[scanIdx]
-			if b == '[' {
-				depth++
-				if depth == 1 {
-					count++
-				}
-			} else if b == ']' {
-				depth--
-				if depth < 0 {
-					break // End of outer array
-				}
-			}
-			scanIdx++
+		// Parse Price - find quote
+		for curr < len(data) && data[curr] != '"' {
+			curr++
 		}
-
-		if count == 0 {
-			return nil, nil
+		curr++ // skip "
+		pStart := curr
+		for curr < len(data) && data[curr] != '"' {
+			curr++
 		}
-
-		// Allocate slice for price levels
-		levels := make([]event.PriceLevel, count)
-
-		// Pass 2: Parse
-		curr = arrayStart + 1
-		itemIdx := 0
-
-		// We expect: [ "price", "qty" ] ...
-		for itemIdx < count {
-			// Find start of subarray
-			for curr < len(data) && data[curr] != '[' {
-				curr++
-			}
-			curr++ // skip [
-
-			// Parse Price
-			// Find quote
-			for curr < len(data) && data[curr] != '"' {
-				curr++
-			}
-			curr++ // skip "
-			pStart := curr
-			for curr < len(data) && data[curr] != '"' {
-				curr++
-			}
-			pStr := unsafeString(data[pStart:curr])
-			price, err := strconv.ParseFloat(pStr, 64)
-			if err != nil {
-				return nil, err
-			}
-			curr++ // skip closing "
-
-			// Find next value (Quantity)
-			for curr < len(data) && data[curr] != '"' {
-				curr++
-			}
-			curr++ // skip "
-			qStart := curr
-			for curr < len(data) && data[curr] != '"' {
-				curr++
-			}
-			qStr := unsafeString(data[qStart:curr])
-			qty, err := strconv.ParseFloat(qStr, 64)
-			if err != nil {
-				return nil, err
-			}
-			curr++ // skip closing "
-
-			levels[itemIdx] = event.PriceLevel{
-				Price:    price,
-				Quantity: qty,
-			}
-			itemIdx++
-
-			// Move past current subarray closure ]
-			for curr < len(data) && data[curr] != ']' {
-				curr++
-			}
-			curr++ // skip ]
+		price, err := strconv.ParseFloat(unsafeString(data[pStart:curr]), 64)
+		if err != nil {
+			return err
 		}
+		curr++ // skip closing "
 
-		return levels, nil
+		// Parse Quantity - find quote
+		for curr < len(data) && data[curr] != '"' {
+			curr++
+		}
+		curr++ // skip "
+		qStart := curr
+		for curr < len(data) && data[curr] != '"' {
+			curr++
+		}
+		qty, err := strconv.ParseFloat(unsafeString(data[qStart:curr]), 64)
+		if err != nil {
+			return err
+		}
+		curr++ // skip closing "
+
+		// Write directly into the pre-allocated slice (which is in arena)
+		levels[itemIdx].Price = price
+		levels[itemIdx].Quantity = qty
+
+		// Move past current subarray closure ]
+		for curr < len(data) && data[curr] != ']' {
+			curr++
+		}
+		curr++ // skip ]
 	}
 
-	reqDepthSnapshot.Bids, err = parseOrderList("\"bids\"")
+	return nil
+}
+
+// unmarshalReqDepthSnapshot parses JSON into ReqDepthSnapshot (allocates slices - use for testing)
+func (c *BinanceHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapshot *event.ReqDepthSnapshot) error {
+	// Parse header and count levels
+	depthID, askCount, bidCount, err := c.countDepthLevels(data)
 	if err != nil {
 		return err
 	}
+	reqDepthSnapshot.DepthID = depthID
+	reqDepthSnapshot.AskLength = askCount
+	reqDepthSnapshot.BidLength = bidCount
 
-	reqDepthSnapshot.Asks, err = parseOrderList("\"asks\"")
-	if err != nil {
-		return err
+	// Allocate slices (non-zero-allocation path, for testing)
+	if askCount > 0 {
+		reqDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
+		if err := c.parsePriceLevelsInto(data, "\"asks\"", reqDepthSnapshot.Asks); err != nil {
+			return err
+		}
+	}
+	if bidCount > 0 {
+		reqDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
+		if err := c.parsePriceLevelsInto(data, "\"bids\"", reqDepthSnapshot.Bids); err != nil {
+			return err
+		}
 	}
 
 	return nil
