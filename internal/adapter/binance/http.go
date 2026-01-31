@@ -90,7 +90,7 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 
 	// Deserialize depth response
 	var reqDepthSnapshot event.ReqDepthSnapshot
-	err = c.unmarshalDepthSnapshot(resp.Body(), &reqDepthSnapshot)
+	err = c.unmarshalReqDepthSnapshot(resp.Body(), &reqDepthSnapshot)
 	if err != nil {
 		return err
 	}
@@ -99,12 +99,26 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	reqDepthSnapshot.SymbolID = symbolId
 	reqDepthSnapshot.Timestamp = uint64(time.Now().UnixNano())
 
-	// Publish to event bus
-	c.eventBus.PublishDepthSnapshot(depth)
+	// Convert to DepthSnapshot and publish to event bus using new generic API
+	depthSnapshot := event.DepthSnapshot{
+		SymbolID:  reqDepthSnapshot.SymbolID,
+		DepthID:   reqDepthSnapshot.DepthID,
+		Timestamp: reqDepthSnapshot.Timestamp,
+		Asks:      reqDepthSnapshot.Asks,
+		Bids:      reqDepthSnapshot.Bids,
+	}
+	size := evbus.DepthSnapshotSize(&depthSnapshot)
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeDepthSnapshot(buf, &depthSnapshot)
+	c.eventBus.Publish(evbus.EventRef{
+		DataType: event.DataTypeDepthSnapshot,
+		Index:    offset,
+		Length:   size,
+	})
 	return nil
 }
 
-func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.ReqDepthSnapshot) error {
+func (c *BinanceHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapshot *event.ReqDepthSnapshot) error {
 	// Parse lastUpdateId
 	const lastUpdateIdKey = "\"lastUpdateId\""
 	idx := bytes.Index(data, []byte(lastUpdateIdKey))
@@ -144,7 +158,7 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.Req
 	if err != nil {
 		return err
 	}
-	depth.DepthID = val
+	reqDepthSnapshot.DepthID = val
 
 	// Helper to parse double array [[string, string], ...]
 	// We do 2 passes: 1 to count, 2 to fill
@@ -258,12 +272,12 @@ func (c *BinanceHTTPClient) unmarshalDepthSnapshot(data []byte, depth *event.Req
 		return levels, nil
 	}
 
-	depth.Bids, err = parseOrderList("\"bids\"")
+	reqDepthSnapshot.Bids, err = parseOrderList("\"bids\"")
 	if err != nil {
 		return err
 	}
 
-	depth.Asks, err = parseOrderList("\"asks\"")
+	reqDepthSnapshot.Asks, err = parseOrderList("\"asks\"")
 	if err != nil {
 		return err
 	}

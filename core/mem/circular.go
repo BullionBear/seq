@@ -81,6 +81,12 @@ func (a *CircularByteArena) ReadSlice(offset uint64, size uint64) []byte {
 	return a.buffer[offset : offset+size]
 }
 
+// GetSlice returns a writable slice at the given offset for publishers to write data into.
+// This should be called after Reserve() to get the buffer slice for serialization.
+func (a *CircularByteArena) GetSlice(offset, size uint64) []byte {
+	return a.buffer[offset : offset+size]
+}
+
 // AdvanceRead updates the read position after consumption.
 // This should be called by the consumer after processing an event.
 func (a *CircularByteArena) AdvanceRead(offset uint64) {

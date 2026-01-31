@@ -53,10 +53,12 @@ func (ems *EMS) SetEventBus(bus *evbus.EventBus) {
 func (ems *EMS) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	switch ev.Ref.DataType {
 	case event.DataTypeOrderUpdate:
-		orderUpdate := bus.ReadOrderUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		ems.onOrderUpdate(orderUpdate)
 	case event.DataTypeFill:
-		fill := bus.ReadFill(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		fill := evbus.DeserializeFill(buf)
 		ems.onFill(fill)
 	}
 }

@@ -111,19 +111,24 @@ func (x *XArb) OnStop() {
 func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
-		snapshot := bus.ReadDepthSnapshot(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		x.OnDepthSnapshot(snapshot)
 	case event.DataTypeDepthUpdate:
-		update := bus.ReadDepthUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		update := evbus.DeserializeDepthUpdate(buf)
 		x.OnDepthUpdate(update)
 	case event.DataTypeTick:
-		tick := bus.ReadTick(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		tick := evbus.DeserializeTick(buf)
 		x.OnTick(tick)
 	case event.DataTypeOrderUpdate:
-		orderUpdate := bus.ReadOrderUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		x.OnOrderUpdate(orderUpdate)
 	case event.DataTypeFill:
-		fill := bus.ReadFill(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		fill := evbus.DeserializeFill(buf)
 		x.OnFill(fill)
 	}
 }

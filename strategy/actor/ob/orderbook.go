@@ -50,13 +50,16 @@ func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	log.Debug().Msgf("Orderbook Actor: Handle called with event type: %d", ev.Ref.DataType)
 	switch ev.Ref.DataType {
 	case event.DataTypeDepthSnapshot:
-		snapshot := bus.ReadDepthSnapshot(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		ob.onDepthSnapshot(snapshot)
 	case event.DataTypeDepthUpdate:
-		update := bus.ReadDepthUpdate(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		update := evbus.DeserializeDepthUpdate(buf)
 		ob.onDepthUpdate(update)
 	case event.DataTypeReqDepthSnapshot:
-		snapshot := bus.ReadReqDepthSnapshot(ev.Ref.Index)
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		ob.onReqDepthSnapshot(snapshot)
 	}
 }
