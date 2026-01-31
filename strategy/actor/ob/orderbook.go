@@ -130,19 +130,42 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 		sob.processBufferedUpdates()
 
 	case StateReady:
-		// Apply directly if sequence is correct
-		if update.PreviousDepthID == sob.DepthID {
+		// For Binance's aggregated diff stream (@depth@100ms):
+		// - PreviousDepthID = U - 1 (one before first update ID)
+		// - CurrentDepthID = u (final update ID in event)
+		// - sob.DepthID stores the last final update ID (prev_u)
+		// Accept updates where: PreviousDepthID <= sob.DepthID < CurrentDepthID
+		// This means: next update's U-1 should be <= our last u
+		if update.PreviousDepthID <= sob.DepthID && update.CurrentDepthID > sob.DepthID {
+			// This update covers our current position - apply it
 			sob.applyUpdate(update)
-		} else if update.PreviousDepthID > sob.DepthID {
-			// We're behind - buffer and wait
-			sob.bufferUpdate(update)
-			log.Warn().
+			log.Debug().
 				Int("symbolID", sob.SymbolID).
-				Int("currentDepthID", sob.DepthID).
+				Int("prevDepthID", update.PreviousDepthID).
+				Int("bookDepthID", sob.DepthID).
+				Int("updateFinalDepthID", update.CurrentDepthID).
+				Msg("SymbolOrderBook: Applied update")
+		} else if update.CurrentDepthID <= sob.DepthID {
+			// Stale update - ignore it
+			log.Debug().
+				Int("symbolID", sob.SymbolID).
+				Int("bookDepthID", sob.DepthID).
+				Int("updateFinalDepthID", update.CurrentDepthID).
+				Msg("SymbolOrderBook: Ignoring stale update")
+		} else {
+			// Future update (PreviousDepthID > sob.DepthID) - we missed some updates
+			// This indicates real data loss - reset and wait for new snapshot
+			gap := update.PreviousDepthID - sob.DepthID
+			log.Error().
+				Int("symbolID", sob.SymbolID).
+				Int("bookDepthID", sob.DepthID).
 				Int("updatePrevDepthID", update.PreviousDepthID).
-				Msg("SymbolOrderBook: Gap detected, buffering update")
+				Int("updateFinalDepthID", update.CurrentDepthID).
+				Int("missedDepthIDs", gap).
+				Msg("SymbolOrderBook: Data loss detected, resetting to WaitForSnapshot")
+			// Reset the orderbook - strategy will request new snapshot
+			sob.Reset()
 		}
-		// If update.PreviousDepthID < sob.DepthID, it's stale - ignore it
 	}
 }
 
@@ -152,9 +175,14 @@ func (sob *SymbolOrderBook) bufferUpdate(update event.DepthUpdate) {
 	bidLevels := sob.convertEventLevels(update.Bids, sob.BidLevelBuffer)
 	askLevels := sob.convertEventLevels(update.Asks, sob.AskLevelBuffer)
 
+	// For Binance:
+	// - PreviousDepthID = U - 1
+	// - DepthID = U (first update ID)
+	// - CurrentDepthID = u (final update ID)
 	bufferedUpdate := DepthUpdateBuffer{
 		PreviousDepthID: update.PreviousDepthID,
-		DepthID:         update.DepthID,
+		FirstDepthID:    update.DepthID,
+		FinalDepthID:    update.CurrentDepthID,
 		Timestamp:       update.Timestamp,
 		Bids:            bidLevels,
 		Asks:            askLevels,
@@ -173,12 +201,15 @@ func (sob *SymbolOrderBook) processBufferedUpdates() {
 		}
 
 		// Check if this update can be applied
-		if update.PreviousDepthID <= sob.DepthID && update.DepthID > sob.DepthID {
+		// For Binance: PreviousDepthID = U-1, FinalDepthID = u
+		// An update is applicable if: PreviousDepthID <= currentDepthID < FinalDepthID
+		// This means the update's range covers our current position
+		if update.PreviousDepthID <= sob.DepthID && update.FinalDepthID > sob.DepthID {
 			// This update is applicable
 			sob.applyBufferedUpdate(update)
 			sob.UpdateBuffer.Pop()
 			processed++
-		} else if update.DepthID <= sob.DepthID {
+		} else if update.FinalDepthID <= sob.DepthID {
 			// Stale update - discard
 			sob.UpdateBuffer.Pop()
 		} else {
@@ -212,7 +243,9 @@ func (sob *SymbolOrderBook) applyUpdate(update event.DepthUpdate) {
 		sob.Asks.Set(priceTick, level.Quantity)
 	}
 
-	sob.DepthID = update.DepthID
+	// Store the FINAL update ID (u) so next update's PreviousDepthID (U-1) can match
+	// For Binance: CurrentDepthID = u (final update ID in event)
+	sob.DepthID = update.CurrentDepthID
 	sob.LastUpdated = update.Timestamp
 }
 
@@ -228,7 +261,8 @@ func (sob *SymbolOrderBook) applyBufferedUpdate(update *DepthUpdateBuffer) {
 		sob.Asks.Set(level.PriceTick, level.Quantity)
 	}
 
-	sob.DepthID = update.DepthID
+	// Store the FINAL update ID (u) so next update's PreviousDepthID (U-1) can match
+	sob.DepthID = update.FinalDepthID
 	sob.LastUpdated = update.Timestamp
 }
 

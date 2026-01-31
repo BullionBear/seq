@@ -30,9 +30,14 @@ type PriceLevel struct {
 }
 
 // DepthUpdateBuffer holds a buffered depth update during sync
+// For Binance depth updates:
+//   - PreviousDepthID = U - 1 (one before first update ID)
+//   - FirstDepthID = U (first update ID in event)
+//   - FinalDepthID = u (final update ID in event)
 type DepthUpdateBuffer struct {
 	PreviousDepthID int
-	DepthID         int
+	FirstDepthID    int
+	FinalDepthID    int
 	Timestamp       uint64
 	Asks            []PriceLevel
 	Bids            []PriceLevel

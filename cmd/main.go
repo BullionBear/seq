@@ -13,12 +13,15 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/engine"
 	"github.com/BullionBear/seq/strategy"
+	"github.com/BullionBear/seq/strategy/actor"
+	"github.com/BullionBear/seq/strategy/impl/obtest"
 	"github.com/BullionBear/seq/strategy/impl/xarb"
 )
 
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("c", "", "Path to configuration file")
+	strategyName := flag.String("s", "xarb", "Strategy to run (xarb, obtest)")
 	flag.Parse()
 
 	// Determine config path: flag takes precedence over environment variable
@@ -29,7 +32,7 @@ func main() {
 	// Exit if no config path provided
 	if *configPath == "" {
 		fmt.Fprintf(os.Stderr, "Error: Configuration file path is required.\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s -c <config-file> or set CONFIG environment variable\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s -c <config-file> [-s <strategy>] or set CONFIG environment variable\n", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -60,6 +63,7 @@ func main() {
 	log.Info().Msg("Build Time: " + env.BuildTime)
 	log.Info().Msg("Commit Hash: " + env.CommitHash)
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
+	log.Info().Msgf("Strategy: %s", *strategyName)
 
 	// Initialize Catelog service (InstrumentCatalog)
 	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
@@ -69,7 +73,17 @@ func main() {
 	}
 	log.Info().Msg("Catalog service initialized successfully")
 
-	strategyImpl := xarb.NewXArb()
+	// Select strategy based on flag
+	var strategyImpl actor.Actor
+	switch *strategyName {
+	case "xarb":
+		strategyImpl = xarb.NewXArb()
+	case "obtest":
+		strategyImpl = obtest.NewOBTest()
+	default:
+		fmt.Fprintf(os.Stderr, "Error: Unknown strategy '%s'. Available strategies: xarb, obtest\n", *strategyName)
+		os.Exit(1)
+	}
 
 	// Create context that cancels on SIGINT (Ctrl+C) or SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
