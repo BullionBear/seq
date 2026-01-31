@@ -157,6 +157,11 @@ func (s *StrategyCommon) IsSymbolReady(symbolID int) bool {
 	return s.orderBook.IsSymbolReady(symbolID)
 }
 
+// GetBookState returns the state of the orderbook for a symbol.
+func (s *StrategyCommon) GetBookState(symbolID int) (ob.BookState, bool) {
+	return s.orderBook.GetBookState(symbolID)
+}
+
 // Public subscription methods
 func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
 	// Get symbol from catalog to get price precision

@@ -2,6 +2,8 @@ package xarb
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog/cpanel"
@@ -10,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/actor"
+	"github.com/BullionBear/seq/strategy/actor/ob"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,19 +26,26 @@ type XArb struct {
 	*strategy.StrategyBase // Embed StrategyBase for Actor + StrategyCommon
 	quotingSymbol          cpanel.Symbol
 	hedgingSymbol          cpanel.Symbol
+
+	// IsBookInFlight tracks whether a snapshot has been requested but not yet received
+	IsBookInFlight map[int]bool // symbolID -> is snapshot requested but not arrived
 }
 
 // NewXArb creates a new XArb strategy.
 func NewXArb() *XArb {
 	return &XArb{
-		StrategyBase:  strategy.NewStrategyBase("xarb"),
-		quotingSymbol: cpanel.Symbol{},
-		hedgingSymbol: cpanel.Symbol{},
+		StrategyBase:   strategy.NewStrategyBase("xarb"),
+		quotingSymbol:  cpanel.Symbol{},
+		hedgingSymbol:  cpanel.Symbol{},
+		IsBookInFlight: make(map[int]bool),
 	}
 }
 
 // OnInit initializes the strategy with configuration.
 func (x *XArb) OnInit() {
+	// Initialize IsBookInFlight map
+	x.IsBookInFlight = make(map[int]bool)
+
 	// Get strategy-specific config from StrategyBase
 	strategyConfig := x.StrategyConfig()
 	if strategyConfig == nil {
@@ -69,6 +79,10 @@ func (x *XArb) OnInit() {
 	log.Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
+
+	// Initialize IsBookInFlight for both symbols
+	x.IsBookInFlight[x.quotingSymbol.ID] = false
+	x.IsBookInFlight[x.hedgingSymbol.ID] = false
 }
 
 // OnStart subscribes to market data and connects.
@@ -78,27 +92,6 @@ func (x *XArb) OnStart() {
 	x.SubscribeDepthUpdate(x.hedgingSymbol.ID)
 	log.Info().Msgf("Subscribed to depth update for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
 	x.Connect(context.Background())
-
-	// Request depth snapshots after connection is established
-	// This initializes the OrderBook state so updates can be applied
-	/*
-		go func() {
-			// Wait a bit for WebSocket to be fully connected
-			time.Sleep(500 * time.Millisecond)
-
-			if err := x.ReqDepthSnapshot(x.quotingSymbol.ID); err != nil {
-				log.Error().Err(err).Msgf("Failed to request depth snapshot for quoting symbol: %d", x.quotingSymbol.ID)
-			} else {
-				log.Info().Msgf("Requested depth snapshot for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
-			}
-
-			if err := x.ReqDepthSnapshot(x.hedgingSymbol.ID); err != nil {
-				log.Error().Err(err).Msgf("Failed to request depth snapshot for hedging symbol: %d", x.hedgingSymbol.ID)
-			} else {
-				log.Info().Msgf("Requested depth snapshot for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
-			}
-		}()
-	*/
 }
 
 // OnStop disconnects from market data.
@@ -130,6 +123,10 @@ func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
 		x.OnFill(fill)
+	case event.DataTypeReqDepthSnapshot:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
+		x.OnReqDepthSnapshot(snapshot)
 	}
 }
 
@@ -140,8 +137,90 @@ func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 
 // OnDepthUpdate processes depth updates.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	log.Info().Msgf("Depth update: %d %d %d %d", update.SymbolID, update.DepthID, len(update.Bids), len(update.Asks))
-	log.Info().Msgf("Depth update timestamp: %s", time.Unix(int64(update.Timestamp/1_000_000_000), int64(update.Timestamp%1_000_000_000)).Format(time.RFC3339Nano))
+	symbolID := update.SymbolID
+
+	// Check orderbook state
+	bookState, exists := x.GetBookState(symbolID)
+	if !exists {
+		log.Warn().Int("symbolID", symbolID).Msg("Orderbook not registered")
+		return
+	}
+
+	// If waiting for snapshot and not already in flight, request snapshot
+	if bookState == ob.StateWaitForSnapshot && !x.IsBookInFlight[symbolID] {
+		log.Info().Int("symbolID", symbolID).Msg("Requesting depth snapshot (orderbook waiting)")
+		if err := x.ReqDepthSnapshot(symbolID); err != nil {
+			log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to request depth snapshot")
+		} else {
+			x.IsBookInFlight[symbolID] = true
+		}
+		return
+	}
+
+	// If ready, print top 5 levels
+	if x.IsSymbolReady(symbolID) {
+		x.printTop5(symbolID)
+	} else {
+		log.Debug().
+			Int("symbolID", symbolID).
+			Str("state", bookState.String()).
+			Bool("inFlight", x.IsBookInFlight[symbolID]).
+			Msg("Depth update received, orderbook not ready")
+	}
+}
+
+// OnReqDepthSnapshot processes the response to a depth snapshot request.
+func (x *XArb) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+	symbolID := snapshot.SymbolID
+	log.Info().
+		Int("symbolID", symbolID).
+		Int("depthID", snapshot.DepthID).
+		Int("asks", len(snapshot.Asks)).
+		Int("bids", len(snapshot.Bids)).
+		Msg("ReqDepthSnapshot received")
+
+	// Clear in-flight flag
+	x.IsBookInFlight[symbolID] = false
+}
+
+// printTop5 prints the top 5 bid and ask levels for a symbol.
+func (x *XArb) printTop5(symbolID int) {
+	bids, asks := x.GetDepth(symbolID, 5)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n=== Orderbook [Symbol %d] ===\n", symbolID))
+	sb.WriteString(fmt.Sprintf("%-12s | %-15s || %-15s | %-12s\n", "Bid Qty", "Bid Price", "Ask Price", "Ask Qty"))
+	sb.WriteString(strings.Repeat("-", 60) + "\n")
+
+	maxLen := len(bids)
+	if len(asks) > maxLen {
+		maxLen = len(asks)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var bidQty, bidPrice, askPrice, askQty string
+
+		if i < len(bids) {
+			bidQty = fmt.Sprintf("%.4f", bids[i].Quantity)
+			bidPrice = fmt.Sprintf("%.4f", bids[i].Price)
+		} else {
+			bidQty = ""
+			bidPrice = ""
+		}
+
+		if i < len(asks) {
+			askPrice = fmt.Sprintf("%.4f", asks[i].Price)
+			askQty = fmt.Sprintf("%.4f", asks[i].Quantity)
+		} else {
+			askPrice = ""
+			askQty = ""
+		}
+
+		sb.WriteString(fmt.Sprintf("%-12s | %-15s || %-15s | %-12s\n", bidQty, bidPrice, askPrice, askQty))
+	}
+
+	sb.WriteString(fmt.Sprintf("Timestamp: %s\n", time.Now().Format(time.RFC3339Nano)))
+	// log.Info().Msg(sb.String())
 }
 
 // OnTick processes tick events.
