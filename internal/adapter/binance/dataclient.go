@@ -28,14 +28,18 @@ const (
 	wsPingWait          = 10 * time.Second
 
 	// Binance stream names
-	streamDepthUpdate = "depth@100ms"
-	streamTrade       = "trade"
+	streamTrade = "trade"
 )
 
-// BinanceSpotDataClient handles Binance spot market data via WebSocket
+// BinanceSpotDataClient handles Binance spot market data via WebSocket and HTTP
+// It provides a unified interface for both real-time streaming data (WebSocket)
+// and on-demand requests (HTTP REST API)
 type BinanceSpotDataClient struct {
 	catalog  *catalog.Catalog
 	eventBus *evbus.EventBus
+
+	// HTTP client for REST API requests (depth snapshots, etc.)
+	httpClient *BinanceHTTPClient
 
 	// WebSocket connection
 	conn     *gws.Conn
@@ -63,10 +67,13 @@ type BinanceSpotDataClient struct {
 }
 
 // NewBinanceSpotDataClient creates a new Binance spot data client
+// It initializes both the WebSocket client for real-time data and the HTTP client for REST API requests
 func NewBinanceSpotDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) *BinanceSpotDataClient {
+	httpClient := NewBinanceHTTPClient(catalog, eventBus)
 	return &BinanceSpotDataClient{
 		catalog:        catalog,
 		eventBus:       eventBus,
+		httpClient:     &httpClient,
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:      make(map[int]struct{}, 64),
 		streamToSymbol: make(map[string]int, 128),
@@ -74,19 +81,20 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus
 }
 
 // SubscribeDepthUpdate subscribes to depth update stream for a symbol
+// If options is nil, defaults to PushRate100ms
 func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, options *DepthSubscriptionOptions) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	opts := &DepthSubscriptionOptions{SymbolID: symbolID}
+	opts := &DepthSubscriptionOptions{PushRate: PushRate100ms}
 	if options != nil {
-		opts.Limit = options.Limit
+		opts.PushRate = options.PushRate
 	}
 	c.depthSubs[symbolID] = opts
 
 	// If already connected, send subscribe message
 	if c.connected.Load() {
-		c.subscribeToStream(symbolID, streamDepthUpdate)
+		c.subscribeToDepthStream(symbolID, opts.PushRate)
 	}
 }
 
@@ -101,6 +109,12 @@ func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int) {
 	if c.connected.Load() {
 		c.subscribeToStream(symbolID, streamTrade)
 	}
+}
+
+// ReqDepth requests a depth snapshot via HTTP REST API
+// This delegates to the internal HTTP client
+func (c *BinanceSpotDataClient) ReqDepthSnapshot(symbolID int, limit int) error {
+	return c.httpClient.ReqDepth(symbolID, limit)
 }
 
 // Connect establishes the WebSocket connection and starts processing
@@ -178,13 +192,13 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 
 	streams := make([]string, 0, len(c.depthSubs)+len(c.tradeSubs))
 
-	for symbolID := range c.depthSubs {
+	for symbolID, opts := range c.depthSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
 		if err != nil {
 			log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
 			continue
 		}
-		streamName := strings.ToLower(symbol.Name) + "@" + streamDepthUpdate
+		streamName := strings.ToLower(symbol.Name) + "@" + opts.PushRate.StreamSuffix()
 		streams = append(streams, streamName)
 
 		c.streamMapLock.Lock()
@@ -229,7 +243,23 @@ func (c *BinanceSpotDataClient) subscribeToStream(symbolID int, streamType strin
 	}
 
 	streamName := strings.ToLower(symbol.Name) + "@" + streamType
+	c.sendSubscription(symbolID, streamName)
+}
 
+// subscribeToDepthStream sends a subscription message for depth stream with specified push rate
+func (c *BinanceSpotDataClient) subscribeToDepthStream(symbolID int, pushRate PushRate) {
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log.Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
+		return
+	}
+
+	streamName := strings.ToLower(symbol.Name) + "@" + pushRate.StreamSuffix()
+	c.sendSubscription(symbolID, streamName)
+}
+
+// sendSubscription sends a subscription message for a stream name
+func (c *BinanceSpotDataClient) sendSubscription(symbolID int, streamName string) {
 	c.streamMapLock.Lock()
 	c.streamToSymbol[streamName] = symbolID
 	c.streamMapLock.Unlock()
@@ -327,12 +357,32 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 
 	switch eventType {
 	case "depthUpdate":
-		streamName := strings.ToLower(symbol) + "@" + streamDepthUpdate
-		c.processStreamMessage(streamName, data)
+		// For single-stream depth updates, find the matching stream in our map
+		// by checking both possible push rates
+		lowerSymbol := strings.ToLower(symbol)
+		streamName := c.findDepthStream(lowerSymbol)
+		if streamName != "" {
+			c.processStreamMessage(streamName, data)
+		}
 	case "trade":
 		streamName := strings.ToLower(symbol) + "@" + streamTrade
 		c.processStreamMessage(streamName, data)
 	}
+}
+
+// findDepthStream finds the depth stream name for a symbol by checking the stream map
+func (c *BinanceSpotDataClient) findDepthStream(lowerSymbol string) string {
+	c.streamMapLock.RLock()
+	defer c.streamMapLock.RUnlock()
+
+	// Check both possible push rates
+	for _, suffix := range []string{PushRate100ms.StreamSuffix(), PushRate1s.StreamSuffix()} {
+		streamName := lowerSymbol + "@" + suffix
+		if _, ok := c.streamToSymbol[streamName]; ok {
+			return streamName
+		}
+	}
+	return ""
 }
 
 // processStreamMessage routes a message to the appropriate handler

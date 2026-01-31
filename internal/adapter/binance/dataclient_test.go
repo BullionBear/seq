@@ -483,7 +483,7 @@ func TestSubscribeDepthUpdate(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	client.SubscribeDepthUpdate(1, nil)
-	client.SubscribeDepthUpdate(2, &DepthSubscriptionOptions{Limit: 100})
+	client.SubscribeDepthUpdate(2, &DepthSubscriptionOptions{PushRate: PushRate1s})
 
 	if len(client.depthSubs) != 2 {
 		t.Errorf("Expected 2 depth subscriptions, got %d", len(client.depthSubs))

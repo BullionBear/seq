@@ -15,7 +15,6 @@ type DataRouter struct {
 	eventBus *evbus.EventBus
 
 	binanceSpotDataClient *binance.BinanceSpotDataClient
-	binanceHTTPClient     binance.BinanceHTTPClient
 	bybitSpotDataClient   bybit.BybitDataClient
 }
 
@@ -24,7 +23,6 @@ func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRout
 		catalog:               catalog,
 		eventBus:              eventBus,
 		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
-		binanceHTTPClient:     binance.NewBinanceHTTPClient(catalog, eventBus),
 		bybitSpotDataClient:   bybit.NewBybitDataClient(),
 	}
 }
@@ -52,7 +50,7 @@ func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		return r.binanceHTTPClient.ReqDepth(symbolID, 1000) // Request 1000 levels
+		return r.binanceSpotDataClient.ReqDepthSnapshot(symbolID, 1000) // Request 1000 levels
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
 		// TODO: Implement Bybit depth snapshot
 		return fmt.Errorf("bybit depth snapshot not implemented")
