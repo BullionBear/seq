@@ -12,6 +12,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	// DefaultPriceLevelBufferSize is the default capacity for price level arenas
+	DefaultPriceLevelBufferSize = 1000
+
+	// DefaultDepthUpdateBufferSize is the default capacity for depth update ring buffers
+	DefaultDepthUpdateBufferSize = 100
+)
+
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure OrderBook implements the Actor interface
@@ -35,8 +43,8 @@ type SymbolOrderBook struct {
 	Asks *OrderedPriceMap // ascending order (best ask = lowest price first)
 
 	// Arenas for zero-copy storage of price levels
-	BidLevelArena *PriceLevelArena
-	AskLevelArena *PriceLevelArena
+	BidLevelArena *mem.SliceArena[PriceLevel]
+	AskLevelArena *mem.SliceArena[PriceLevel]
 
 	// Update buffer (for WaitForSnapshot/Updating states) - SPSC ring buffer
 	UpdateBuffer *mem.SPSCRingBuffer[DepthUpdateBuffer]
@@ -54,8 +62,8 @@ func NewSymbolOrderBook(symbolID int, pricePrecision int) *SymbolOrderBook {
 		DepthID:        0,
 		Bids:           NewOrderedPriceMap(true),  // descending
 		Asks:           NewOrderedPriceMap(false), // ascending
-		BidLevelArena:  NewPriceLevelArena(DefaultPriceLevelBufferSize),
-		AskLevelArena:  NewPriceLevelArena(DefaultPriceLevelBufferSize),
+		BidLevelArena:  mem.NewSliceArena[PriceLevel](DefaultPriceLevelBufferSize),
+		AskLevelArena:  mem.NewSliceArena[PriceLevel](DefaultPriceLevelBufferSize),
 		UpdateBuffer:   mem.NewSPSCRingBuffer[DepthUpdateBuffer](DefaultDepthUpdateBufferSize),
 		LastUpdated:    0,
 	}
@@ -72,7 +80,7 @@ func (sob *SymbolOrderBook) TickToPrice(tick int64) float64 {
 }
 
 // convertEventLevels converts event.PriceLevel slice to internal PriceLevel slice
-func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, arena *PriceLevelArena) []PriceLevel {
+func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, arena *mem.SliceArena[PriceLevel]) []PriceLevel {
 	if len(eventLevels) == 0 {
 		return nil
 	}

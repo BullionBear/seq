@@ -422,6 +422,123 @@ func TestMPSCRingBuffer_NoDuplicates(t *testing.T) {
 }
 
 // =============================================================================
+// Slice Arena Tests
+// =============================================================================
+
+func TestSliceArena_BasicOperations(t *testing.T) {
+	arena := NewSliceArena[int](100)
+
+	// Test initial state
+	if arena.Capacity() != 100 {
+		t.Errorf("Expected capacity 100, got %d", arena.Capacity())
+	}
+
+	// Allocate some items
+	slice1 := arena.Allocate(10)
+	if len(slice1) != 10 {
+		t.Errorf("Expected slice length 10, got %d", len(slice1))
+	}
+
+	// Write to slice
+	for i := range slice1 {
+		slice1[i] = i
+	}
+
+	// Verify values
+	for i := range slice1 {
+		if slice1[i] != i {
+			t.Errorf("Expected slice1[%d] = %d, got %d", i, i, slice1[i])
+		}
+	}
+
+	// Allocate more
+	slice2 := arena.Allocate(20)
+	if len(slice2) != 20 {
+		t.Errorf("Expected slice length 20, got %d", len(slice2))
+	}
+
+	// Slices should not overlap
+	for i := range slice2 {
+		slice2[i] = i + 100
+	}
+
+	// Original slice1 should be unchanged
+	for i := range slice1 {
+		if slice1[i] != i {
+			t.Errorf("slice1 was corrupted: slice1[%d] = %d, expected %d", i, slice1[i], i)
+		}
+	}
+}
+
+func TestSliceArena_WrapAround(t *testing.T) {
+	arena := NewSliceArena[int](100)
+
+	// Fill most of the arena
+	slice1 := arena.Allocate(80)
+	for i := range slice1 {
+		slice1[i] = i
+	}
+
+	// This allocation should wrap to beginning (80 + 30 > 100)
+	slice2 := arena.Allocate(30)
+	if len(slice2) != 30 {
+		t.Errorf("Expected slice length 30, got %d", len(slice2))
+	}
+
+	// Write to slice2
+	for i := range slice2 {
+		slice2[i] = i + 1000
+	}
+
+	// Verify slice2 values
+	for i := range slice2 {
+		if slice2[i] != i+1000 {
+			t.Errorf("Expected slice2[%d] = %d, got %d", i, i+1000, slice2[i])
+		}
+	}
+}
+
+func TestSliceArena_ExactCapacity(t *testing.T) {
+	arena := NewSliceArena[int](50)
+
+	// Request exactly capacity should work
+	slice := arena.Allocate(50)
+	if len(slice) != 50 {
+		t.Errorf("Expected slice length 50, got %d", len(slice))
+	}
+
+	// Write to verify it works
+	for i := range slice {
+		slice[i] = i
+	}
+}
+
+func TestSliceArena_Reset(t *testing.T) {
+	arena := NewSliceArena[int](100)
+
+	// Make some allocations
+	arena.Allocate(50)
+	arena.Allocate(30)
+
+	// Reset
+	arena.Reset()
+
+	// Next allocation should start from beginning
+	slice := arena.Allocate(10)
+	// The slice should start at index 0 (verified by checking the underlying array)
+	for i := range slice {
+		slice[i] = i * 10
+	}
+
+	// Verify
+	for i := range slice {
+		if slice[i] != i*10 {
+			t.Errorf("Expected slice[%d] = %d, got %d", i, i*10, slice[i])
+		}
+	}
+}
+
+// =============================================================================
 // Benchmarks
 // =============================================================================
 

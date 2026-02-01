@@ -276,3 +276,61 @@ func (rb *MPSCRingBuffer[T]) Reset() {
 	atomic.StoreUint64(&rb.write, 0)
 	atomic.StoreUint64(&rb.committed, 0)
 }
+
+// =============================================================================
+// Slice Arena - Circular Arena for Contiguous Slice Allocation
+// =============================================================================
+
+// SliceArena is a circular arena for allocating contiguous slices of type T.
+// It provides zero-allocation storage that can be reused by wrapping around.
+//
+// This is NOT a FIFO queue - it allocates contiguous slices that wrap around
+// when there's not enough space at the end.
+//
+// Use case: Pre-allocate a pool of objects and get slices from it without
+// heap allocations. The returned slices are valid until the arena wraps around.
+//
+// Note: This is single-threaded (not thread-safe).
+type SliceArena[T any] struct {
+	items    []T
+	capacity int
+	writeIdx int
+}
+
+// NewSliceArena creates a new SliceArena with the given capacity.
+func NewSliceArena[T any](capacity int) *SliceArena[T] {
+	return &SliceArena[T]{
+		items:    make([]T, capacity),
+		capacity: capacity,
+		writeIdx: 0,
+	}
+}
+
+// Allocate reserves n consecutive slots and returns a slice to them.
+// The returned slice is valid until the arena wraps around.
+// If n > capacity, the arena wraps to the beginning.
+func (a *SliceArena[T]) Allocate(n int) []T {
+	if n > a.capacity {
+		// If request exceeds capacity, wrap around and start from beginning
+		a.writeIdx = 0
+	}
+
+	// Check if we need to wrap
+	if a.writeIdx+n > a.capacity {
+		a.writeIdx = 0
+	}
+
+	start := a.writeIdx
+	a.writeIdx += n
+	return a.items[start : start+n]
+}
+
+// Reset resets the arena to initial state
+func (a *SliceArena[T]) Reset() {
+	a.writeIdx = 0
+}
+
+// Capacity returns the arena capacity
+func (a *SliceArena[T]) Capacity() int {
+	return a.capacity
+}
