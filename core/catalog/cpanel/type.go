@@ -46,15 +46,26 @@ type SymbolParams struct {
 	QuoteTokenID *int    `json:"quote_token_id,omitempty"`
 }
 
+// APIType represents the type of API authentication
+type APIType string
+
+const (
+	APITypeHMAC    APIType = "HMAC"
+	APITypeRSA     APIType = "RSA"
+	APITypeED25519 APIType = "ED25519"
+)
+
 // Account represents an API key response from the LynxLinkage API
 type Account struct {
 	ID         int       `json:"id"`
 	UserID     int       `json:"user_id"`
 	Exchange   string    `json:"exchange"`
+	UID        string    `json:"uid"`
 	Name       string    `json:"name"`
+	APIType    APIType   `json:"api_type"`
 	APIKey     string    `json:"api_key"`
 	APISecret  string    `json:"api_secret"`
 	Passphrase string    `json:"passphrase"`
-	MasterIs   int       `json:"master_is"`
+	MasterUID  string    `json:"master_uid"`
 	CreatedAt  time.Time `json:"created_at"`
 }
