@@ -8,12 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
-	"github.com/BullionBear/seq/engine"
 	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/actor"
 	"github.com/BullionBear/seq/strategy/impl/obtest"
 	"github.com/BullionBear/seq/strategy/impl/xarb"
 )
@@ -89,7 +88,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	engine := engine.NewEngine(strategyImpl, catalogService)
+	engine := strategy.NewEngine(strategyImpl, catalogService)
 	engine.Init(cfg)
 	engine.Start()
 	go engine.Run(ctx, cfg)

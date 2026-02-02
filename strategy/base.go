@@ -1,9 +1,9 @@
 package strategy
 
 import (
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/strategy/actor"
 )
 
 // Ensure StrategyBase implements the Actor interface
@@ -104,7 +104,7 @@ func (s *StrategyBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
 		s.OnFill(fill)
-	// TODO: Add DataTypeBalanceUpdate when EventBus supports it
+		// TODO: Add DataTypeBalanceUpdate when EventBus supports it
 	}
 }
 

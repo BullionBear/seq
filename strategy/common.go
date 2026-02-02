@@ -3,14 +3,14 @@ package strategy
 import (
 	"context"
 
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/strategy/actor"
-	"github.com/BullionBear/seq/strategy/actor/ob"
 	"github.com/rs/zerolog"
 )
 

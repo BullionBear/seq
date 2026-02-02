@@ -4,11 +4,11 @@ import (
 	"math"
 	"sync"
 
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/strategy/actor"
 	"github.com/rs/zerolog"
 )
 
@@ -26,7 +26,7 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 var _ actor.Actor = (*OrderBook)(nil)
 
 // Ensure OrderBook implements the OrderBookService interface
-var _ actor.OrderBookService = (*OrderBook)(nil)
+var _ OrderBookService = (*OrderBook)(nil)
 
 // SymbolOrderBook maintains the orderbook state for a single symbol.
 type SymbolOrderBook struct {

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/actor"
-	"github.com/BullionBear/seq/strategy/actor/ob"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )

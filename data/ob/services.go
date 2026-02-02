@@ -1,4 +1,4 @@
-package actor
+package ob
 
 import (
 	"github.com/BullionBear/seq/core/model/common"

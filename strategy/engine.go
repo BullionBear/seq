@@ -1,18 +1,13 @@
-package engine
+package strategy
 
 import (
 	"context"
 	"runtime"
 
+	"github.com/BullionBear/seq/actor"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/actor"
-	"github.com/rs/zerolog"
 )
-
-func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Engine orchestrates event dispatching to actors (including strategies).
 // All event-driven components implement the unified Actor interface.
@@ -22,7 +17,7 @@ type Engine struct {
 	eventBus      *evbus.EventBus
 	catalog       *catalog.Catalog
 	strategyActor actor.Actor
-	config        *strategy.StrategyConfig
+	config        *StrategyConfig
 }
 
 // NewEngine creates a new Engine with the given strategy actor and catalog.
@@ -38,22 +33,22 @@ func NewEngine(strat actor.Actor, cat *catalog.Catalog) *Engine {
 // Init initializes the engine and all actors.
 // StrategyCommon internally creates and registers infrastructure actors (OrderBook, EMS)
 // with the EventBus during construction.
-func (e *Engine) Init(config *strategy.StrategyConfig) {
+func (e *Engine) Init(config *StrategyConfig) {
 	e.config = config
 
 	// Create StrategyCommon which internally registers infrastructure actors
-	common := strategy.NewStrategyCommon(e.catalog, e.eventBus)
+	common := NewStrategyCommon(e.catalog, e.eventBus)
 
 	// Inject StrategyCommon into the strategy actor if it supports SetCommon
 	if s, ok := e.strategyActor.(interface {
-		SetCommon(*strategy.StrategyCommon)
+		SetCommon(*StrategyCommon)
 	}); ok {
 		s.SetCommon(common)
 	}
 
 	// Inject config into the strategy actor if it supports SetConfig
 	if s, ok := e.strategyActor.(interface {
-		SetConfig(*strategy.StrategyConfig)
+		SetConfig(*StrategyConfig)
 	}); ok {
 		s.SetConfig(config)
 	}
@@ -78,7 +73,7 @@ func (e *Engine) stop() {
 // Run starts the event loop and processes events until context is cancelled.
 // Events are dispatched to all registered actors.
 // After all consumers process each event, arena memory is released.
-func (e *Engine) Run(ctx context.Context, config *strategy.StrategyConfig) {
+func (e *Engine) Run(ctx context.Context, config *StrategyConfig) {
 	go func() {
 		for {
 			select {
