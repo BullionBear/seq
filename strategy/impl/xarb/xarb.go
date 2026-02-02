@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
@@ -27,26 +26,19 @@ type XArb struct {
 	*strategy.StrategyBase // Embed StrategyBase for Actor + StrategyCommon
 	quotingSymbol          cpanel.Symbol
 	hedgingSymbol          cpanel.Symbol
-
-	// IsBookInFlight tracks whether a snapshot has been requested but not yet received
-	IsBookInFlight map[int]bool // symbolID -> is snapshot requested but not arrived
 }
 
 // NewXArb creates a new XArb strategy.
 func NewXArb() *XArb {
 	return &XArb{
-		StrategyBase:   strategy.NewStrategyBase("xarb"),
-		quotingSymbol:  cpanel.Symbol{},
-		hedgingSymbol:  cpanel.Symbol{},
-		IsBookInFlight: make(map[int]bool),
+		StrategyBase:  strategy.NewStrategyBase("xarb"),
+		quotingSymbol: cpanel.Symbol{},
+		hedgingSymbol: cpanel.Symbol{},
 	}
 }
 
 // OnInit initializes the strategy with configuration.
 func (x *XArb) OnInit() {
-	// Initialize IsBookInFlight map
-	x.IsBookInFlight = make(map[int]bool)
-
 	// Get strategy-specific config from StrategyBase
 	strategyConfig := x.StrategyConfig()
 	if strategyConfig == nil {
@@ -80,10 +72,6 @@ func (x *XArb) OnInit() {
 	log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
-
-	// Initialize IsBookInFlight for both symbols
-	x.IsBookInFlight[x.quotingSymbol.ID] = false
-	x.IsBookInFlight[x.hedgingSymbol.ID] = false
 }
 
 // OnStart subscribes to market data and connects.
@@ -137,6 +125,7 @@ func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 }
 
 // OnDepthUpdate processes depth updates.
+// Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	symbolID := update.SymbolID
 
@@ -147,17 +136,6 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		return
 	}
 
-	// If waiting for snapshot and not already in flight, request snapshot
-	if bookState == ob.StateWaitForSnapshot && !x.IsBookInFlight[symbolID] {
-		log().Info().Int("symbolID", symbolID).Msg("Requesting depth snapshot (orderbook waiting)")
-		if err := x.ReqDepthSnapshot(symbolID); err != nil {
-			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to request depth snapshot")
-		} else {
-			x.IsBookInFlight[symbolID] = true
-		}
-		return
-	}
-
 	// If ready, print top 5 levels
 	if x.IsSymbolReady(symbolID) {
 		x.printTop5(symbolID)
@@ -165,7 +143,6 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		log().Debug().
 			Int("symbolID", symbolID).
 			Str("state", bookState.String()).
-			Bool("inFlight", x.IsBookInFlight[symbolID]).
 			Msg("Depth update received, orderbook not ready")
 	}
 }
@@ -179,9 +156,6 @@ func (x *XArb) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
 		Int("asks", len(snapshot.Asks)).
 		Int("bids", len(snapshot.Bids)).
 		Msg("ReqDepthSnapshot received")
-
-	// Clear in-flight flag
-	x.IsBookInFlight[symbolID] = false
 }
 
 // printTop5 prints the top 5 bid and ask levels for a symbol.

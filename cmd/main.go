@@ -8,10 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/node"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/impl/obtest"
 	"github.com/BullionBear/seq/strategy/impl/xarb"
@@ -88,12 +89,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	engine := strategy.NewEngine(strategyImpl, catalogService)
-	engine.Init(cfg)
-	engine.Start()
-	go engine.Run(ctx, cfg)
+	// Create and initialize the Node
+	n := node.NewNode(catalogService)
+	n.Init(cfg, strategyImpl)
+	n.Start()
+	go n.Run(ctx)
 
 	// Wait for context cancellation (signal)
 	<-ctx.Done()
-	log.Info().Msg("Engine stopped")
+	log.Info().Msg("Node stopped")
 }

@@ -4,7 +4,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"

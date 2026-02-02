@@ -1,7 +1,7 @@
 package strategy
 
 import (
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 )

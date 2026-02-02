@@ -1,43 +1,38 @@
 package strategy
 
 import (
-	"context"
-	"runtime"
-
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/internal/evbus"
 )
 
-// Engine orchestrates event dispatching to actors (including strategies).
-// All event-driven components implement the unified Actor interface.
-// The Engine focuses on the event loop while StrategyCommon manages the trading
-// infrastructure (OrderBook, EMS, etc.) internally via the facade pattern.
+// Engine manages strategy lifecycle.
+// It focuses on strategy initialization and lifecycle management.
+// The event loop is owned by the Node, not the Engine.
 type Engine struct {
-	eventBus      *evbus.EventBus
-	catalog       *catalog.Catalog
 	strategyActor actor.Actor
+	catalog       *catalog.Catalog
+	cache         CacheService
 	config        *StrategyConfig
 }
 
-// NewEngine creates a new Engine with the given strategy actor and catalog.
+// NewEngine creates a new Engine with the given strategy actor, catalog, and cache.
 // The strategy must implement the Actor interface (e.g., by embedding StrategyBase).
-func NewEngine(strat actor.Actor, cat *catalog.Catalog) *Engine {
+func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache CacheService) *Engine {
 	return &Engine{
-		eventBus:      evbus.NewEventBus(),
 		strategyActor: strat,
 		catalog:       cat,
+		cache:         cache,
 	}
 }
 
-// Init initializes the engine and all actors.
-// StrategyCommon internally creates and registers infrastructure actors (OrderBook, EMS)
-// with the EventBus during construction.
-func (e *Engine) Init(config *StrategyConfig) {
+// Init initializes the engine and the strategy actor.
+// It creates StrategyCommon and injects it into the strategy.
+func (e *Engine) Init(config *StrategyConfig, eventBus *evbus.EventBus) {
 	e.config = config
 
-	// Create StrategyCommon which internally registers infrastructure actors
-	common := NewStrategyCommon(e.catalog, e.eventBus)
+	// Create StrategyCommon which wraps the cache
+	common := NewStrategyCommon(e.cache, e.catalog)
 
 	// Inject StrategyCommon into the strategy actor if it supports SetCommon
 	if s, ok := e.strategyActor.(interface {
@@ -54,49 +49,18 @@ func (e *Engine) Init(config *StrategyConfig) {
 	}
 
 	// Register the strategy actor with the EventBus
-	actor.Register(e.eventBus, e.strategyActor)
+	actor.Register(eventBus, e.strategyActor)
 
 	// Call OnInit on the strategy actor
 	e.strategyActor.OnInit()
 }
 
-// Start starts all actors.
+// Start starts the strategy actor.
 func (e *Engine) Start() {
 	e.strategyActor.OnStart()
 }
 
-// stop performs graceful shutdown of all actors.
-func (e *Engine) stop() {
+// Stop performs graceful shutdown of the strategy actor.
+func (e *Engine) Stop() {
 	e.strategyActor.OnStop()
-}
-
-// Run starts the event loop and processes events until context is cancelled.
-// Events are dispatched to all registered actors.
-// After all consumers process each event, arena memory is released.
-func (e *Engine) Run(ctx context.Context, config *StrategyConfig) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				hasWork := e.eventBus.Dispatch()
-				if hasWork {
-					// Update minSequence and release arena memory
-					e.eventBus.Release()
-					e.eventBus.ReleaseArenas()
-				} else {
-					runtime.Gosched()
-				}
-			}
-		}
-	}()
-
-	<-ctx.Done()
-	e.stop()
-}
-
-// EventBus returns the engine's EventBus for external access (e.g., publishing events).
-func (e *Engine) EventBus() *evbus.EventBus {
-	return e.eventBus
 }

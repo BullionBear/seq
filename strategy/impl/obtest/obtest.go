@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BullionBear/seq/actor"
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
@@ -27,9 +26,6 @@ type OBTest struct {
 	*strategy.StrategyBase // Embed StrategyBase for Actor + StrategyCommon
 	symbol                 cpanel.Symbol
 
-	// IsBookInFlight tracks whether a snapshot has been requested but not yet received
-	IsBookInFlight bool
-
 	// Counter for update messages to avoid flooding logs
 	updateCount int
 
@@ -42,10 +38,9 @@ type OBTest struct {
 // NewOBTest creates a new OBTest strategy.
 func NewOBTest() *OBTest {
 	return &OBTest{
-		StrategyBase:   strategy.NewStrategyBase("obtest"),
-		symbol:         cpanel.Symbol{},
-		IsBookInFlight: false,
-		updateCount:    0,
+		StrategyBase: strategy.NewStrategyBase("obtest"),
+		symbol:       cpanel.Symbol{},
+		updateCount:  0,
 	}
 }
 
@@ -162,6 +157,7 @@ func (o *OBTest) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 }
 
 // OnDepthUpdate processes depth updates.
+// Note: Snapshot requests are now handled automatically by DataEngine.
 func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	symbolID := update.SymbolID
 	o.updateCount++
@@ -224,17 +220,6 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 	o.lastReceivedPrevID = receivedPrevID
 	o.lastReceivedDepthID = receivedFinalID // Track final ID (u), not first ID (U)
 
-	// If waiting for snapshot and not already in flight, request snapshot
-	if bookState == ob.StateWaitForSnapshot && !o.IsBookInFlight {
-		log().Info().Int("symbolID", symbolID).Msg("OBTest: Requesting depth snapshot (orderbook waiting)")
-		if err := o.ReqDepthSnapshot(symbolID); err != nil {
-			log().Error().Err(err).Int("symbolID", symbolID).Msg("OBTest: Failed to request depth snapshot")
-		} else {
-			o.IsBookInFlight = true
-		}
-		return
-	}
-
 	// If ready, print orderbook state
 	if o.IsSymbolReady(symbolID) {
 		// Print detailed orderbook every 10 updates to avoid flooding
@@ -248,7 +233,6 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 		log().Debug().
 			Int("symbolID", symbolID).
 			Str("state", bookState.String()).
-			Bool("inFlight", o.IsBookInFlight).
 			Msg("OBTest: Depth update received, orderbook not ready")
 	}
 }
@@ -262,9 +246,6 @@ func (o *OBTest) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
 		Int("asksCount", len(snapshot.Asks)).
 		Int("bidsCount", len(snapshot.Bids)).
 		Msg("OBTest: ReqDepthSnapshot received")
-
-	// Clear in-flight flag
-	o.IsBookInFlight = false
 }
 
 // printSummary prints a brief summary of the orderbook state.
