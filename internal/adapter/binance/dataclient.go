@@ -451,7 +451,7 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	offset, buf := c.eventBus.Allocate(size)
 	evbus.SerializeDepthUpdate(buf, &depthUpdate)
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeDepthUpdate,
+		Topic: event.TopicEventDepthUpdate,
 		Index:    offset,
 		Length:   size,
 	})
@@ -500,7 +500,7 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	offset, buf := c.eventBus.Allocate(size)
 	evbus.SerializeTick(buf, &tick)
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeTick,
+		Topic: event.TopicEventTick,
 		Index:    offset,
 		Length:   size,
 	})

@@ -18,8 +18,8 @@ var _ actor.Actor = (*StrategyBase)(nil)
 // own typed callbacks. See XArb for an example:
 //
 //	func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
-//	    switch ev.Ref.DataType {
-//	    case event.DataTypeDepthUpdate:
+//	    switch ev.Ref.Topic {
+//	    case event.TopicEventDepthUpdate:
 //	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 //	        x.OnDepthUpdate(evbus.DeserializeDepthUpdate(buf))
 //	    // ... etc
@@ -75,7 +75,7 @@ func (s *StrategyBase) Name() string {
 
 // SubscribedTypes returns nil to receive all event types.
 // Strategies typically want to see all events for their trading logic.
-func (s *StrategyBase) SubscribedTypes() []event.DataType {
+func (s *StrategyBase) SubscribedTypes() []event.Topic {
 	return nil // receive all types
 }
 
@@ -83,28 +83,28 @@ func (s *StrategyBase) SubscribedTypes() []event.DataType {
 // Override the specific typed callbacks (OnDepthUpdate, OnTick, etc.)
 // in your strategy implementation.
 func (s *StrategyBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	switch ev.Ref.DataType {
-	case event.DataTypeDepthSnapshot:
+	switch ev.Ref.Topic {
+	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		s.OnDepthSnapshot(snapshot)
-	case event.DataTypeDepthUpdate:
+	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		s.OnDepthUpdate(update)
-	case event.DataTypeTick:
+	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		s.OnTick(tick)
-	case event.DataTypeOrderUpdate:
+	case event.TopicEventOrderUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		s.OnOrderUpdate(orderUpdate)
-	case event.DataTypeFill:
+	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
 		s.OnFill(fill)
-		// TODO: Add DataTypeBalanceUpdate when EventBus supports it
+		// TODO: Add TopicEventBalanceUpdate when EventBus supports it
 	}
 }
 

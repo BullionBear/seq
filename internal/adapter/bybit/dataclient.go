@@ -555,7 +555,7 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 	// Serialize and publish
 	evbus.SerializeDepthSnapshot(buf, &snapshot)
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeDepthSnapshot,
+		Topic: event.TopicEventDepthSnapshot,
 		Index:    offset,
 		Length:   size,
 	})
@@ -586,7 +586,7 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 	// Serialize and publish
 	evbus.SerializeDepthUpdate(buf, &depthUpdate)
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeDepthUpdate,
+		Topic: event.TopicEventDepthUpdate,
 		Index:    offset,
 		Length:   size,
 	})
@@ -638,7 +638,7 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	offset, buf := c.eventBus.Allocate(size)
 	evbus.SerializeTick(buf, &tick)
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeTick,
+		Topic: event.TopicEventTick,
 		Index:    offset,
 		Length:   size,
 	})

@@ -326,9 +326,9 @@ type OrderBook struct {
 // NewOrderBook creates a new OrderBook actor.
 func NewOrderBook() *OrderBook {
 	return &OrderBook{
-		ActorBase: actor.NewActorBase("orderbook", []event.DataType{
-			event.DataTypeDepthSnapshot,
-			event.DataTypeDepthUpdate,
+		ActorBase: actor.NewActorBase("orderbook", []event.Topic{
+			event.TopicEventDepthSnapshot,
+			event.TopicEventDepthUpdate,
 		}),
 		books: make(map[int]*SymbolOrderBook),
 	}
@@ -354,17 +354,17 @@ func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
 
 // Handle processes depth-related events to update the order book state.
 func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	log().Debug().Msgf("Orderbook Actor: Handle called with event type: %d", ev.Ref.DataType)
-	switch ev.Ref.DataType {
-	case event.DataTypeDepthSnapshot:
+	log().Debug().Msgf("Orderbook Actor: Handle called with topic: %d", ev.Ref.Topic)
+	switch ev.Ref.Topic {
+	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		ob.onDepthSnapshot(snapshot)
-	case event.DataTypeDepthUpdate:
+	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		ob.onDepthUpdate(update)
-	case event.DataTypeReqDepthSnapshot:
+	case event.TopicEventReqDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		ob.onReqDepthSnapshot(snapshot)

@@ -289,8 +289,8 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 		t.Fatal("Expected event to be dispatched")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeDepthSnapshot {
-		t.Errorf("Expected DataTypeDepthSnapshot, got %d", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventDepthSnapshot {
+		t.Errorf("Expected TopicEventDepthSnapshot, got %d", receivedEvent.Ref.Topic)
 	}
 }
 
@@ -435,8 +435,8 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 		t.Fatal("Expected event to be dispatched")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeDepthSnapshot {
-		t.Errorf("Expected DataTypeDepthSnapshot, got %d", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventDepthSnapshot {
+		t.Errorf("Expected TopicEventDepthSnapshot, got %d", receivedEvent.Ref.Topic)
 	}
 
 	// Deserialize and verify
@@ -517,8 +517,8 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 		t.Fatal("Expected event to be dispatched")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeDepthUpdate {
-		t.Errorf("Expected DataTypeDepthUpdate, got %d", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventDepthUpdate {
+		t.Errorf("Expected TopicEventDepthUpdate, got %d", receivedEvent.Ref.Topic)
 	}
 
 	// Deserialize and verify

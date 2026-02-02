@@ -9,15 +9,15 @@ import (
 // Embed this in infrastructure actors like OrderBook, EMS.
 // For trading strategies, use StrategyBase instead which provides typed callbacks.
 type ActorBase struct {
-	name  string
-	types []event.DataType
+	name   string
+	topics []event.Topic
 }
 
-// NewActorBase creates a new ActorBase with the given name and subscribed types.
-func NewActorBase(name string, types []event.DataType) ActorBase {
+// NewActorBase creates a new ActorBase with the given name and subscribed topics.
+func NewActorBase(name string, topics []event.Topic) ActorBase {
 	return ActorBase{
-		name:  name,
-		types: types,
+		name:   name,
+		topics: topics,
 	}
 }
 
@@ -26,9 +26,9 @@ func (a *ActorBase) Name() string {
 	return a.name
 }
 
-// SubscribedTypes returns the event types this actor handles.
-func (a *ActorBase) SubscribedTypes() []event.DataType {
-	return a.types
+// SubscribedTypes returns the topics this actor handles.
+func (a *ActorBase) SubscribedTypes() []event.Topic {
+	return a.topics
 }
 
 // Handle is a no-op default. Concrete actors should override this.

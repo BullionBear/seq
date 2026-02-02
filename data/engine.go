@@ -37,9 +37,9 @@ type Engine struct {
 // NewEngine creates a new data engine.
 func NewEngine(cat *catalog.Catalog, eventBus *evbus.EventBus) *Engine {
 	return &Engine{
-		ActorBase: actor.NewActorBase("data-engine", []event.DataType{
-			event.DataTypeDepthUpdate,
-			event.DataTypeReqDepthSnapshot,
+		ActorBase: actor.NewActorBase("data-engine", []event.Topic{
+			event.TopicEventDepthUpdate,
+			event.TopicEventReqDepthSnapshot,
 		}),
 		catalog:          cat,
 		eventBus:         eventBus,
@@ -60,12 +60,12 @@ func (e *Engine) Init() {
 // Handle processes depth-related events.
 // It automatically requests snapshots when orderbook is in WaitForSnapshot state.
 func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	switch ev.Ref.DataType {
-	case event.DataTypeDepthUpdate:
+	switch ev.Ref.Topic {
+	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		e.onDepthUpdate(update)
-	case event.DataTypeReqDepthSnapshot:
+	case event.TopicEventReqDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		e.onReqDepthSnapshot(snapshot)

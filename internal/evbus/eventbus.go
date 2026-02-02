@@ -64,16 +64,16 @@ func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
 	}
 }
 
-// Register adds a consumer to the EventBus with optional type filtering.
-// If types is nil or empty, the consumer will receive all event types.
+// Register adds a consumer to the EventBus with optional topic filtering.
+// If topics is nil or empty, the consumer will receive all topics.
 // Consumers should be registered before calling Dispatch.
-func (e *EventBus) Register(name string, types []event.DataType, handler EventHandler) {
-	consumer := NewConsumer(name, types, handler)
+func (e *EventBus) Register(name string, topics []event.Topic, handler EventHandler) {
+	consumer := NewConsumer(name, topics, handler)
 	e.consumers = append(e.consumers, consumer)
 }
 
 // Dispatch reads the next event from the ring buffer and dispatches it to all
-// consumers whose type filter matches. Returns true if an event was dispatched,
+// consumers whose topic filter matches. Returns true if an event was dispatched,
 // false if the ring buffer is empty.
 // After all consumers process the event, their sequences are updated.
 func (e *EventBus) Dispatch() bool {
@@ -85,9 +85,9 @@ func (e *EventBus) Dispatch() bool {
 		return false
 	}
 
-	// Dispatch to all consumers whose type filter matches
+	// Dispatch to all consumers whose topic filter matches
 	for _, consumer := range e.consumers {
-		if consumer.ShouldHandle(ev.Ref.DataType) {
+		if consumer.ShouldHandle(ev.Ref.Topic) {
 			consumer.Handler(ev)
 		}
 		// Update consumer sequence regardless of whether it handled the event

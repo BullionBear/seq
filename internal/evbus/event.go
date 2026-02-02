@@ -5,9 +5,9 @@ import (
 )
 
 type EventRef struct {
-	DataType event.DataType
-	Index    uint64 // offset in arena
-	Length   uint64 // size of data in bytes
+	Topic  event.Topic
+	Index  uint64 // offset in arena
+	Length uint64 // size of data in bytes
 }
 
 // Event wraps data with metadata. Data is embedded as a value type
@@ -19,36 +19,36 @@ type Event struct {
 	UpdatedAt uint64
 }
 
-// Consumer represents a subscriber to the EventBus with optional type filtering.
+// Consumer represents a subscriber to the EventBus with optional topic filtering.
 // Each consumer tracks its own sequence (last processed event ID) for
 // coordinating arena memory release across multiple consumers.
 type Consumer struct {
-	Name     string                  // unique identifier for this consumer
-	Types    map[event.DataType]bool // subscribed types (nil or empty = all types)
-	Handler  EventHandler            // callback function for handling events
-	Sequence uint64                  // last processed event sequence (EventID)
+	Name     string                // unique identifier for this consumer
+	Topics   map[event.Topic]bool  // subscribed topics (nil or empty = all topics)
+	Handler  EventHandler          // callback function for handling events
+	Sequence uint64                // last processed event sequence (EventID)
 }
 
-// NewConsumer creates a new consumer with the given name, subscribed types, and handler.
-// If types is nil or empty, the consumer will receive all event types.
-func NewConsumer(name string, types []event.DataType, handler EventHandler) *Consumer {
-	typeMap := make(map[event.DataType]bool)
-	for _, t := range types {
-		typeMap[t] = true
+// NewConsumer creates a new consumer with the given name, subscribed topics, and handler.
+// If topics is nil or empty, the consumer will receive all event types.
+func NewConsumer(name string, topics []event.Topic, handler EventHandler) *Consumer {
+	topicMap := make(map[event.Topic]bool)
+	for _, t := range topics {
+		topicMap[t] = true
 	}
 	return &Consumer{
 		Name:     name,
-		Types:    typeMap,
+		Topics:   topicMap,
 		Handler:  handler,
 		Sequence: 0,
 	}
 }
 
-// ShouldHandle returns true if this consumer should handle the given event type.
-// Returns true for all types if the consumer has no type filter (empty Types map).
-func (c *Consumer) ShouldHandle(dataType event.DataType) bool {
-	if len(c.Types) == 0 {
-		return true // no filter, handle all types
+// ShouldHandle returns true if this consumer should handle the given topic.
+// Returns true for all topics if the consumer has no topic filter (empty Topics map).
+func (c *Consumer) ShouldHandle(topic event.Topic) bool {
+	if len(c.Topics) == 0 {
+		return true // no filter, handle all topics
 	}
-	return c.Types[dataType]
+	return c.Topics[topic]
 }

@@ -21,7 +21,7 @@ type Actor interface {
 	// Event subscription
 	// SubscribedTypes returns the event types this actor wants to receive.
 	// Return nil or empty slice to receive all event types.
-	SubscribedTypes() []event.DataType
+	SubscribedTypes() []event.Topic
 
 	// Event handling
 	// Handle processes an event from the EventBus.

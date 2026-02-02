@@ -91,28 +91,28 @@ func (x *XArb) OnStop() {
 // Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
 func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	switch ev.Ref.DataType {
-	case event.DataTypeDepthSnapshot:
+	switch ev.Ref.Topic {
+	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		x.OnDepthSnapshot(snapshot)
-	case event.DataTypeDepthUpdate:
+	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		x.OnDepthUpdate(update)
-	case event.DataTypeTick:
+	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		x.OnTick(tick)
-	case event.DataTypeOrderUpdate:
+	case event.TopicEventOrderUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		x.OnOrderUpdate(orderUpdate)
-	case event.DataTypeFill:
+	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
 		x.OnFill(fill)
-	case event.DataTypeReqDepthSnapshot:
+	case event.TopicEventReqDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		x.OnReqDepthSnapshot(snapshot)

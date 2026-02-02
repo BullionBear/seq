@@ -93,37 +93,37 @@ func (o *OBTest) OnStop() {
 func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	// Log ALL incoming events at the top level for debugging
 	log().Debug().
-		Int("dataType", int(ev.Ref.DataType)).
+		Int("topic", int(ev.Ref.Topic)).
 		Uint64("eventID", ev.EventID).
-		Msgf("OBTest: Handle called with event type: %d", ev.Ref.DataType)
+		Msgf("OBTest: Handle called with topic: %d", ev.Ref.Topic)
 
-	switch ev.Ref.DataType {
-	case event.DataTypeDepthSnapshot:
+	switch ev.Ref.Topic {
+	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeDepthSnapshot(buf)
 		o.OnDepthSnapshot(snapshot)
-	case event.DataTypeDepthUpdate:
+	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		o.OnDepthUpdate(update)
-	case event.DataTypeTick:
+	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		o.OnTick(tick)
-	case event.DataTypeOrderUpdate:
+	case event.TopicEventOrderUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderUpdate := evbus.DeserializeOrderUpdate(buf)
 		o.OnOrderUpdate(orderUpdate)
-	case event.DataTypeFill:
+	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
 		o.OnFill(fill)
-	case event.DataTypeReqDepthSnapshot:
+	case event.TopicEventReqDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
 		o.OnReqDepthSnapshot(snapshot)
 	default:
-		log().Warn().Int("dataType", int(ev.Ref.DataType)).Msg("OBTest: Unknown event type")
+		log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")
 	}
 }
 

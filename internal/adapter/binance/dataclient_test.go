@@ -158,8 +158,8 @@ func TestProcessDepthUpdate(t *testing.T) {
 		t.Fatal("Expected depth update event to be published")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeDepthUpdate {
-		t.Errorf("Expected DataTypeDepthUpdate, got %v", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventDepthUpdate {
+		t.Errorf("Expected TopicEventDepthUpdate, got %v", receivedEvent.Ref.Topic)
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
@@ -233,8 +233,8 @@ func TestProcessTrade(t *testing.T) {
 		t.Fatal("Expected trade event to be published")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeTick {
-		t.Errorf("Expected DataTypeTick, got %v", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
@@ -325,8 +325,8 @@ func TestProcessMessage_CombinedStream(t *testing.T) {
 		t.Fatal("Expected event from combined stream message")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeTick {
-		t.Errorf("Expected DataTypeTick, got %v", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
 	}
 }
 
@@ -365,8 +365,8 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 		t.Fatal("Expected event from single stream message")
 	}
 
-	if receivedEvent.Ref.DataType != event.DataTypeTick {
-		t.Errorf("Expected DataTypeTick, got %v", receivedEvent.Ref.DataType)
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
 	}
 }
 
@@ -694,7 +694,7 @@ loop:
 			break loop
 		default:
 			ok := eb.Poll(func(e evbus.Event) {
-				if e.Ref.DataType == event.DataTypeTick {
+				if e.Ref.Topic == event.TopicEventTick {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
 					tick := evbus.DeserializeTick(buf)
 					t.Logf("Received trade: Price=%.2f, Qty=%.4f, Side=%v",
@@ -758,7 +758,7 @@ loop:
 			break loop
 		default:
 			ok := eb.Poll(func(e evbus.Event) {
-				if e.Ref.DataType == event.DataTypeDepthUpdate {
+				if e.Ref.Topic == event.TopicEventDepthUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
 					depth := evbus.DeserializeDepthUpdate(buf)
 					t.Logf("Received depth update: DepthID=%d, Bids=%d, Asks=%d",
@@ -827,8 +827,8 @@ loop:
 			break loop
 		default:
 			ok := eb.Poll(func(e evbus.Event) {
-				switch e.Ref.DataType {
-				case event.DataTypeTick:
+				switch e.Ref.Topic {
+				case event.TopicEventTick:
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
 					tick := evbus.DeserializeTick(buf)
 					if tick.SymbolID == 1 {
@@ -836,7 +836,7 @@ loop:
 					} else if tick.SymbolID == 2 {
 						ethTrades++
 					}
-				case event.DataTypeDepthUpdate:
+				case event.TopicEventDepthUpdate:
 					depthUpdates++
 				}
 			})

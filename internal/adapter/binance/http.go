@@ -133,7 +133,7 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 
 	// Publish to event bus
 	c.eventBus.Publish(evbus.EventRef{
-		DataType: event.DataTypeDepthSnapshot,
+		Topic: event.TopicEventDepthSnapshot,
 		Index:    offset,
 		Length:   size,
 	})
