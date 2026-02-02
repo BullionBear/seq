@@ -13,7 +13,7 @@ type BalanceUpdate struct {
 	UpdatedAt uint64
 }
 
-type BalanceSnapshot struct {
+type ReqBalanceSnapshot struct {
 	AccountID int
 	Balances  []Balance
 }

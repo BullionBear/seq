@@ -413,3 +413,76 @@ func DeserializeReqDepthSnapshot(buf []byte) event.ReqDepthSnapshot {
 		Bids:      bids,
 	}
 }
+
+// ============================================================================
+// Balance Serialization
+// ============================================================================
+
+// Size constants for balance events
+const (
+	SizeOfBalance = int(unsafe.Sizeof(event.Balance{}))
+
+	// ReqBalanceSnapshot header: AccountID(8) + BalancesLen(4) + padding(4) = 16 bytes
+	SizeOfReqBalanceSnapshotHeader = 16
+)
+
+// ReqBalanceSnapshotSize calculates the total size needed to serialize a ReqBalanceSnapshot.
+func ReqBalanceSnapshotSize(snapshot *event.ReqBalanceSnapshot) uint64 {
+	balancesLen := len(snapshot.Balances)
+	return uint64(SizeOfReqBalanceSnapshotHeader) + uint64(balancesLen)*uint64(SizeOfBalance)
+}
+
+// SerializeReqBalanceSnapshot writes a ReqBalanceSnapshot to the buffer.
+// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Returns the number of bytes written.
+func SerializeReqBalanceSnapshot(buf []byte, snapshot *event.ReqBalanceSnapshot) int {
+	balancesLen := uint32(len(snapshot.Balances))
+	pos := 0
+
+	// AccountID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(snapshot.AccountID))
+	pos += 8
+
+	// BalancesLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], balancesLen)
+	pos += 4
+
+	// Padding (4 bytes) for alignment
+	binary.LittleEndian.PutUint32(buf[pos:], 0)
+	pos += 4
+
+	// Write Balances inline using unsafe
+	for i := range snapshot.Balances {
+		balanceBytes := (*[SizeOfBalance]byte)(unsafe.Pointer(&snapshot.Balances[i]))[:]
+		copy(buf[pos:], balanceBytes)
+		pos += SizeOfBalance
+	}
+
+	return pos
+}
+
+// DeserializeReqBalanceSnapshot reads a ReqBalanceSnapshot from buffer.
+// The returned slice points directly into the buffer - no copy is made.
+func DeserializeReqBalanceSnapshot(buf []byte) event.ReqBalanceSnapshot {
+	pos := 0
+
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
+
+	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
+	pos += 4
+
+	// Skip padding
+	pos += 4
+
+	// Create slice pointing directly into the buffer
+	var balances []event.Balance
+	if balancesLen > 0 {
+		balances = unsafe.Slice((*event.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+	}
+
+	return event.ReqBalanceSnapshot{
+		AccountID: accountID,
+		Balances:  balances,
+	}
+}

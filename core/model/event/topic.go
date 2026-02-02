@@ -12,7 +12,7 @@ const (
 	TopicEventOrderUpdate
 	TopicEventFill
 	// Reconciliation Data
-	TopicEventBalanceSnapshot
+	TopicEventReqBalanceSnapshot
 	TopicEventBalanceUpdate
 	// Command
 	TopicCommandOrderSubmit
