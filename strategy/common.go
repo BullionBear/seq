@@ -10,7 +10,6 @@ import (
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy/actor"
-	"github.com/BullionBear/seq/strategy/actor/ems"
 	"github.com/BullionBear/seq/strategy/actor/ob"
 	"github.com/rs/zerolog"
 )
