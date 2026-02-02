@@ -23,10 +23,10 @@ type Event struct {
 // Each consumer tracks its own sequence (last processed event ID) for
 // coordinating arena memory release across multiple consumers.
 type Consumer struct {
-	Name     string                // unique identifier for this consumer
-	Topics   map[event.Topic]bool  // subscribed topics (nil or empty = all topics)
-	Handler  EventHandler          // callback function for handling events
-	Sequence uint64                // last processed event sequence (EventID)
+	Name     string               // unique identifier for this consumer
+	Topics   map[event.Topic]bool // subscribed topics (nil or empty = all topics)
+	Handler  EventHandler         // callback function for handling events
+	Sequence uint64               // last processed event sequence (EventID)
 }
 
 // NewConsumer creates a new consumer with the given name, subscribed topics, and handler.
