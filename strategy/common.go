@@ -26,7 +26,6 @@ type StrategyCommon struct {
 
 	// Internal actors (facade owns these)
 	orderBook *ob.OrderBook
-	ems       *ems.EMS
 }
 
 // NewStrategyCommon creates a new StrategyCommon with internal actors.
@@ -34,19 +33,15 @@ type StrategyCommon struct {
 func NewStrategyCommon(catalog *catalog.Catalog, eventBus *evbus.EventBus) *StrategyCommon {
 	// Create internal actors
 	orderBook := ob.NewOrderBook()
-	emsActor := ems.NewEMS()
-	emsActor.SetEventBus(eventBus)
 
 	// Register actors with EventBus
 	actor.Register(eventBus, orderBook)
-	actor.Register(eventBus, emsActor)
 
 	return &StrategyCommon{
 		eventBus:   eventBus,
 		catalog:    catalog,
 		dataRouter: adapter.NewDataRouter(catalog, eventBus),
 		orderBook:  orderBook,
-		ems:        emsActor,
 	}
 }
 
@@ -90,56 +85,74 @@ func (s *StrategyCommon) GetSpread(symbolID int) (spread float64, ok bool) {
 
 // SubmitLimitOrder submits a new limit order and returns the client order ID.
 func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) int {
-	req := actor.LimitOrderRequest{
-		AccountID:   acctID,
-		SymbolID:    symbolID,
-		Side:        side,
-		TimeInForce: timeInForce,
-		Quantity:    quantity,
-		Price:       price,
-	}
-	clientOrderID, err := s.ems.SubmitLimitOrder(req)
-	if err != nil {
-		log().Error().Err(err).Msg("Failed to submit limit order")
-		return -1
-	}
-	return clientOrderID
+	/*
+		req := actor.LimitOrderRequest{
+			AccountID:   acctID,
+			SymbolID:    symbolID,
+			Side:        side,
+			TimeInForce: timeInForce,
+			Quantity:    quantity,
+			Price:       price,
+		}
+		clientOrderID, err := s.orderBook.SubmitLimitOrder(req)
+		if err != nil {
+			log().Error().Err(err).Msg("Failed to submit limit order")
+			return -1
+		}
+		return clientOrderID
+	*/
+	return 0
 }
 
 // SubmitMarketOrder submits a new market order and returns the client order ID.
 func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common.Side, quantity float64) int {
-	req := actor.MarketOrderRequest{
-		AccountID: acctID,
-		SymbolID:  symbolID,
-		Side:      side,
-		Quantity:  quantity,
-	}
-	clientOrderID, err := s.ems.SubmitMarketOrder(req)
-	if err != nil {
-		log().Error().Err(err).Msg("Failed to submit market order")
-		return -1
-	}
-	return clientOrderID
+	/*
+		req := actor.MarketOrderRequest{
+			AccountID: acctID,
+			SymbolID:  symbolID,
+			Side:      side,
+			Quantity:  quantity,
+		}
+		clientOrderID, err := s.ems.SubmitMarketOrder(req)
+		if err != nil {
+			log().Error().Err(err).Msg("Failed to submit market order")
+				return -1
+			}
+			return clientOrderID
+	*/
+	return 0
 }
 
 // CancelOrder cancels an existing order.
 func (s *StrategyCommon) CancelOrder(clientOrderID int) error {
-	return s.ems.CancelOrder(clientOrderID)
+	/*
+		return s.ems.CancelOrder(clientOrderID)
+	*/
+	return nil
 }
 
 // GetOrder retrieves an order by its client order ID.
 func (s *StrategyCommon) GetOrder(clientOrderID int) (common.Order, error) {
-	return s.ems.GetOrder(clientOrderID)
+	/*
+		return s.ems.GetOrder(clientOrderID)
+	*/
+	return common.Order{}, nil
 }
 
 // GetOpenOrders returns all currently open orders.
 func (s *StrategyCommon) GetOpenOrders() []common.Order {
-	return s.ems.GetOpenOrders()
+	/*
+		return s.ems.GetOpenOrders()
+	*/
+	return []common.Order{}
 }
 
 // GetOrdersBySymbol returns all orders for a specific symbol.
 func (s *StrategyCommon) GetOrdersBySymbol(symbolID int) []common.Order {
-	return s.ems.GetOrdersBySymbol(symbolID)
+	/*
+		return s.ems.GetOrdersBySymbol(symbolID)
+	*/
+	return []common.Order{}
 }
 
 // Private subscription methods
