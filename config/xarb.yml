@@ -22,13 +22,15 @@ data:
 
 # Execution accounts
 execution:
+  - id: 19
+    account: bybit_lynxapp
   - id: 22
     account: lynxapp_ed25519
-
+  
 # Strategy-specific config
 strategy:
   quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
   hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
   # Account assignments for trading
-  # quoting_account: bybit_account  # Account for quoting (Bybit) - not configured yet
-  hedging_account: lynxapp_ed25519  # Account for hedging (Binance)
+  quoting_account: bybit_lynxapp  # Account for quoting (Bybit) - not configured yet
+  hedging_account: binance_lynxapp  # Account for hedging (Binance)
