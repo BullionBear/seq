@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
-	"github.com/BullionBear/seq/strategy"
+	"gopkg.in/yaml.v3"
 )
 
 // ============================================================================
@@ -660,6 +661,26 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 // Integration Tests
 // ============================================================================
 
+// testConfig is a minimal config struct for integration tests
+type testConfig struct {
+	Catalog struct {
+		BaseURL  string `yaml:"base_url"`
+		APIToken string `yaml:"api_token"`
+	} `yaml:"catalog"`
+}
+
+func loadTestConfig(path string) (*testConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg testConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // TestIntegration_ReqBalanceSnapshot tests requesting balance snapshot via WebSocket API
 // This test requires a valid Ed25519 API key configured in the catalog
 func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
@@ -668,7 +689,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	}
 
 	// Load config to get cpanel credentials
-	cfg, err := strategy.LoadConfig("../../../config/xarb.yml")
+	cfg, err := loadTestConfig("../../../config/xarb.yml")
 	if err != nil {
 		t.Skipf("Skipping test: failed to load config: %v", err)
 	}
@@ -783,7 +804,7 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 	}
 
 	// Load config to get cpanel credentials
-	cfg, err := strategy.LoadConfig("../../../config/xarb.yml")
+	cfg, err := loadTestConfig("../../../config/xarb.yml")
 	if err != nil {
 		t.Skipf("Skipping test: failed to load config: %v", err)
 	}
