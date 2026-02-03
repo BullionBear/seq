@@ -80,6 +80,9 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	// Register data engine as an actor for handling depth events
 	actor.Register(n.eventBus, n.dataEngine)
 
+	// Register portfolio engine as an actor for handling balance events
+	actor.Register(n.eventBus, n.portfolioEngine)
+
 	// Configure data engine with subscriptions from config
 	if len(config.Data) > 0 {
 		if err := n.dataEngine.SetDataConfig(config.Data); err != nil {
@@ -87,7 +90,7 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 		}
 	}
 
-	// Configure execution clients from config
+	// Configure execution and portfolio with accounts from config
 	if len(config.Execution) > 0 {
 		n.setupExecutionClients(config.Execution)
 	}
@@ -140,8 +143,9 @@ func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
 			Msg("Node: Registered execution client")
 	}
 
-	// Set configured accounts on execution engine
+	// Set configured accounts on execution engine and portfolio engine
 	n.executionEngine.SetAccounts(accountIDs)
+	n.portfolioEngine.SetAccounts(accountIDs)
 }
 
 // createExecutionClient creates an execution client for the given account based on exchange.

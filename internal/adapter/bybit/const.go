@@ -8,9 +8,21 @@ const (
 	EndpointOrderbook = "/v5/market/orderbook"
 
 	// WebSocket URLs - Bybit requires separate connections per channel type
-	BaseWsURL       = "wss://stream.bybit.com/v5/public"
-	WsURLSpot       = BaseWsURL + "/spot"
-	WsURLLinear     = BaseWsURL + "/linear"
-	WsURLInverse    = BaseWsURL + "/inverse"
-	WsURLOption     = BaseWsURL + "/option"
+	// Public market data streams (per category)
+	BaseWsURL   = "wss://stream.bybit.com/v5/public"
+	WsURLSpot   = BaseWsURL + "/spot"
+	WsURLLinear = BaseWsURL + "/linear"
+
+	WsURLInverse = BaseWsURL + "/inverse"
+	WsURLOption  = BaseWsURL + "/option"
+
+	// Private WebSocket streams (authentication required)
+	// Private stream: for listening to order updates, executions, wallet updates
+	WsPrivateURL = "wss://stream.bybit.com/v5/private"
+	// Trade stream: for sending orders via WebSocket
+	WsTradeURL = "wss://stream.bybit.com/v5/trade"
+
+	// Testnet WebSocket URLs
+	WsPrivateURLTestnet = "wss://stream-testnet.bybit.com/v5/private"
+	WsTradeURLTestnet   = "wss://stream-testnet.bybit.com/v5/trade"
 )

@@ -3,6 +3,7 @@ package portfolio
 import (
 	"sync"
 
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
@@ -10,6 +11,9 @@ import (
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
+
+// Ensure Engine implements the Actor interface
+var _ actor.Actor = (*Engine)(nil)
 
 // Balance represents the balance for a specific token
 type Balance struct {
@@ -30,6 +34,9 @@ type AccountBalance struct {
 type Engine struct {
 	eventBus *evbus.EventBus
 
+	// Configured account IDs to track
+	accountIDs []int
+
 	// Balances indexed by accountID -> tokenID -> Balance
 	balances map[int]*AccountBalance
 	mu       sync.RWMutex
@@ -38,24 +45,89 @@ type Engine struct {
 // NewEngine creates a new portfolio engine
 func NewEngine(eventBus *evbus.EventBus) *Engine {
 	return &Engine{
-		eventBus: eventBus,
-		balances: make(map[int]*AccountBalance),
+		eventBus:   eventBus,
+		accountIDs: make([]int, 0),
+		balances:   make(map[int]*AccountBalance),
 	}
 }
 
-// Init initializes the portfolio engine
-func (e *Engine) Init() {
+// ============================================================================
+// Actor Interface Implementation
+// ============================================================================
+
+// Name returns the unique identifier for this actor
+func (e *Engine) Name() string {
+	return "PortfolioEngine"
+}
+
+// SubscribedTypes returns the event types this engine wants to receive
+func (e *Engine) SubscribedTypes() []event.Topic {
+	return []event.Topic{
+		event.TopicEventBalanceUpdate,
+		event.TopicEventReqBalanceSnapshot,
+		event.TopicEventFill,
+	}
+}
+
+// Handle processes events from the event bus
+func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
+	switch ev.Ref.Topic {
+	case event.TopicEventBalanceUpdate:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		update := evbus.DeserializeBalanceUpdate(buf)
+		e.OnBalanceUpdate(update)
+	case event.TopicEventReqBalanceSnapshot:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+		e.OnReqBalanceSnapshot(snapshot)
+	case event.TopicEventFill:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		fill := evbus.DeserializeFill(buf)
+		e.OnFill(fill)
+	}
+}
+
+// OnInit is called once when the actor is initialized
+func (e *Engine) OnInit() {
 	log().Debug().Msg("PortfolioEngine initialized")
 }
 
-// Start starts the portfolio engine
-func (e *Engine) Start() {
+// OnStart is called once when the actor is started
+func (e *Engine) OnStart() {
 	log().Debug().Msg("PortfolioEngine started")
 }
 
-// Stop stops the portfolio engine
-func (e *Engine) Stop() {
+// OnStop is called once when the actor is stopped
+func (e *Engine) OnStop() {
 	log().Debug().Msg("PortfolioEngine stopped")
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+// SetAccounts sets the account IDs to track for portfolio management
+func (e *Engine) SetAccounts(accountIDs []int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.accountIDs = accountIDs
+
+	// Pre-initialize account balances
+	for _, acctID := range accountIDs {
+		e.ensureAccountExistsLocked(acctID)
+	}
+
+	log().Info().
+		Ints("accountIDs", accountIDs).
+		Msg("PortfolioEngine: Configured accounts")
+}
+
+// GetConfiguredAccounts returns the list of configured account IDs
+func (e *Engine) GetConfiguredAccounts() []int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.accountIDs
 }
 
 // ============================================================================
@@ -158,7 +230,7 @@ func (e *Engine) SetBalance(acctID int, tokenID int, available float64, locked f
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.ensureAccountExists(acctID)
+	e.ensureAccountExistsLocked(acctID)
 
 	e.balances[acctID].Balances[tokenID] = &Balance{
 		TokenID:   tokenID,
@@ -173,7 +245,7 @@ func (e *Engine) UpdateBalance(acctID int, balance *Balance, updatedAt uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.ensureAccountExists(acctID)
+	e.ensureAccountExistsLocked(acctID)
 
 	e.balances[acctID].Balances[balance.TokenID] = balance
 	e.balances[acctID].UpdatedAt = updatedAt
@@ -188,7 +260,7 @@ func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.ensureAccountExists(ev.AccountID)
+	e.ensureAccountExistsLocked(ev.AccountID)
 
 	// Update all balances from the event
 	for _, b := range ev.Balances {
@@ -212,7 +284,7 @@ func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.ensureAccountExists(ev.AccountID)
+	e.ensureAccountExistsLocked(ev.AccountID)
 
 	// Clear existing balances and set from snapshot
 	e.balances[ev.AccountID].Balances = make(map[int]*Balance)
@@ -251,7 +323,9 @@ func (e *Engine) OnFill(ev event.Fill) {
 // Internal Methods
 // ============================================================================
 
-func (e *Engine) ensureAccountExists(acctID int) {
+// ensureAccountExistsLocked creates account balance entry if not exists.
+// Must be called while holding the lock.
+func (e *Engine) ensureAccountExistsLocked(acctID int) {
 	if _, ok := e.balances[acctID]; !ok {
 		e.balances[acctID] = &AccountBalance{
 			AccountID: acctID,
