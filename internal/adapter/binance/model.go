@@ -34,3 +34,8 @@ func (p PushRate) StreamSuffix() string {
 type DepthSubscriptionOptions struct {
 	PushRate PushRate
 }
+
+// TradeSubscriptionOptions holds options for trade subscription
+type TradeSubscriptionOptions struct {
+	UseAggTrade bool // true for aggTrade stream, false for trade stream
+}

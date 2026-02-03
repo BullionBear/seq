@@ -36,6 +36,9 @@ type Engine struct {
 	router   *adapter.ExecutionRouter
 	eventBus *evbus.EventBus
 
+	// Configured account IDs for execution
+	accountIDs []int
+
 	// Open orders indexed by accountID -> clientOrderID -> OpenOrder
 	openOrders map[int]map[int]*OpenOrder
 	mu         sync.RWMutex
@@ -69,6 +72,27 @@ func (e *Engine) Start() {
 func (e *Engine) Stop() {
 	log().Debug().Msg("ExecutionEngine stopped")
 }
+
+// ============================================================================
+// Config-based Account Setup
+// ============================================================================
+
+// SetAccounts configures account IDs for execution.
+// Execution clients for these accounts should be registered with the router
+// before calling Connect().
+func (e *Engine) SetAccounts(accountIDs []int) {
+	e.accountIDs = accountIDs
+	log().Debug().Ints("accountIDs", accountIDs).Msg("ExecutionEngine: Configured accounts")
+}
+
+// GetConfiguredAccounts returns the configured account IDs.
+func (e *Engine) GetConfiguredAccounts() []int {
+	return e.accountIDs
+}
+
+// ============================================================================
+// Connection Methods
+// ============================================================================
 
 // Connect connects the execution router
 func (e *Engine) Connect(ctx context.Context) error {

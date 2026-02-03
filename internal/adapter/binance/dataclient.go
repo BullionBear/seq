@@ -29,7 +29,8 @@ const (
 	wsPingWait          = 10 * time.Second
 
 	// Binance stream names
-	streamTrade = "trade"
+	streamTrade    = "trade"
+	streamAggTrade = "aggTrade"
 )
 
 // BinanceSpotDataClient handles Binance spot market data via WebSocket and HTTP
@@ -48,7 +49,7 @@ type BinanceSpotDataClient struct {
 
 	// Subscription management
 	depthSubs map[int]*DepthSubscriptionOptions // symbolID -> options
-	tradeSubs map[int]struct{}                  // symbolID -> exists
+	tradeSubs map[int]*TradeSubscriptionOptions // symbolID -> options
 	subsLock  sync.RWMutex
 
 	// Stream to symbolID mapping for fast lookup during message processing
@@ -76,7 +77,7 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus
 		eventBus:       eventBus,
 		httpClient:     &httpClient,
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
-		tradeSubs:      make(map[int]struct{}, 64),
+		tradeSubs:      make(map[int]*TradeSubscriptionOptions, 64),
 		streamToSymbol: make(map[string]int, 128),
 	}
 }
@@ -107,15 +108,24 @@ func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, options *Dept
 }
 
 // SubscribeTrade subscribes to trade stream for a symbol
-func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int) {
+// If options is nil, defaults to regular trade stream (not aggTrade)
+func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int, options *TradeSubscriptionOptions) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	c.tradeSubs[symbolID] = struct{}{}
+	opts := &TradeSubscriptionOptions{UseAggTrade: false}
+	if options != nil {
+		opts.UseAggTrade = options.UseAggTrade
+	}
+	c.tradeSubs[symbolID] = opts
 
 	// If already connected, send subscribe message
 	if c.connected.Load() {
-		c.subscribeToStream(symbolID, streamTrade)
+		stream := streamTrade
+		if opts.UseAggTrade {
+			stream = streamAggTrade
+		}
+		c.subscribeToStream(symbolID, stream)
 	}
 }
 
@@ -214,13 +224,17 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 		c.streamMapLock.Unlock()
 	}
 
-	for symbolID := range c.tradeSubs {
+	for symbolID, opts := range c.tradeSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
 		if err != nil {
 			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for trade subscription")
 			continue
 		}
-		streamName := strings.ToLower(symbol.Name) + "@" + streamTrade
+		stream := streamTrade
+		if opts != nil && opts.UseAggTrade {
+			stream = streamAggTrade
+		}
+		streamName := strings.ToLower(symbol.Name) + "@" + stream
 		streams = append(streams, streamName)
 
 		c.streamMapLock.Lock()
@@ -375,6 +389,9 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 	case "trade":
 		streamName := strings.ToLower(symbol) + "@" + streamTrade
 		c.processStreamMessage(streamName, data)
+	case "aggTrade":
+		streamName := strings.ToLower(symbol) + "@" + streamAggTrade
+		c.processStreamMessage(streamName, data)
 	}
 }
 
@@ -451,9 +468,9 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	offset, buf := c.eventBus.Allocate(size)
 	evbus.SerializeDepthUpdate(buf, &depthUpdate)
 	c.eventBus.Publish(evbus.EventRef{
-		Topic: event.TopicEventDepthUpdate,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventDepthUpdate,
+		Index:  offset,
+		Length: size,
 	})
 }
 
@@ -500,9 +517,9 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	offset, buf := c.eventBus.Allocate(size)
 	evbus.SerializeTick(buf, &tick)
 	c.eventBus.Publish(evbus.EventRef{
-		Topic: event.TopicEventTick,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventTick,
+		Index:  offset,
+		Length: size,
 	})
 }
 

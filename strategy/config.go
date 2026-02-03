@@ -7,9 +7,36 @@ import (
 )
 
 type StrategyConfig struct {
-	Logger   ConfigLogger   `yaml:"logger"`
-	Catalog  ConfigCatalog  `yaml:"catalog"`
-	Strategy map[string]any `yaml:"strategy"`
+	Logger    ConfigLogger    `yaml:"logger"`
+	Catalog   ConfigCatalog   `yaml:"catalog"`
+	Data      []ConfigDataSub `yaml:"data"`      // Data subscriptions (flat list, per-symbol)
+	Execution ConfigExecution `yaml:"execution"` // Execution accounts
+	Strategy  map[string]any  `yaml:"strategy"`
+}
+
+// ConfigDataSub is per-symbol data subscription config
+type ConfigDataSub struct {
+	Symbol   string       `yaml:"symbol"`             // Universal ticker (required)
+	Endpoint string       `yaml:"endpoint,omitempty"` // Regional endpoint: bybit, bybit_tr, bybit_eu
+	Depth    *ConfigDepth `yaml:"depth,omitempty"`    // Depth subscription options
+	Trade    *ConfigTrade `yaml:"trade,omitempty"`    // Trade subscription options
+}
+
+// ConfigDepth configures depth stream subscription
+type ConfigDepth struct {
+	Type     string `yaml:"type,omitempty"`      // delta, snapshot, depth5, depth10, depth20 (binance)
+	PushRate string `yaml:"push_rate,omitempty"` // 100ms, 1000ms (binance)
+	Levels   int    `yaml:"levels,omitempty"`    // 1, 50, 200, 500 (bybit)
+}
+
+// ConfigTrade configures trade stream subscription
+type ConfigTrade struct {
+	Type string `yaml:"type,omitempty"` // trade, aggTrade
+}
+
+// ConfigExecution contains execution account configuration
+type ConfigExecution struct {
+	Accounts []string `yaml:"accounts"` // Account names to connect
 }
 
 // ConfigCatalog contains catalog configuration

@@ -1,8 +1,6 @@
 package strategy
 
 import (
-	"context"
-
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
@@ -17,6 +15,7 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // CacheService is the interface that Node's Cache implements.
 // This interface is defined here to avoid circular imports.
+// Note: Subscription and connection methods are removed - engines handle this via config.
 type CacheService interface {
 	// OrderBook queries
 	GetBestBid(symbolID int) (price, qty float64, ok bool)
@@ -45,14 +44,6 @@ type CacheService interface {
 	SubmitOrder(acctID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) (int, error)
 	CancelOrder(acctID int, clientOrderID int) error
 	CancelAllOrders(acctID int, symbolID int) error
-
-	// Subscriptions
-	SubscribeDepthUpdate(symbolID int)
-	SubscribeTick(symbolID int)
-
-	// Connections
-	Connect(ctx context.Context)
-	Disconnect()
 
 	// Catalog access
 	GetCatalog() interface{}
@@ -193,28 +184,4 @@ func (s *StrategyCommon) GetAccountBalances(acctID int) *portfolio.AccountBalanc
 // HasSufficientBalance checks if an account has sufficient available balance.
 func (s *StrategyCommon) HasSufficientBalance(acctID int, tokenID int, amount float64) bool {
 	return s.cache.HasSufficientBalance(acctID, tokenID, amount)
-}
-
-// ============================================================================
-// Public Subscription Methods (delegated to Cache)
-// ============================================================================
-
-func (s *StrategyCommon) SubscribeDepthUpdate(symbolID int) {
-	s.cache.SubscribeDepthUpdate(symbolID)
-}
-
-func (s *StrategyCommon) SubscribeTick(symbolID int) {
-	s.cache.SubscribeTick(symbolID)
-}
-
-// ============================================================================
-// Operations Methods (delegated to Cache)
-// ============================================================================
-
-func (s *StrategyCommon) Connect(ctx context.Context) {
-	s.cache.Connect(ctx)
-}
-
-func (s *StrategyCommon) Disconnect() {
-	s.cache.Disconnect()
 }

@@ -10,6 +10,19 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 )
 
+// DepthOptions contains generic depth subscription options
+// These are translated to exchange-specific options by the router
+type DepthOptions struct {
+	Type     string // delta, snapshot, depth5, depth10, depth20 (binance)
+	PushRate string // 100ms, 1000ms (binance)
+	Levels   int    // 1, 50, 200, 500 (bybit)
+}
+
+// TradeOptions contains generic trade subscription options
+type TradeOptions struct {
+	Type string // trade, aggTrade
+}
+
 type DataRouter struct {
 	catalog  *catalog.Catalog
 	eventBus *evbus.EventBus
@@ -27,20 +40,61 @@ func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRout
 	}
 }
 
-func (r *DataRouter) SubscribeDepthUpdate(symbolID int) error {
+// SubscribeDepthUpdate subscribes to depth updates for a symbol with options
+func (r *DataRouter) SubscribeDepthUpdate(symbolID int, opts *DepthOptions) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, nil)
+		binanceOpts := r.toBinanceDepthOptions(opts)
+		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, binanceOpts)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
-		r.bybitDataClient.SubscribeDepthUpdate(symbolID, nil)
+		bybitOpts := r.toBybitDepthOptions(opts)
+		r.bybitDataClient.SubscribeDepthUpdate(symbolID, bybitOpts)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
 	return nil
+}
+
+// toBinanceDepthOptions converts generic DepthOptions to Binance-specific options
+func (r *DataRouter) toBinanceDepthOptions(opts *DepthOptions) *binance.DepthSubscriptionOptions {
+	if opts == nil {
+		return nil
+	}
+	binanceOpts := &binance.DepthSubscriptionOptions{}
+	switch opts.PushRate {
+	case "100ms":
+		binanceOpts.PushRate = binance.PushRate100ms
+	case "1000ms", "1s":
+		binanceOpts.PushRate = binance.PushRate1s
+	default:
+		binanceOpts.PushRate = binance.PushRate100ms // default
+	}
+	return binanceOpts
+}
+
+// toBybitDepthOptions converts generic DepthOptions to Bybit-specific options
+func (r *DataRouter) toBybitDepthOptions(opts *DepthOptions) *bybit.DepthSubscriptionOptions {
+	if opts == nil {
+		return nil
+	}
+	bybitOpts := &bybit.DepthSubscriptionOptions{}
+	switch opts.Levels {
+	case 1:
+		bybitOpts.Depth = bybit.DepthLevel1
+	case 50:
+		bybitOpts.Depth = bybit.DepthLevel50
+	case 200:
+		bybitOpts.Depth = bybit.DepthLevel200
+	case 500, 1000:
+		bybitOpts.Depth = bybit.DepthLevel1000
+	default:
+		bybitOpts.Depth = bybit.DepthLevel50 // default
+	}
+	return bybitOpts
 }
 
 func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
@@ -58,20 +112,37 @@ func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 	}
 }
 
-func (r *DataRouter) SubscribeTrade(symbolID int) error {
+// SubscribeTrade subscribes to trade updates for a symbol with options
+func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
 	symbol, err := r.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
 	switch {
 	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
-		r.binanceSpotDataClient.SubscribeTrade(symbolID)
+		binanceOpts := r.toBinanceTradeOptions(opts)
+		r.binanceSpotDataClient.SubscribeTrade(symbolID, binanceOpts)
 	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
 		r.bybitDataClient.SubscribeTrade(symbolID)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
 	}
 	return nil
+}
+
+// toBinanceTradeOptions converts generic TradeOptions to Binance-specific options
+func (r *DataRouter) toBinanceTradeOptions(opts *TradeOptions) *binance.TradeSubscriptionOptions {
+	if opts == nil {
+		return nil
+	}
+	binanceOpts := &binance.TradeSubscriptionOptions{}
+	switch opts.Type {
+	case "aggTrade":
+		binanceOpts.UseAggTrade = true
+	default:
+		binanceOpts.UseAggTrade = false
+	}
+	return binanceOpts
 }
 
 func (r *DataRouter) Connect(ctx context.Context) error {

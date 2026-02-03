@@ -1,8 +1,6 @@
 package node
 
 import (
-	"context"
-
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/data"
@@ -182,40 +180,6 @@ func (c *Cache) CancelAllOrders(acctID int, symbolID int) error {
 		return &CacheError{Msg: "execution engine not available"}
 	}
 	return c.executionEngine.CancelAllOrders(acctID, symbolID)
-}
-
-// ============================================================================
-// Subscription Methods (delegated to DataEngine)
-// ============================================================================
-
-// SubscribeDepthUpdate subscribes to depth updates for a symbol.
-func (c *Cache) SubscribeDepthUpdate(symbolID int) {
-	c.dataEngine.SubscribeDepthUpdate(symbolID)
-}
-
-// SubscribeTick subscribes to tick updates for a symbol.
-func (c *Cache) SubscribeTick(symbolID int) {
-	c.dataEngine.SubscribeTick(symbolID)
-}
-
-// ============================================================================
-// Connection Methods
-// ============================================================================
-
-// Connect connects to all data sources and execution.
-func (c *Cache) Connect(ctx context.Context) {
-	c.dataEngine.Connect(ctx)
-	if c.executionEngine != nil {
-		_ = c.executionEngine.Connect(ctx)
-	}
-}
-
-// Disconnect disconnects from all data sources and execution.
-func (c *Cache) Disconnect() {
-	c.dataEngine.Disconnect()
-	if c.executionEngine != nil {
-		c.executionEngine.Disconnect()
-	}
 }
 
 // ============================================================================
