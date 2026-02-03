@@ -1160,13 +1160,17 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 	case "pong":
 		return
 	case "auth":
-		success, _ := jsonparser.GetBoolean(data, "success")
-		if success {
+		// Trade websocket returns retCode:0 for success, not success:true
+		retCode, _ := jsonparser.GetInt(data, "retCode")
+		if retCode == 0 {
 			c.authenticated.Store(true)
 			log().Info().Int("accountID", c.accountID).Msg("Order entry authenticated")
 		} else {
-			retMsg, _ := jsonparser.GetString(data, "ret_msg")
-			log().Error().Str("msg", retMsg).Msg("Order entry authentication failed")
+			retMsg, _ := jsonparser.GetString(data, "retMsg")
+			log().Error().
+				Str("msg", retMsg).
+				Int64("retCode", retCode).
+				Msg("Order entry authentication failed")
 		}
 	case "order.create", "order.cancel", "order.cancelAll":
 		// Order operation response - check success
@@ -1209,4 +1213,99 @@ func (h *wsOrderEntryHandler) OnMessage(socket *gws.Conn, message *gws.Message) 
 	defer message.Close()
 	_ = socket.SetDeadline(time.Now().Add(wsExecPingInterval + wsExecPingWait))
 	h.client.processMessage(message.Bytes())
+}
+
+// ============================================================================
+// BybitExecutionClient - Unified Wrapper for ExecutionClient Interface
+// ============================================================================
+
+// BybitExecutionClient wraps BybitPrivateStreamClient and BybitOrderEntryClient
+// to implement the ExecutionClient interface for use with ExecutionRouter.
+// It coordinates between the two underlying clients:
+// - BybitPrivateStreamClient: for receiving order updates, executions, and wallet updates
+// - BybitOrderEntryClient: for sending orders via WebSocket
+type BybitExecutionClient struct {
+	privateStream *BybitPrivateStreamClient
+	orderEntry    *BybitOrderEntryClient
+
+	// Client order ID counter for generating unique order link IDs
+	clientOrderID atomic.Int64
+}
+
+// NewBybitExecutionClient creates a new Bybit execution client that wraps
+// both the private stream and order entry clients
+func NewBybitExecutionClient(catalog *catalog.Catalog, eventBus *evbus.EventBus, accountID int) (*BybitExecutionClient, error) {
+	privateStream, err := NewBybitPrivateStreamClient(catalog, eventBus, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	orderEntry, err := NewBybitOrderEntryClient(catalog, eventBus, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BybitExecutionClient{
+		privateStream: privateStream,
+		orderEntry:    orderEntry,
+	}, nil
+}
+
+// Connect establishes connections for both private stream and order entry
+func (c *BybitExecutionClient) Connect(ctx context.Context) error {
+	// Connect private stream first (for receiving updates)
+	if err := c.privateStream.Connect(ctx); err != nil {
+		return err
+	}
+
+	// Connect order entry (for sending orders)
+	if err := c.orderEntry.Connect(ctx); err != nil {
+		// Disconnect private stream if order entry fails
+		c.privateStream.Disconnect()
+		return err
+	}
+
+	return nil
+}
+
+// Disconnect closes connections for both private stream and order entry
+func (c *BybitExecutionClient) Disconnect() {
+	c.orderEntry.Disconnect()
+	c.privateStream.Disconnect()
+}
+
+// SubscribeUserDataStream subscribes to user data stream for account updates
+// This subscribes to order, execution, and wallet topics on the private stream
+func (c *BybitExecutionClient) SubscribeUserDataStream() error {
+	// Subscribe to all relevant private stream topics
+	return c.privateStream.Subscribe([]string{"order", "execution", "wallet"})
+}
+
+// SubmitOrder submits a new order via the order entry WebSocket
+// Generates a unique clientOrderID internally
+func (c *BybitExecutionClient) SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
+	// Generate unique client order ID
+	clientOrderID := int(c.clientOrderID.Add(1))
+	return c.orderEntry.SubmitOrder(symbolID, clientOrderID, side, orderType, timeInForce, price, quantity)
+}
+
+// CancelOrder cancels an order by orderID via the order entry WebSocket
+// Note: Bybit uses string orderIDs, so we convert int to string
+func (c *BybitExecutionClient) CancelOrder(symbolID int, orderID int) error {
+	return c.orderEntry.CancelOrder(symbolID, strconv.Itoa(orderID))
+}
+
+// CancelAllOrders cancels all open orders for a symbol via the order entry WebSocket
+func (c *BybitExecutionClient) CancelAllOrders(symbolID int) error {
+	return c.orderEntry.CancelAllOrders(symbolID)
+}
+
+// PrivateStream returns the underlying private stream client for advanced usage
+func (c *BybitExecutionClient) PrivateStream() *BybitPrivateStreamClient {
+	return c.privateStream
+}
+
+// OrderEntry returns the underlying order entry client for advanced usage
+func (c *BybitExecutionClient) OrderEntry() *BybitOrderEntryClient {
+	return c.orderEntry
 }
