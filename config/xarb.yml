@@ -20,9 +20,10 @@ data:
     depth:
       levels: 50
 
-# Execution accounts (empty for now)
+# Execution accounts
 execution:
-  accounts: []
+  - id: 22
+    account: lynxapp_ed25519
 
 # Strategy-specific config
 strategy:

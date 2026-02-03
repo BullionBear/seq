@@ -34,9 +34,13 @@ type ConfigTrade struct {
 	Type string `yaml:"type,omitempty"` // trade, aggTrade
 }
 
-// ConfigExecution contains execution account configuration
-type ConfigExecution struct {
-	Accounts []string `yaml:"accounts"` // Account names to connect
+// ConfigExecution is a list of execution account configs
+type ConfigExecution []ConfigExecutionAccount
+
+// ConfigExecutionAccount contains configuration for a single execution account
+type ConfigExecutionAccount struct {
+	ID      int    `yaml:"id"`      // Account ID (optional, can be resolved from name)
+	Account string `yaml:"account"` // Account name to look up in catalog
 }
 
 // ConfigCatalog contains catalog configuration
