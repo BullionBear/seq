@@ -9,6 +9,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
+	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
@@ -30,6 +31,9 @@ type Node struct {
 	portfolioEngine *portfolio.Engine
 	executionEngine *execution.Engine
 
+	// Execution router for managing execution clients
+	executionRouter *adapter.ExecutionRouter
+
 	// Strategy
 	strategyEngine *strategy.Engine
 
@@ -41,14 +45,17 @@ type Node struct {
 func NewNode(cat *catalog.Catalog) *Node {
 	eventBus := evbus.NewEventBus()
 
+	// Create execution router
+	executionRouter := adapter.NewExecutionRouter()
+
 	// Create engines
 	dataEngine := data.NewEngine(cat, eventBus)
 	riskEngine := risk.NewEngine()
-	portfolioEngine := portfolio.NewEngine()
-	executionEngine := execution.NewEngine()
+	portfolioEngine := portfolio.NewEngine(eventBus)
+	executionEngine := execution.NewEngine(executionRouter, eventBus)
 
-	// Create cache
-	cache := NewCache(dataEngine)
+	// Create cache with all engines
+	cache := NewCache(dataEngine, executionEngine, portfolioEngine)
 
 	return &Node{
 		eventBus:        eventBus,
@@ -57,6 +64,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		riskEngine:      riskEngine,
 		portfolioEngine: portfolioEngine,
 		executionEngine: executionEngine,
+		executionRouter: executionRouter,
 		cache:           cache,
 	}
 }
@@ -125,4 +133,19 @@ func (n *Node) Cache() *Cache {
 // DataEngine returns the data engine.
 func (n *Node) DataEngine() *data.Engine {
 	return n.dataEngine
+}
+
+// ExecutionRouter returns the execution router for registering execution clients.
+func (n *Node) ExecutionRouter() *adapter.ExecutionRouter {
+	return n.executionRouter
+}
+
+// ExecutionEngine returns the execution engine.
+func (n *Node) ExecutionEngine() *execution.Engine {
+	return n.executionEngine
+}
+
+// PortfolioEngine returns the portfolio engine.
+func (n *Node) PortfolioEngine() *portfolio.Engine {
+	return n.portfolioEngine
 }

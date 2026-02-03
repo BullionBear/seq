@@ -8,6 +8,8 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/data/ob"
+	"github.com/BullionBear/seq/execution"
+	"github.com/BullionBear/seq/portfolio"
 	"github.com/rs/zerolog"
 )
 
@@ -24,6 +26,25 @@ type CacheService interface {
 	GetSpread(symbolID int) (spread float64, ok bool)
 	IsSymbolReady(symbolID int) bool
 	GetBookState(symbolID int) (ob.BookState, bool)
+
+	// Execution queries
+	GetOpenOrder(acctID int, clientOrderID int) *execution.OpenOrder
+	GetOpenOrdersByAccount(acctID int) []*execution.OpenOrder
+	GetOpenOrdersBySymbol(acctID int, symbolID int) []*execution.OpenOrder
+	OpenOrderCount(acctID int) int
+
+	// Portfolio queries
+	GetBalance(acctID int, tokenID int) *portfolio.Balance
+	GetAvailable(acctID int, tokenID int) float64
+	GetLocked(acctID int, tokenID int) float64
+	GetTotal(acctID int, tokenID int) float64
+	GetAccountBalances(acctID int) *portfolio.AccountBalance
+	HasSufficientBalance(acctID int, tokenID int, amount float64) bool
+
+	// Order submission
+	SubmitOrder(acctID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) (int, error)
+	CancelOrder(acctID int, clientOrderID int) error
+	CancelAllOrders(acctID int, symbolID int) error
 
 	// Subscriptions
 	SubscribeDepthUpdate(symbolID int)
@@ -97,59 +118,81 @@ func (s *StrategyCommon) GetBookState(symbolID int) (ob.BookState, bool) {
 }
 
 // ============================================================================
-// Order Management Methods (stub - will be delegated to Execution Engine)
+// Order Management Methods (delegated to Execution Engine via Cache)
 // ============================================================================
 
 // SubmitLimitOrder submits a new limit order and returns the client order ID.
-func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) int {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return 0
+func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) (int, error) {
+	return s.cache.SubmitOrder(acctID, symbolID, side, common.OrderTypeLimit, timeInForce, price, quantity)
 }
 
 // SubmitMarketOrder submits a new market order and returns the client order ID.
-func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common.Side, quantity float64) int {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return 0
+func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common.Side, quantity float64) (int, error) {
+	return s.cache.SubmitOrder(acctID, symbolID, side, common.OrderTypeMarket, common.TimeInForceGTC, 0, quantity)
 }
 
 // CancelOrder cancels an existing order.
-func (s *StrategyCommon) CancelOrder(clientOrderID int) error {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return nil
+func (s *StrategyCommon) CancelOrder(acctID int, clientOrderID int) error {
+	return s.cache.CancelOrder(acctID, clientOrderID)
 }
 
-// GetOrder retrieves an order by its client order ID.
-func (s *StrategyCommon) GetOrder(clientOrderID int) (common.Order, error) {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return common.Order{}, nil
+// CancelAllOrders cancels all open orders for a symbol.
+func (s *StrategyCommon) CancelAllOrders(acctID int, symbolID int) error {
+	return s.cache.CancelAllOrders(acctID, symbolID)
 }
 
-// GetOpenOrders returns all currently open orders.
-func (s *StrategyCommon) GetOpenOrders() []common.Order {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return []common.Order{}
+// GetOpenOrder retrieves an open order by account ID and client order ID.
+func (s *StrategyCommon) GetOpenOrder(acctID int, clientOrderID int) *execution.OpenOrder {
+	return s.cache.GetOpenOrder(acctID, clientOrderID)
 }
 
-// GetOrdersBySymbol returns all orders for a specific symbol.
-func (s *StrategyCommon) GetOrdersBySymbol(symbolID int) []common.Order {
-	// TODO: Delegate to ExecutionEngine via Cache
-	return []common.Order{}
+// GetOpenOrders returns all currently open orders for an account.
+func (s *StrategyCommon) GetOpenOrders(acctID int) []*execution.OpenOrder {
+	return s.cache.GetOpenOrdersByAccount(acctID)
+}
+
+// GetOpenOrdersBySymbol returns all open orders for an account and symbol.
+func (s *StrategyCommon) GetOpenOrdersBySymbol(acctID int, symbolID int) []*execution.OpenOrder {
+	return s.cache.GetOpenOrdersBySymbol(acctID, symbolID)
+}
+
+// OpenOrderCount returns the number of open orders for an account.
+func (s *StrategyCommon) OpenOrderCount(acctID int) int {
+	return s.cache.OpenOrderCount(acctID)
 }
 
 // ============================================================================
-// Private Subscription Methods (stub)
+// Portfolio Methods (delegated to Portfolio Engine via Cache)
 // ============================================================================
 
-func (s *StrategyCommon) SubscribeOrderUpdate(acctID int) {
-	// TODO: Delegate to ExecutionEngine via Cache
+// GetBalance returns the balance for a specific account and token.
+func (s *StrategyCommon) GetBalance(acctID int, tokenID int) *portfolio.Balance {
+	return s.cache.GetBalance(acctID, tokenID)
 }
 
-func (s *StrategyCommon) SubscribeBalanceUpdate(acctID int) {
-	// TODO: Delegate to PortfolioEngine via Cache
+// GetAvailable returns the available balance for a specific account and token.
+func (s *StrategyCommon) GetAvailable(acctID int, tokenID int) float64 {
+	return s.cache.GetAvailable(acctID, tokenID)
 }
 
-func (s *StrategyCommon) SubscribeOrderFill(acctID int) {
-	// TODO: Delegate to ExecutionEngine via Cache
+// GetLocked returns the locked balance for a specific account and token.
+func (s *StrategyCommon) GetLocked(acctID int, tokenID int) float64 {
+	return s.cache.GetLocked(acctID, tokenID)
+}
+
+// GetTotalBalance returns the total balance for a specific account and token.
+func (s *StrategyCommon) GetTotalBalance(acctID int, tokenID int) float64 {
+	return s.cache.GetTotal(acctID, tokenID)
+}
+
+// GetAccountBalances returns all balances for an account.
+func (s *StrategyCommon) GetAccountBalances(acctID int) *portfolio.AccountBalance {
+	return s.cache.GetAccountBalances(acctID)
+}
+
+// HasSufficientBalance checks if an account has sufficient available balance.
+func (s *StrategyCommon) HasSufficientBalance(acctID int, tokenID int, amount float64) bool {
+	return s.cache.HasSufficientBalance(acctID, tokenID, amount)
 }
 
 // ============================================================================

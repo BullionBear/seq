@@ -9,6 +9,27 @@ catalog:
   base_url: https://capi.lynxlinkage.com
   api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidXNlcm5hbWUiOiJlZGR5IiwiZW1haWwiOiJlZGR5QGx5bnhsaW5rYWdlLmNvbSIsImlzX2FjdGl2ZSI6dHJ1ZSwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODUyOTk3MzEsImlhdCI6MTc2OTkzOTczMS4xOTk5NjUsImp0aSI6InpMWTFWX1VuUTZFIn0.juriLjvquoqAZXEXGZy0zhojbEqOK63btaJ0MezZLiE
 
-strategy:
-  quoting_symbol_universal_ticker: BYBIT_SPOT_ETHUSDT
-  hedging_symbol_universal_ticker: BINANCE_SPOT_ETHUSDT
+engine:
+  data:
+    subscriptions:
+      binance:
+        orderbook_update: 
+          - symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+          - push_rate: 100ms
+      bybit:
+        orderbook_update:
+          - symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+        
+  execution:
+    account:
+      - id: 1
+        name: Binance
+        api_key: binance_api_key
+        api_secret: binance_api_secret
+      - id: 2
+        name: Bybit
+        api_key: bybit_api_key
+        api_secret: bybit_api_secret
+  strategy:
+    quoting_symbol_universal_ticker: BYBIT_SPOT_ETHUSDT
+    hedging_symbol_universal_ticker: BINANCE_SPOT_ETHUSDT
