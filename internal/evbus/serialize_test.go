@@ -189,42 +189,126 @@ func BenchmarkDeserializeReqBalanceSnapshot(b *testing.B) {
 }
 
 // ============================================================================
-// Tests for OrderUpdate Serialization (existing but adding for completeness)
+// Tests for Order Event Serialization
 // ============================================================================
 
-func TestSerializeDeserializeOrderUpdate(t *testing.T) {
-	orderUpdate := event.OrderUpdate{
+func TestSerializeDeserializeOrderAccepted(t *testing.T) {
+	e := event.OrderAccepted{
 		ClientOrderID: 12345,
 		OrderID:       67890,
-		OrderStatus:   2, // PartiallyFilled
+		CreatedAt:     1672531200000000000,
+	}
+
+	size := OrderAcceptedSize()
+	buf := make([]byte, size)
+
+	written := SerializeOrderAccepted(buf, &e)
+	if uint64(written) != size {
+		t.Errorf("SerializeOrderAccepted wrote %d bytes, expected %d", written, size)
+	}
+
+	result := DeserializeOrderAccepted(buf)
+
+	if result.ClientOrderID != e.ClientOrderID {
+		t.Errorf("ClientOrderID mismatch: got %d, want %d", result.ClientOrderID, e.ClientOrderID)
+	}
+	if result.OrderID != e.OrderID {
+		t.Errorf("OrderID mismatch: got %d, want %d", result.OrderID, e.OrderID)
+	}
+	if result.CreatedAt != e.CreatedAt {
+		t.Errorf("CreatedAt mismatch: got %d, want %d", result.CreatedAt, e.CreatedAt)
+	}
+}
+
+func TestSerializeDeserializeOrderPartiallyFilled(t *testing.T) {
+	e := event.OrderPartiallyFilled{
+		ClientOrderID: 12345,
+		OrderID:       67890,
 		ExecutedQty:   0.5,
 		UpdatedAt:     1672531200000000000,
 	}
 
-	size := OrderUpdateSize()
+	size := OrderPartiallyFilledSize()
 	buf := make([]byte, size)
 
-	written := SerializeOrderUpdate(buf, &orderUpdate)
+	written := SerializeOrderPartiallyFilled(buf, &e)
 	if uint64(written) != size {
-		t.Errorf("SerializeOrderUpdate wrote %d bytes, expected %d", written, size)
+		t.Errorf("SerializeOrderPartiallyFilled wrote %d bytes, expected %d", written, size)
 	}
 
-	result := DeserializeOrderUpdate(buf)
+	result := DeserializeOrderPartiallyFilled(buf)
 
-	if result.ClientOrderID != orderUpdate.ClientOrderID {
-		t.Errorf("ClientOrderID mismatch: got %d, want %d", result.ClientOrderID, orderUpdate.ClientOrderID)
+	if result.ClientOrderID != e.ClientOrderID {
+		t.Errorf("ClientOrderID mismatch: got %d, want %d", result.ClientOrderID, e.ClientOrderID)
 	}
-	if result.OrderID != orderUpdate.OrderID {
-		t.Errorf("OrderID mismatch: got %d, want %d", result.OrderID, orderUpdate.OrderID)
+	if result.OrderID != e.OrderID {
+		t.Errorf("OrderID mismatch: got %d, want %d", result.OrderID, e.OrderID)
 	}
-	if result.OrderStatus != orderUpdate.OrderStatus {
-		t.Errorf("OrderStatus mismatch: got %d, want %d", result.OrderStatus, orderUpdate.OrderStatus)
+	if result.ExecutedQty != e.ExecutedQty {
+		t.Errorf("ExecutedQty mismatch: got %f, want %f", result.ExecutedQty, e.ExecutedQty)
 	}
-	if result.ExecutedQty != orderUpdate.ExecutedQty {
-		t.Errorf("ExecutedQty mismatch: got %f, want %f", result.ExecutedQty, orderUpdate.ExecutedQty)
+	if result.UpdatedAt != e.UpdatedAt {
+		t.Errorf("UpdatedAt mismatch: got %d, want %d", result.UpdatedAt, e.UpdatedAt)
 	}
-	if result.UpdatedAt != orderUpdate.UpdatedAt {
-		t.Errorf("UpdatedAt mismatch: got %d, want %d", result.UpdatedAt, orderUpdate.UpdatedAt)
+}
+
+func TestSerializeDeserializeOrderFilled(t *testing.T) {
+	e := event.OrderFilled{
+		ClientOrderID: 12345,
+		OrderID:       67890,
+		ExecutedQty:   1.0,
+		UpdatedAt:     1672531200000000000,
+	}
+
+	size := OrderFilledSize()
+	buf := make([]byte, size)
+
+	written := SerializeOrderFilled(buf, &e)
+	if uint64(written) != size {
+		t.Errorf("SerializeOrderFilled wrote %d bytes, expected %d", written, size)
+	}
+
+	result := DeserializeOrderFilled(buf)
+
+	if result.ClientOrderID != e.ClientOrderID {
+		t.Errorf("ClientOrderID mismatch: got %d, want %d", result.ClientOrderID, e.ClientOrderID)
+	}
+	if result.OrderID != e.OrderID {
+		t.Errorf("OrderID mismatch: got %d, want %d", result.OrderID, e.OrderID)
+	}
+	if result.ExecutedQty != e.ExecutedQty {
+		t.Errorf("ExecutedQty mismatch: got %f, want %f", result.ExecutedQty, e.ExecutedQty)
+	}
+	if result.UpdatedAt != e.UpdatedAt {
+		t.Errorf("UpdatedAt mismatch: got %d, want %d", result.UpdatedAt, e.UpdatedAt)
+	}
+}
+
+func TestSerializeDeserializeOrderCanceled(t *testing.T) {
+	e := event.OrderCanceled{
+		ClientOrderID: 12345,
+		OrderID:       67890,
+		UpdatedAt:     1672531200000000000,
+	}
+
+	size := OrderCanceledSize()
+	buf := make([]byte, size)
+
+	written := SerializeOrderCanceled(buf, &e)
+	if uint64(written) != size {
+		t.Errorf("SerializeOrderCanceled wrote %d bytes, expected %d", written, size)
+	}
+
+	result := DeserializeOrderCanceled(buf)
+
+	if result.ClientOrderID != e.ClientOrderID {
+		t.Errorf("ClientOrderID mismatch: got %d, want %d", result.ClientOrderID, e.ClientOrderID)
+	}
+	if result.OrderID != e.OrderID {
+		t.Errorf("OrderID mismatch: got %d, want %d", result.OrderID, e.OrderID)
+	}
+	if result.UpdatedAt != e.UpdatedAt {
+		t.Errorf("UpdatedAt mismatch: got %d, want %d", result.UpdatedAt, e.UpdatedAt)
 	}
 }
 
@@ -277,5 +361,191 @@ func TestSerializeDeserializeFill(t *testing.T) {
 	}
 	if result.FilledAt != fill.FilledAt {
 		t.Errorf("FilledAt mismatch: got %d, want %d", result.FilledAt, fill.FilledAt)
+	}
+}
+
+// ============================================================================
+// Tests for BalanceUpdate Serialization
+// ============================================================================
+
+func TestBalanceUpdateSize(t *testing.T) {
+	tests := []struct {
+		name   string
+		update event.BalanceUpdate
+	}{
+		{
+			name: "empty balances",
+			update: event.BalanceUpdate{
+				AccountID: 1,
+				Balances:  nil,
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+		{
+			name: "single balance",
+			update: event.BalanceUpdate{
+				AccountID: 1,
+				Balances: []event.Balance{
+					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+				},
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+		{
+			name: "multiple balances",
+			update: event.BalanceUpdate{
+				AccountID: 123,
+				Balances: []event.Balance{
+					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
+					{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
+				},
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			size := BalanceUpdateSize(&tt.update)
+			expectedSize := uint64(SizeOfBalanceUpdateHeader) + uint64(len(tt.update.Balances))*uint64(SizeOfBalance)
+			if size != expectedSize {
+				t.Errorf("BalanceUpdateSize() = %d, want %d", size, expectedSize)
+			}
+		})
+	}
+}
+
+func TestSerializeDeserializeBalanceUpdate(t *testing.T) {
+	tests := []struct {
+		name   string
+		update event.BalanceUpdate
+	}{
+		{
+			name: "empty balances",
+			update: event.BalanceUpdate{
+				AccountID: 1,
+				Balances:  []event.Balance{},
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+		{
+			name: "single balance",
+			update: event.BalanceUpdate{
+				AccountID: 42,
+				Balances: []event.Balance{
+					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+				},
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+		{
+			name: "multiple balances",
+			update: event.BalanceUpdate{
+				AccountID: 123,
+				Balances: []event.Balance{
+					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
+					{TokenID: 3, Available: 100.12345678, Locked: 50.87654321, Total: 150.99999999},
+				},
+				UpdatedAt: 1672531200000000000,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Calculate size and allocate buffer
+			size := BalanceUpdateSize(&tt.update)
+			buf := make([]byte, size)
+
+			// Serialize
+			written := SerializeBalanceUpdate(buf, &tt.update)
+			if uint64(written) != size {
+				t.Errorf("SerializeBalanceUpdate wrote %d bytes, expected %d", written, size)
+			}
+
+			// Deserialize
+			result := DeserializeBalanceUpdate(buf)
+
+			// Verify AccountID
+			if result.AccountID != tt.update.AccountID {
+				t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, tt.update.AccountID)
+			}
+
+			// Verify UpdatedAt
+			if result.UpdatedAt != tt.update.UpdatedAt {
+				t.Errorf("UpdatedAt mismatch: got %d, want %d", result.UpdatedAt, tt.update.UpdatedAt)
+			}
+
+			// Verify balances count
+			if len(result.Balances) != len(tt.update.Balances) {
+				t.Fatalf("Balances count mismatch: got %d, want %d", len(result.Balances), len(tt.update.Balances))
+			}
+
+			// Verify each balance
+			for i := range tt.update.Balances {
+				expected := tt.update.Balances[i]
+				actual := result.Balances[i]
+
+				if actual.TokenID != expected.TokenID {
+					t.Errorf("Balance[%d].TokenID mismatch: got %d, want %d", i, actual.TokenID, expected.TokenID)
+				}
+				if actual.Available != expected.Available {
+					t.Errorf("Balance[%d].Available mismatch: got %f, want %f", i, actual.Available, expected.Available)
+				}
+				if actual.Locked != expected.Locked {
+					t.Errorf("Balance[%d].Locked mismatch: got %f, want %f", i, actual.Locked, expected.Locked)
+				}
+				if actual.Total != expected.Total {
+					t.Errorf("Balance[%d].Total mismatch: got %f, want %f", i, actual.Total, expected.Total)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkSerializeBalanceUpdate(b *testing.B) {
+	update := event.BalanceUpdate{
+		AccountID: 123,
+		Balances: []event.Balance{
+			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
+			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
+		},
+		UpdatedAt: 1672531200000000000,
+	}
+
+	size := BalanceUpdateSize(&update)
+	buf := make([]byte, size)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		SerializeBalanceUpdate(buf, &update)
+	}
+}
+
+func BenchmarkDeserializeBalanceUpdate(b *testing.B) {
+	update := event.BalanceUpdate{
+		AccountID: 123,
+		Balances: []event.Balance{
+			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
+			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
+			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
+		},
+		UpdatedAt: 1672531200000000000,
+	}
+
+	size := BalanceUpdateSize(&update)
+	buf := make([]byte, size)
+	SerializeBalanceUpdate(buf, &update)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = DeserializeBalanceUpdate(buf)
 	}
 }

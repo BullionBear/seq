@@ -9,10 +9,18 @@ import (
 
 // Size constants for fixed-size event types
 const (
-	SizeOfTick        = int(unsafe.Sizeof(event.Tick{}))
-	SizeOfOrderUpdate = int(unsafe.Sizeof(event.OrderUpdate{}))
-	SizeOfFill        = int(unsafe.Sizeof(event.Fill{}))
-	SizeOfPriceLevel  = int(unsafe.Sizeof(event.PriceLevel{}))
+	SizeOfTick       = int(unsafe.Sizeof(event.Tick{}))
+	SizeOfPriceLevel = int(unsafe.Sizeof(event.PriceLevel{}))
+
+	// Order event sizes
+	SizeOfOrderUnknownStatus   = int(unsafe.Sizeof(event.OrderUnknownStatus{}))
+	SizeOfOrderError           = int(unsafe.Sizeof(event.OrderError{}))
+	SizeOfOrderAccepted        = int(unsafe.Sizeof(event.OrderAccepted{}))
+	SizeOfOrderPartiallyFilled = int(unsafe.Sizeof(event.OrderPartiallyFilled{}))
+	SizeOfOrderFilled          = int(unsafe.Sizeof(event.OrderFilled{}))
+	SizeOfOrderCanceled        = int(unsafe.Sizeof(event.OrderCanceled{}))
+	SizeOfOrderRejected        = int(unsafe.Sizeof(event.OrderRejected{}))
+	SizeOfFill                 = int(unsafe.Sizeof(event.Fill{}))
 
 	// Header sizes for variable-size events (without slice data)
 	// DepthUpdate: SymbolID(8) + PreviousDepthID(8) + DepthID(8) + CurrentDepthID(8) + NextDepthID(8) + Timestamp(8) = 48 bytes
@@ -42,22 +50,127 @@ func DeserializeTick(buf []byte) event.Tick {
 	return *(*event.Tick)(unsafe.Pointer(&buf[0]))
 }
 
-// OrderUpdateSize returns the size needed to serialize an OrderUpdate event.
-func OrderUpdateSize() uint64 {
-	return uint64(SizeOfOrderUpdate)
+// ============================================================================
+// Order Event Serialization
+// ============================================================================
+
+// OrderAcceptedSize returns the size needed to serialize an OrderAccepted event.
+func OrderAcceptedSize() uint64 {
+	return uint64(SizeOfOrderAccepted)
 }
 
-// SerializeOrderUpdate writes an OrderUpdate to the buffer using unsafe pointer casting.
-// Returns the number of bytes written.
-func SerializeOrderUpdate(buf []byte, orderUpdate *event.OrderUpdate) int {
-	data := (*[SizeOfOrderUpdate]byte)(unsafe.Pointer(orderUpdate))[:]
+// SerializeOrderAccepted writes an OrderAccepted to the buffer.
+func SerializeOrderAccepted(buf []byte, e *event.OrderAccepted) int {
+	data := (*[SizeOfOrderAccepted]byte)(unsafe.Pointer(e))[:]
 	copy(buf, data)
-	return SizeOfOrderUpdate
+	return SizeOfOrderAccepted
 }
 
-// DeserializeOrderUpdate reads an OrderUpdate from buffer using unsafe pointer casting.
-func DeserializeOrderUpdate(buf []byte) event.OrderUpdate {
-	return *(*event.OrderUpdate)(unsafe.Pointer(&buf[0]))
+// DeserializeOrderAccepted reads an OrderAccepted from buffer.
+func DeserializeOrderAccepted(buf []byte) event.OrderAccepted {
+	return *(*event.OrderAccepted)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderPartiallyFilledSize returns the size needed to serialize an OrderPartiallyFilled event.
+func OrderPartiallyFilledSize() uint64 {
+	return uint64(SizeOfOrderPartiallyFilled)
+}
+
+// SerializeOrderPartiallyFilled writes an OrderPartiallyFilled to the buffer.
+func SerializeOrderPartiallyFilled(buf []byte, e *event.OrderPartiallyFilled) int {
+	data := (*[SizeOfOrderPartiallyFilled]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderPartiallyFilled
+}
+
+// DeserializeOrderPartiallyFilled reads an OrderPartiallyFilled from buffer.
+func DeserializeOrderPartiallyFilled(buf []byte) event.OrderPartiallyFilled {
+	return *(*event.OrderPartiallyFilled)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderFilledSize returns the size needed to serialize an OrderFilled event.
+func OrderFilledSize() uint64 {
+	return uint64(SizeOfOrderFilled)
+}
+
+// SerializeOrderFilled writes an OrderFilled to the buffer.
+func SerializeOrderFilled(buf []byte, e *event.OrderFilled) int {
+	data := (*[SizeOfOrderFilled]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderFilled
+}
+
+// DeserializeOrderFilled reads an OrderFilled from buffer.
+func DeserializeOrderFilled(buf []byte) event.OrderFilled {
+	return *(*event.OrderFilled)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderCanceledSize returns the size needed to serialize an OrderCanceled event.
+func OrderCanceledSize() uint64 {
+	return uint64(SizeOfOrderCanceled)
+}
+
+// SerializeOrderCanceled writes an OrderCanceled to the buffer.
+func SerializeOrderCanceled(buf []byte, e *event.OrderCanceled) int {
+	data := (*[SizeOfOrderCanceled]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderCanceled
+}
+
+// DeserializeOrderCanceled reads an OrderCanceled from buffer.
+func DeserializeOrderCanceled(buf []byte) event.OrderCanceled {
+	return *(*event.OrderCanceled)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderRejectedSize returns the size needed to serialize an OrderRejected event.
+func OrderRejectedSize() uint64 {
+	return uint64(SizeOfOrderRejected)
+}
+
+// SerializeOrderRejected writes an OrderRejected to the buffer.
+func SerializeOrderRejected(buf []byte, e *event.OrderRejected) int {
+	data := (*[SizeOfOrderRejected]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderRejected
+}
+
+// DeserializeOrderRejected reads an OrderRejected from buffer.
+func DeserializeOrderRejected(buf []byte) event.OrderRejected {
+	return *(*event.OrderRejected)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderUnknownStatusSize returns the size needed to serialize an OrderUnknownStatus event.
+func OrderUnknownStatusSize() uint64 {
+	return uint64(SizeOfOrderUnknownStatus)
+}
+
+// SerializeOrderUnknownStatus writes an OrderUnknownStatus to the buffer.
+func SerializeOrderUnknownStatus(buf []byte, e *event.OrderUnknownStatus) int {
+	data := (*[SizeOfOrderUnknownStatus]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderUnknownStatus
+}
+
+// DeserializeOrderUnknownStatus reads an OrderUnknownStatus from buffer.
+func DeserializeOrderUnknownStatus(buf []byte) event.OrderUnknownStatus {
+	return *(*event.OrderUnknownStatus)(unsafe.Pointer(&buf[0]))
+}
+
+// OrderErrorSize returns the size needed to serialize an OrderError event.
+func OrderErrorSize() uint64 {
+	return uint64(SizeOfOrderError)
+}
+
+// SerializeOrderError writes an OrderError to the buffer.
+func SerializeOrderError(buf []byte, e *event.OrderError) int {
+	data := (*[SizeOfOrderError]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfOrderError
+}
+
+// DeserializeOrderError reads an OrderError from buffer.
+func DeserializeOrderError(buf []byte) event.OrderError {
+	return *(*event.OrderError)(unsafe.Pointer(&buf[0]))
 }
 
 // FillSize returns the size needed to serialize a Fill event.
@@ -484,5 +597,83 @@ func DeserializeReqBalanceSnapshot(buf []byte) event.ReqBalanceSnapshot {
 	return event.ReqBalanceSnapshot{
 		AccountID: accountID,
 		Balances:  balances,
+	}
+}
+
+// ============================================================================
+// BalanceUpdate Serialization
+// ============================================================================
+
+const (
+	// BalanceUpdate header: AccountID(8) + UpdatedAt(8) + BalancesLen(4) + padding(4) = 24 bytes
+	SizeOfBalanceUpdateHeader = 24
+)
+
+// BalanceUpdateSize calculates the total size needed to serialize a BalanceUpdate.
+func BalanceUpdateSize(update *event.BalanceUpdate) uint64 {
+	balancesLen := len(update.Balances)
+	return uint64(SizeOfBalanceUpdateHeader) + uint64(balancesLen)*uint64(SizeOfBalance)
+}
+
+// SerializeBalanceUpdate writes a BalanceUpdate to the buffer.
+// Layout: [AccountID(8)][UpdatedAt(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Returns the number of bytes written.
+func SerializeBalanceUpdate(buf []byte, update *event.BalanceUpdate) int {
+	balancesLen := uint32(len(update.Balances))
+	pos := 0
+
+	// AccountID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(update.AccountID))
+	pos += 8
+
+	// UpdatedAt (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], update.UpdatedAt)
+	pos += 8
+
+	// BalancesLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], balancesLen)
+	pos += 4
+
+	// Padding (4 bytes) for alignment
+	binary.LittleEndian.PutUint32(buf[pos:], 0)
+	pos += 4
+
+	// Write Balances inline using unsafe
+	for i := range update.Balances {
+		balanceBytes := (*[SizeOfBalance]byte)(unsafe.Pointer(&update.Balances[i]))[:]
+		copy(buf[pos:], balanceBytes)
+		pos += SizeOfBalance
+	}
+
+	return pos
+}
+
+// DeserializeBalanceUpdate reads a BalanceUpdate from buffer.
+// The returned slice points directly into the buffer - no copy is made.
+func DeserializeBalanceUpdate(buf []byte) event.BalanceUpdate {
+	pos := 0
+
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
+
+	updatedAt := binary.LittleEndian.Uint64(buf[pos:])
+	pos += 8
+
+	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
+	pos += 4
+
+	// Skip padding
+	pos += 4
+
+	// Create slice pointing directly into the buffer
+	var balances []event.Balance
+	if balancesLen > 0 {
+		balances = unsafe.Slice((*event.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+	}
+
+	return event.BalanceUpdate{
+		AccountID: accountID,
+		Balances:  balances,
+		UpdatedAt: updatedAt,
 	}
 }

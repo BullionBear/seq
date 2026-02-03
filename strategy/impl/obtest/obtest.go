@@ -110,10 +110,6 @@ func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		o.OnTick(tick)
-	case event.TopicEventOrderUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderUpdate := evbus.DeserializeOrderUpdate(buf)
-		o.OnOrderUpdate(orderUpdate)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
@@ -316,16 +312,6 @@ func (o *OBTest) OnTick(tick event.Tick) {
 		Float64("price", tick.Price).
 		Float64("qty", tick.Qty).
 		Msg("OBTest: Tick received")
-}
-
-// OnOrderUpdate processes order updates.
-func (o *OBTest) OnOrderUpdate(update event.OrderUpdate) {
-	log().Debug().
-		Int("orderID", update.OrderID).
-		Int("clientOrderID", update.ClientOrderID).
-		Int("status", int(update.OrderStatus)).
-		Float64("executedQty", update.ExecutedQty).
-		Msg("OBTest: Order update received")
 }
 
 // OnFill processes fill events.

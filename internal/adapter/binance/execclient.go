@@ -6,12 +6,14 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
@@ -349,6 +351,63 @@ func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot() error {
 	return c.sendMessage(msg)
 }
 
+// SubscribeUserDataStream subscribes to user data stream via WebSocket
+// User data stream provides real-time updates for:
+// - outboundAccountPosition: balance updates -> TopicEventBalanceUpdate
+// - executionReport: order updates -> TopicEventOrderUpdate
+// - balanceUpdate: delta balance updates (unhandled, warning logged)
+// - listStatus: OCO order updates (unhandled, warning logged)
+func (c *BinanceSpotExecutionClient) SubscribeUserDataStream() error {
+	c.bufLock.Lock()
+	defer c.bufLock.Unlock()
+
+	// Build params for signing
+	c.msgBuffer.Reset()
+
+	timestamp := time.Now().UnixMilli()
+	c.msgBuffer.WriteString("apiKey=")
+	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString("&recvWindow=")
+	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
+	c.msgBuffer.WriteString("&timestamp=")
+	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
+
+	signature := c.signEd25519(c.msgBuffer.Bytes())
+
+	requestID := c.requestID.Add(1)
+	msg := c.buildUserDataStreamSubscribeRequest(timestamp, signature, requestID)
+
+	return c.sendMessage(msg)
+}
+
+// buildUserDataStreamSubscribeRequest builds a JSON message for userDataStream.start
+func (c *BinanceSpotExecutionClient) buildUserDataStreamSubscribeRequest(timestamp int64, signature string, requestID uint64) []byte {
+	var buf bytes.Buffer
+	buf.Grow(256)
+
+	buf.WriteString(`{"id":"`)
+	buf.WriteString(strconv.FormatUint(requestID, 10))
+	buf.WriteString(`","method":"userDataStream.start","params":{`)
+
+	buf.WriteString(`"apiKey":"`)
+	buf.WriteString(c.account.APIKey)
+	buf.WriteString(`"`)
+
+	buf.WriteString(`,"recvWindow":`)
+	buf.WriteString(strconv.Itoa(wsAPIRecvWindow))
+
+	buf.WriteString(`,"timestamp":`)
+	buf.WriteString(strconv.FormatInt(timestamp, 10))
+
+	buf.WriteString(`,"signature":"`)
+	buf.WriteString(signature)
+	buf.WriteString(`"`)
+
+	buf.WriteString(`}}`)
+
+	return buf.Bytes()
+}
+
 // buildAccountStatusRequest builds a JSON message for account.status
 func (c *BinanceSpotExecutionClient) buildAccountStatusRequest(timestamp int64, signature string, requestID uint64) []byte {
 	var buf bytes.Buffer
@@ -596,7 +655,14 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 		return
 	}
 
-	// Check for result
+	// Check for user data stream event (has "event" field with "e" inside)
+	eventData, _, _, err := jsonparser.Get(data, "event")
+	if err == nil && len(eventData) > 0 {
+		c.processUserDataStreamEvent(eventData)
+		return
+	}
+
+	// Check for result (request/response pattern)
 	result, _, _, err := jsonparser.Get(data, "result")
 	if err == nil && len(result) > 0 {
 		// Check if this is an account status response (has "balances" field)
@@ -611,7 +677,344 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 	}
 }
 
-// processOrderResponse processes order-related responses
+// processUserDataStreamEvent processes user data stream events
+// Event types:
+// - outboundAccountPosition: account balance updates -> TopicEventBalanceUpdate
+// - executionReport: order execution updates -> TopicEventOrderUpdate
+// - balanceUpdate: delta balance updates -> TopicEventUnhandled (warning)
+// - listStatus: OCO order updates -> TopicEventUnhandled (warning)
+// - Others -> TopicEventUnknown (error)
+func (c *BinanceSpotExecutionClient) processUserDataStreamEvent(data []byte) {
+	eventType, err := jsonparser.GetString(data, "e")
+	if err != nil {
+		log().Error().Err(err).Msg("Failed to get event type from user data stream event")
+		return
+	}
+
+	switch eventType {
+	case "outboundAccountPosition":
+		c.processOutboundAccountPosition(data)
+	case "executionReport":
+		c.processExecutionReport(data)
+	case "balanceUpdate":
+		log().Warn().
+			Int("accountID", c.accountID).
+			Str("eventType", eventType).
+			Msg("Received balanceUpdate event (delta update) - not handled")
+	case "listStatus":
+		log().Warn().
+			Int("accountID", c.accountID).
+			Str("eventType", eventType).
+			Msg("Received listStatus event (OCO order) - not handled")
+	default:
+		log().Error().
+			Int("accountID", c.accountID).
+			Str("eventType", eventType).
+			Msg("Received unknown user data stream event type")
+	}
+}
+
+// processOutboundAccountPosition processes outboundAccountPosition events
+// and publishes BalanceUpdate to the event bus
+// Format:
+//
+//	{
+//	  "e": "outboundAccountPosition",
+//	  "E": 1564034571105,  // Event Time
+//	  "u": 1564034571073,  // Time of last account update
+//	  "B": [{"a": "ETH", "f": "10000.000000", "l": "0.000000"}, ...]
+//	}
+func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte) {
+	// Parse update time
+	updateTime, _ := jsonparser.GetInt(data, "u")
+
+	// Count non-zero balances first
+	balanceCount := 0
+	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
+		freeStr, _ := jsonparser.GetString(value, "f")
+		lockedStr, _ := jsonparser.GetString(value, "l")
+		free := parseFloat64([]byte(freeStr))
+		locked := parseFloat64([]byte(lockedStr))
+		if free > 0 || locked > 0 {
+			balanceCount++
+		}
+	}, "B")
+
+	if balanceCount == 0 {
+		log().Debug().Int("accountID", c.accountID).Msg("No non-zero balances in outboundAccountPosition")
+		return
+	}
+
+	// Allocate balances slice
+	balances := make([]event.Balance, 0, balanceCount)
+
+	// Parse balances
+	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
+		asset, _ := jsonparser.GetString(value, "a")
+		freeStr, _ := jsonparser.GetString(value, "f")
+		lockedStr, _ := jsonparser.GetString(value, "l")
+
+		free := parseFloat64([]byte(freeStr))
+		locked := parseFloat64([]byte(lockedStr))
+		total := free + locked
+
+		// Only include non-zero balances
+		if total > 0 {
+			balances = append(balances, event.Balance{
+				TokenID:   c.getTokenID(asset),
+				Available: free,
+				Locked:    locked,
+				Total:     total,
+			})
+		}
+	}, "B")
+
+	// Create and publish BalanceUpdate event
+	balanceUpdate := event.BalanceUpdate{
+		AccountID: c.accountID,
+		Balances:  balances,
+		UpdatedAt: uint64(updateTime) * 1_000_000, // Convert ms to ns
+	}
+
+	size := evbus.BalanceUpdateSize(&balanceUpdate)
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventBalanceUpdate,
+		Index:  offset,
+		Length: size,
+	})
+
+	log().Debug().
+		Int("accountID", c.accountID).
+		Int("balanceCount", len(balances)).
+		Msg("Published balance update from user data stream")
+}
+
+// processExecutionReport processes executionReport events from user data stream
+// and publishes appropriate order events and Fill events to the event bus
+// Format:
+//
+//	{
+//	  "e": "executionReport",
+//	  "E": 1499405658658,  // Event time
+//	  "s": "ETHBTC",       // Symbol
+//	  "c": "clientOrdId",  // Client order ID
+//	  "S": "BUY",          // Side
+//	  "o": "LIMIT",        // Order type
+//	  "f": "GTC",          // Time in force
+//	  "q": "1.00000000",   // Order quantity
+//	  "p": "0.10264410",   // Order price
+//	  "x": "NEW",          // Current execution type
+//	  "X": "NEW",          // Current order status
+//	  "r": "NONE",         // Order reject reason
+//	  "i": 4293153,        // Order ID
+//	  "l": "0.00000000",   // Last executed quantity
+//	  "z": "0.00000000",   // Cumulative filled quantity
+//	  "L": "0.00000000",   // Last executed price
+//	  "n": "0",            // Commission amount
+//	  "N": null,           // Commission asset
+//	  "T": 1499405658657,  // Transaction time
+//	  "t": -1,             // Trade ID
+//	}
+func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
+	// Parse common order fields
+	orderID, _ := jsonparser.GetInt(data, "i")
+	clientOrderIDStr, _ := jsonparser.GetString(data, "c")
+	clientOrderID, _ := strconv.Atoi(clientOrderIDStr)
+	status, _ := jsonparser.GetString(data, "X")
+	transactTime, _ := jsonparser.GetInt(data, "T")
+	updatedAt := uint64(transactTime) * 1_000_000 // Convert ms to ns
+
+	// Publish appropriate order event based on status
+	switch strings.ToUpper(status) {
+	case "NEW":
+		c.publishOrderAccepted(clientOrderID, int(orderID), updatedAt)
+
+	case "PARTIALLY_FILLED":
+		executedQtyStr, _ := jsonparser.GetString(data, "z")
+		executedQty := parseFloat64([]byte(executedQtyStr))
+		c.publishOrderPartiallyFilled(clientOrderID, int(orderID), executedQty, updatedAt)
+		// Also publish Fill event
+		c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+
+	case "FILLED":
+		executedQtyStr, _ := jsonparser.GetString(data, "z")
+		executedQty := parseFloat64([]byte(executedQtyStr))
+		c.publishOrderFilled(clientOrderID, int(orderID), executedQty, updatedAt)
+		// Also publish Fill event
+		c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+
+	case "CANCELED", "EXPIRED":
+		c.publishOrderCanceled(clientOrderID, int(orderID), updatedAt)
+
+	case "REJECTED":
+		rejectReason, _ := jsonparser.GetString(data, "r")
+		c.publishOrderRejected(clientOrderID, int(orderID), rejectReason)
+
+	default:
+		c.publishOrderUnknownStatus(clientOrderID, int(orderID), status)
+	}
+
+	log().Debug().
+		Int("accountID", c.accountID).
+		Int("orderID", int(orderID)).
+		Str("status", status).
+		Msg("Processed execution report")
+}
+
+// publishFillFromExecutionReport extracts fill data from execution report and publishes Fill event
+func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte, clientOrderID int, orderID int, transactTime int64) {
+	lastQtyStr, _ := jsonparser.GetString(data, "l")
+	lastQty := parseFloat64([]byte(lastQtyStr))
+
+	if lastQty <= 0 {
+		return // No fill in this report
+	}
+
+	lastPriceStr, _ := jsonparser.GetString(data, "L")
+	lastPrice := parseFloat64([]byte(lastPriceStr))
+
+	commissionStr, _ := jsonparser.GetString(data, "n")
+	commission := parseFloat64([]byte(commissionStr))
+
+	commissionAsset, _ := jsonparser.GetString(data, "N")
+	tradeID, _ := jsonparser.GetInt(data, "t")
+
+	fill := event.Fill{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		FillID:        int(tradeID),
+		FilledQty:     lastQty,
+		FilledPrice:   lastPrice,
+		FeeCcyID:      c.getTokenID(commissionAsset),
+		FeeQty:        commission,
+		FilledAt:      uint64(transactTime) * 1_000_000,
+	}
+
+	size := evbus.FillSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeFill(buf, &fill)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventFill,
+		Index:  offset,
+		Length: size,
+	})
+
+	log().Debug().
+		Int("accountID", c.accountID).
+		Int("orderID", orderID).
+		Float64("lastQty", lastQty).
+		Float64("lastPrice", lastPrice).
+		Msg("Published fill from execution report")
+}
+
+// publishOrderAccepted publishes an OrderAccepted event
+func (c *BinanceSpotExecutionClient) publishOrderAccepted(clientOrderID, orderID int, createdAt uint64) {
+	e := event.OrderAccepted{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		CreatedAt:     createdAt,
+	}
+	size := evbus.OrderAcceptedSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderAccepted(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventOrderAccepted,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// publishOrderPartiallyFilled publishes an OrderPartiallyFilled event
+func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, orderID int, executedQty float64, updatedAt uint64) {
+	e := event.OrderPartiallyFilled{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		ExecutedQty:   executedQty,
+		UpdatedAt:     updatedAt,
+	}
+	size := evbus.OrderPartiallyFilledSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderPartiallyFilled(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventPartialFill,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// publishOrderFilled publishes an OrderFilled event
+func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID int, executedQty float64, updatedAt uint64) {
+	e := event.OrderFilled{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		ExecutedQty:   executedQty,
+		UpdatedAt:     updatedAt,
+	}
+	size := evbus.OrderFilledSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderFilled(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventFill,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// publishOrderCanceled publishes an OrderCanceled event
+func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID int, updatedAt uint64) {
+	e := event.OrderCanceled{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		UpdatedAt:     updatedAt,
+	}
+	size := evbus.OrderCanceledSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderCanceled(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventOrderCanceled,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// publishOrderRejected publishes an OrderRejected event
+func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID int, reason string) {
+	e := event.OrderRejected{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		ErrorCode:     0,
+		Msg:           reason,
+	}
+	size := evbus.OrderRejectedSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderRejected(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventOrderRejected,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// publishOrderUnknownStatus publishes an OrderUnknownStatus event
+func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, orderID int, status string) {
+	e := event.OrderUnknownStatus{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		Msg:           status,
+	}
+	size := evbus.OrderUnknownStatusSize()
+	offset, buf := c.eventBus.Allocate(size)
+	evbus.SerializeOrderUnknownStatus(buf, &e)
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventOrderUnknownStatus,
+		Index:  offset,
+		Length: size,
+	})
+}
+
+// processOrderResponse processes order-related responses from request/response pattern
 func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 	// Parse order response fields
 	orderIDInt, err := jsonparser.GetInt(data, "orderId")
@@ -630,30 +1033,35 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 	if updateTime == 0 {
 		updateTime, _ = jsonparser.GetInt(data, "updateTime")
 	}
+	updatedAt := uint64(updateTime) * 1_000_000 // Convert ms to ns
 
-	// Create OrderUpdate event
-	orderUpdate := event.OrderUpdate{
-		ClientOrderID: clientOrderID,
-		OrderID:       int(orderIDInt),
-		OrderStatus:   c.parseOrderStatus(status),
-		ExecutedQty:   executedQty,
-		UpdatedAt:     uint64(updateTime) * 1_000_000, // Convert ms to ns
-	}
+	// Publish appropriate order event based on status
+	switch strings.ToUpper(status) {
+	case "NEW":
+		c.publishOrderAccepted(clientOrderID, int(orderIDInt), updatedAt)
 
-	// Publish to event bus
-	size := evbus.OrderUpdateSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderUpdate(buf, &orderUpdate)
-	c.eventBus.Publish(evbus.EventRef{
-		Topic:  event.TopicEventOrderUpdate,
-		Index:  offset,
-		Length: size,
-	})
+	case "PARTIALLY_FILLED":
+		c.publishOrderPartiallyFilled(clientOrderID, int(orderIDInt), executedQty, updatedAt)
+		// Check for fills in the response
+		if _, _, _, fillErr := jsonparser.Get(data, "fills"); fillErr == nil {
+			c.processFills(data, clientOrderID, int(orderIDInt))
+		}
 
-	// Check for fills in the response
-	_, _, _, err = jsonparser.Get(data, "fills")
-	if err == nil {
-		c.processFills(data, clientOrderID, int(orderIDInt))
+	case "FILLED":
+		c.publishOrderFilled(clientOrderID, int(orderIDInt), executedQty, updatedAt)
+		// Check for fills in the response
+		if _, _, _, fillErr := jsonparser.Get(data, "fills"); fillErr == nil {
+			c.processFills(data, clientOrderID, int(orderIDInt))
+		}
+
+	case "CANCELED", "EXPIRED":
+		c.publishOrderCanceled(clientOrderID, int(orderIDInt), updatedAt)
+
+	case "REJECTED":
+		c.publishOrderRejected(clientOrderID, int(orderIDInt), "Order rejected")
+
+	default:
+		c.publishOrderUnknownStatus(clientOrderID, int(orderIDInt), status)
 	}
 }
 
@@ -728,10 +1136,24 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 		return
 	}
 
-	// Allocate balances slice
-	balances := make([]event.Balance, 0, balanceCount)
+	// Calculate size and allocate directly from event bus
+	// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balance1][Balance2]...[BalanceN]
+	size := uint64(evbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(evbus.SizeOfBalance)
+	offset, buf := c.eventBus.Allocate(size)
 
-	// Parse balances
+	// Write header directly to buffer
+	pos := 0
+	// AccountID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(c.accountID))
+	pos += 8
+	// BalancesLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], uint32(balanceCount))
+	pos += 4
+	// Padding (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], 0)
+	pos += 4
+
+	// Write balances directly to buffer during parsing
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
 		asset, _ := jsonparser.GetString(value, "asset")
 		freeStr, _ := jsonparser.GetString(value, "free")
@@ -743,53 +1165,26 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 
 		// Only include non-zero balances
 		if total > 0 {
-			balances = append(balances, event.Balance{
-				TokenID:   c.getTokenID(asset),
-				Available: free,
-				Locked:    locked,
-				Total:     total,
-			})
+			// Write Balance directly to buffer using unsafe pointer
+			balance := (*event.Balance)(unsafe.Pointer(&buf[pos]))
+			balance.TokenID = c.getTokenID(asset)
+			balance.Available = free
+			balance.Locked = locked
+			balance.Total = total
+			pos += evbus.SizeOfBalance
 		}
 	}, "balances")
 
-	// Create and publish ReqBalanceSnapshot event
-	snapshot := event.ReqBalanceSnapshot{
-		AccountID: c.accountID,
-		Balances:  balances,
-	}
-
-	size := evbus.ReqBalanceSnapshotSize(&snapshot)
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeReqBalanceSnapshot(buf, &snapshot)
 	c.eventBus.Publish(evbus.EventRef{
 		Topic:  event.TopicEventReqBalanceSnapshot,
 		Index:  offset,
 		Length: size,
 	})
 
-	log().Debug().Int("accountID", c.accountID).Int("balanceCount", len(balances)).Msg("Published balance snapshot")
+	log().Debug().Int("accountID", c.accountID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
 }
 
 // parseOrderStatus converts Binance order status string to common.OrderStatus
-func (c *BinanceSpotExecutionClient) parseOrderStatus(status string) common.OrderStatus {
-	switch strings.ToUpper(status) {
-	case "NEW":
-		return common.OrderStatusAccepted
-	case "PARTIALLY_FILLED":
-		return common.OrderStatusPartiallyFilled
-	case "FILLED":
-		return common.OrderStatusFilled
-	case "CANCELED":
-		return common.OrderStatusCanceled
-	case "REJECTED":
-		return common.OrderStatusRejected
-	case "EXPIRED":
-		return common.OrderStatusCanceled
-	default:
-		return common.OrderStatusUninitialized
-	}
-}
-
 // getTokenID gets the token ID from the catalog by asset name
 func (c *BinanceSpotExecutionClient) getTokenID(asset string) int {
 	// This would typically look up the token ID from the catalog

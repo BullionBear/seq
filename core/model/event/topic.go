@@ -3,14 +3,21 @@ package event
 type Topic int
 
 const (
+	TopicEventUnknown   Topic = iota
+	TopicEventUnhandled       // Known but not handled
 	// Market Data
-	TopicEventDepthSnapshot Topic = iota
+	TopicEventDepthSnapshot
 	TopicEventReqDepthSnapshot
 	TopicEventDepthUpdate
 	TopicEventTick
 	// Execution Data
-	TopicEventOrderUpdate
+	TopicEventOrderUnknownStatus
+	TopicEventOrderError
+	TopicEventOrderAccepted
+	TopicEventPartialFill
 	TopicEventFill
+	TopicEventOrderCanceled
+	TopicEventOrderRejected
 	// Reconciliation Data
 	TopicEventReqBalanceSnapshot
 	TopicEventBalanceUpdate

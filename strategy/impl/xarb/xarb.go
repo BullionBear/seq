@@ -104,10 +104,6 @@ func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		x.OnTick(tick)
-	case event.TopicEventOrderUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderUpdate := evbus.DeserializeOrderUpdate(buf)
-		x.OnOrderUpdate(orderUpdate)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
@@ -200,9 +196,6 @@ func (x *XArb) printTop5(symbolID int) {
 
 // OnTick processes tick events.
 func (x *XArb) OnTick(tick event.Tick) {}
-
-// OnOrderUpdate processes order updates.
-func (x *XArb) OnOrderUpdate(update event.OrderUpdate) {}
 
 // OnFill processes fill events.
 func (x *XArb) OnFill(fill event.Fill) {}

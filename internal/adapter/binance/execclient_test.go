@@ -255,7 +255,7 @@ func TestProcessOrderResponse(t *testing.T) {
 		eventBus: eb,
 	}
 
-	// Mock Binance order response
+	// Mock Binance order response for NEW order
 	orderResponse := []byte(`{
 		"symbol": "BTCUSDT",
 		"orderId": 12345678,
@@ -281,50 +281,376 @@ func TestProcessOrderResponse(t *testing.T) {
 	})
 
 	if !ok {
-		t.Fatal("Expected order update event to be published")
+		t.Fatal("Expected OrderAccepted event to be published")
 	}
 
-	if receivedEvent.Ref.Topic != event.TopicEventOrderUpdate {
-		t.Errorf("Expected TopicEventOrderUpdate, got %v", receivedEvent.Ref.Topic)
+	if receivedEvent.Ref.Topic != event.TopicEventOrderAccepted {
+		t.Errorf("Expected TopicEventOrderAccepted, got %v", receivedEvent.Ref.Topic)
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderUpdate := evbus.DeserializeOrderUpdate(buf)
+	orderAccepted := evbus.DeserializeOrderAccepted(buf)
 
-	if orderUpdate.OrderID != 12345678 {
-		t.Errorf("Expected OrderID 12345678, got %d", orderUpdate.OrderID)
+	if orderAccepted.OrderID != 12345678 {
+		t.Errorf("Expected OrderID 12345678, got %d", orderAccepted.OrderID)
 	}
 
-	if orderUpdate.ClientOrderID != 123 {
-		t.Errorf("Expected ClientOrderID 123, got %d", orderUpdate.ClientOrderID)
-	}
-
-	if orderUpdate.OrderStatus != common.OrderStatusAccepted {
-		t.Errorf("Expected OrderStatusAccepted, got %v", orderUpdate.OrderStatus)
+	if orderAccepted.ClientOrderID != 123 {
+		t.Errorf("Expected ClientOrderID 123, got %d", orderAccepted.ClientOrderID)
 	}
 }
 
-func TestParseOrderStatus(t *testing.T) {
-	client := &BinanceSpotExecutionClient{}
+func TestProcessOrderResponseCanceled(t *testing.T) {
+	eb := evbus.NewEventBus()
+	client := &BinanceSpotExecutionClient{
+		eventBus: eb,
+	}
+
+	// Mock Binance order response for CANCELED order
+	orderResponse := []byte(`{
+		"symbol": "BTCUSDT",
+		"orderId": 12345678,
+		"orderListId": -1,
+		"clientOrderId": "123",
+		"transactTime": 1672531200000,
+		"price": "50000.00000000",
+		"origQty": "0.00100000",
+		"executedQty": "0.00000000",
+		"status": "CANCELED"
+	}`)
+
+	client.processOrderResponse(orderResponse)
+
+	var receivedEvent evbus.Event
+	ok := eb.Poll(func(e evbus.Event) {
+		receivedEvent = e
+	})
+
+	if !ok {
+		t.Fatal("Expected OrderCanceled event to be published")
+	}
+
+	if receivedEvent.Ref.Topic != event.TopicEventOrderCanceled {
+		t.Errorf("Expected TopicEventOrderCanceled, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	orderCanceled := evbus.DeserializeOrderCanceled(buf)
+
+	if orderCanceled.OrderID != 12345678 {
+		t.Errorf("Expected OrderID 12345678, got %d", orderCanceled.OrderID)
+	}
+}
+
+// ============================================================================
+// Unit Tests for User Data Stream Processing
+// ============================================================================
+
+func TestProcessOutboundAccountPosition(t *testing.T) {
+	eb := evbus.NewEventBus()
+	client := &BinanceSpotExecutionClient{
+		eventBus:  eb,
+		accountID: 123,
+	}
+
+	// Mock outboundAccountPosition event
+	eventData := []byte(`{
+		"e": "outboundAccountPosition",
+		"E": 1564034571105,
+		"u": 1564034571073,
+		"B": [
+			{"a": "ETH", "f": "10000.000000", "l": "500.000000"},
+			{"a": "BTC", "f": "1.50000000", "l": "0.00000000"},
+			{"a": "USDT", "f": "0.00000000", "l": "0.00000000"}
+		]
+	}`)
+
+	client.processOutboundAccountPosition(eventData)
+
+	// Verify event was published
+	var receivedEvent evbus.Event
+	ok := eb.Poll(func(e evbus.Event) {
+		receivedEvent = e
+	})
+
+	if !ok {
+		t.Fatal("Expected balance update event to be published")
+	}
+
+	if receivedEvent.Ref.Topic != event.TopicEventBalanceUpdate {
+		t.Errorf("Expected TopicEventBalanceUpdate, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	balanceUpdate := evbus.DeserializeBalanceUpdate(buf)
+
+	if balanceUpdate.AccountID != 123 {
+		t.Errorf("Expected AccountID 123, got %d", balanceUpdate.AccountID)
+	}
+
+	// Should only have 2 non-zero balances (ETH and BTC)
+	if len(balanceUpdate.Balances) != 2 {
+		t.Fatalf("Expected 2 balances, got %d", len(balanceUpdate.Balances))
+	}
+
+	// Check ETH balance
+	eth := balanceUpdate.Balances[0]
+	if eth.Available != 10000.0 || eth.Locked != 500.0 || eth.Total != 10500.0 {
+		t.Errorf("ETH balance mismatch: got Available=%f, Locked=%f, Total=%f",
+			eth.Available, eth.Locked, eth.Total)
+	}
+
+	// Check BTC balance
+	btc := balanceUpdate.Balances[1]
+	if btc.Available != 1.5 || btc.Locked != 0.0 || btc.Total != 1.5 {
+		t.Errorf("BTC balance mismatch: got Available=%f, Locked=%f, Total=%f",
+			btc.Available, btc.Locked, btc.Total)
+	}
+}
+
+func TestProcessExecutionReport(t *testing.T) {
+	eb := evbus.NewEventBus()
+	client := &BinanceSpotExecutionClient{
+		eventBus:  eb,
+		accountID: 123,
+	}
+
+	// Mock executionReport event for a new order
+	eventData := []byte(`{
+		"e": "executionReport",
+		"E": 1499405658658,
+		"s": "ETHBTC",
+		"c": "456",
+		"S": "BUY",
+		"o": "LIMIT",
+		"f": "GTC",
+		"q": "1.00000000",
+		"p": "0.10264410",
+		"x": "NEW",
+		"X": "NEW",
+		"i": 4293153,
+		"l": "0.00000000",
+		"z": "0.00000000",
+		"L": "0.00000000",
+		"n": "0",
+		"N": null,
+		"T": 1499405658657,
+		"t": -1
+	}`)
+
+	client.processExecutionReport(eventData)
+
+	// Verify OrderAccepted event was published
+	var receivedEvent evbus.Event
+	ok := eb.Poll(func(e evbus.Event) {
+		receivedEvent = e
+	})
+
+	if !ok {
+		t.Fatal("Expected OrderAccepted event to be published")
+	}
+
+	if receivedEvent.Ref.Topic != event.TopicEventOrderAccepted {
+		t.Errorf("Expected TopicEventOrderAccepted, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	orderAccepted := evbus.DeserializeOrderAccepted(buf)
+
+	if orderAccepted.OrderID != 4293153 {
+		t.Errorf("Expected OrderID 4293153, got %d", orderAccepted.OrderID)
+	}
+
+	if orderAccepted.ClientOrderID != 456 {
+		t.Errorf("Expected ClientOrderID 456, got %d", orderAccepted.ClientOrderID)
+	}
+}
+
+func TestProcessExecutionReportWithFill(t *testing.T) {
+	eb := evbus.NewEventBus()
+	client := &BinanceSpotExecutionClient{
+		eventBus:  eb,
+		accountID: 123,
+	}
+
+	// Mock executionReport event with a partial fill
+	eventData := []byte(`{
+		"e": "executionReport",
+		"E": 1499405658658,
+		"s": "ETHBTC",
+		"c": "789",
+		"S": "BUY",
+		"o": "LIMIT",
+		"f": "GTC",
+		"q": "1.00000000",
+		"p": "0.10264410",
+		"x": "TRADE",
+		"X": "PARTIALLY_FILLED",
+		"i": 4293154,
+		"l": "0.50000000",
+		"z": "0.50000000",
+		"L": "0.10264410",
+		"n": "0.00001000",
+		"N": "ETH",
+		"T": 1499405658657,
+		"t": 12345
+	}`)
+
+	client.processExecutionReport(eventData)
+
+	// Should receive OrderPartiallyFilled first, then Fill
+	var partialFillEvent evbus.Event
+	var fillEvent evbus.Event
+	eventCount := 0
+
+	for i := 0; i < 2; i++ {
+		ok := eb.Poll(func(e evbus.Event) {
+			if e.Ref.Topic == event.TopicEventPartialFill {
+				partialFillEvent = e
+				eventCount++
+			} else if e.Ref.Topic == event.TopicEventFill {
+				fillEvent = e
+				eventCount++
+			}
+		})
+		if !ok {
+			break
+		}
+	}
+
+	if eventCount != 2 {
+		t.Fatalf("Expected 2 events (partial fill + fill), got %d", eventCount)
+	}
+
+	// Verify OrderPartiallyFilled
+	orderBuf := eb.ReadBuffer(partialFillEvent.Ref.Index, partialFillEvent.Ref.Length)
+	orderPartiallyFilled := evbus.DeserializeOrderPartiallyFilled(orderBuf)
+
+	if orderPartiallyFilled.OrderID != 4293154 {
+		t.Errorf("Expected OrderID 4293154, got %d", orderPartiallyFilled.OrderID)
+	}
+
+	if orderPartiallyFilled.ExecutedQty != 0.5 {
+		t.Errorf("Expected ExecutedQty 0.5, got %f", orderPartiallyFilled.ExecutedQty)
+	}
+
+	// Verify Fill
+	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
+	fill := evbus.DeserializeFill(fillBuf)
+
+	if fill.OrderID != 4293154 {
+		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)
+	}
+
+	if fill.FillID != 12345 {
+		t.Errorf("Expected FillID 12345, got %d", fill.FillID)
+	}
+
+	if fill.FilledQty != 0.5 {
+		t.Errorf("Expected FilledQty 0.5, got %f", fill.FilledQty)
+	}
+
+	if fill.FilledPrice != 0.10264410 {
+		t.Errorf("Expected FilledPrice 0.10264410, got %f", fill.FilledPrice)
+	}
+
+	if fill.FeeQty != 0.00001 {
+		t.Errorf("Expected FeeQty 0.00001, got %f", fill.FeeQty)
+	}
+}
+
+func TestProcessUserDataStreamEvent(t *testing.T) {
+	eb := evbus.NewEventBus()
+	client := &BinanceSpotExecutionClient{
+		eventBus:  eb,
+		accountID: 123,
+	}
 
 	tests := []struct {
-		input    string
-		expected common.OrderStatus
+		name          string
+		eventData     []byte
+		expectEvent   bool
+		expectedTopic event.Topic
 	}{
-		{"NEW", common.OrderStatusAccepted},
-		{"PARTIALLY_FILLED", common.OrderStatusPartiallyFilled},
-		{"FILLED", common.OrderStatusFilled},
-		{"CANCELED", common.OrderStatusCanceled},
-		{"REJECTED", common.OrderStatusRejected},
-		{"EXPIRED", common.OrderStatusCanceled},
-		{"UNKNOWN", common.OrderStatusUninitialized},
+		{
+			name: "outboundAccountPosition",
+			eventData: []byte(`{
+				"e": "outboundAccountPosition",
+				"E": 1564034571105,
+				"u": 1564034571073,
+				"B": [{"a": "BTC", "f": "1.0", "l": "0.0"}]
+			}`),
+			expectEvent:   true,
+			expectedTopic: event.TopicEventBalanceUpdate,
+		},
+		{
+			name: "executionReport NEW",
+			eventData: []byte(`{
+				"e": "executionReport",
+				"E": 1499405658658,
+				"s": "ETHBTC",
+				"c": "123",
+				"X": "NEW",
+				"i": 4293153,
+				"l": "0.0",
+				"z": "0.0",
+				"T": 1499405658657,
+				"t": -1
+			}`),
+			expectEvent:   true,
+			expectedTopic: event.TopicEventOrderAccepted,
+		},
+		{
+			name: "balanceUpdate (unhandled)",
+			eventData: []byte(`{
+				"e": "balanceUpdate",
+				"E": 1573200697110,
+				"a": "BTC",
+				"d": "100.00000000",
+				"T": 1573200697068
+			}`),
+			expectEvent: false,
+		},
+		{
+			name: "listStatus (unhandled)",
+			eventData: []byte(`{
+				"e": "listStatus",
+				"E": 1564035303637,
+				"s": "ETHBTC",
+				"g": 2,
+				"c": "OCO"
+			}`),
+			expectEvent: false,
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := client.parseOrderStatus(tt.input)
-			if result != tt.expected {
-				t.Errorf("parseOrderStatus(%q) = %v, want %v", tt.input, result, tt.expected)
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear event bus
+			for {
+				ok := eb.Poll(func(e evbus.Event) {})
+				if !ok {
+					break
+				}
+			}
+
+			client.processUserDataStreamEvent(tt.eventData)
+
+			var receivedEvent evbus.Event
+			ok := eb.Poll(func(e evbus.Event) {
+				receivedEvent = e
+			})
+
+			if tt.expectEvent && !ok {
+				t.Errorf("Expected event to be published for %s", tt.name)
+			}
+
+			if !tt.expectEvent && ok {
+				t.Errorf("Did not expect event to be published for %s", tt.name)
+			}
+
+			if tt.expectEvent && ok && receivedEvent.Ref.Topic != tt.expectedTopic {
+				t.Errorf("Expected topic %v, got %v", tt.expectedTopic, receivedEvent.Ref.Topic)
 			}
 		})
 	}

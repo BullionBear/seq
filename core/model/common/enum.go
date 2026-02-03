@@ -25,6 +25,7 @@ const (
 	OrderStatusFilled
 	OrderStatusCanceled
 	OrderStatusRejected
+	OrderStatusUnknown
 )
 
 type Side int

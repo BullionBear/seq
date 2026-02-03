@@ -96,10 +96,6 @@ func (s *StrategyBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		tick := evbus.DeserializeTick(buf)
 		s.OnTick(tick)
-	case event.TopicEventOrderUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderUpdate := evbus.DeserializeOrderUpdate(buf)
-		s.OnOrderUpdate(orderUpdate)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := evbus.DeserializeFill(buf)
@@ -137,8 +133,8 @@ func (s *StrategyBase) OnDepthUpdate(update event.DepthUpdate) {}
 // OnTick is called when a tick is received.
 func (s *StrategyBase) OnTick(tick event.Tick) {}
 
-// OnOrderUpdate is called when an order update is received.
-func (s *StrategyBase) OnOrderUpdate(update event.OrderUpdate) {}
+// OnOrderUnknownStatus is called when an order unknown status is received.
+func (s *StrategyBase) OnOrderUnknownStatus(status event.OrderUnknownStatus) {}
 
 // OnFill is called when a fill is received.
 func (s *StrategyBase) OnFill(fill event.Fill) {}

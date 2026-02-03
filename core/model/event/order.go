@@ -1,30 +1,49 @@
 package event
 
-import (
-	"github.com/BullionBear/seq/core/model/common"
-)
-
-type OrderInitialized struct {
-	StrategyID    int
+type OrderUnknownStatus struct {
 	ClientOrderID int
-	AccountID     int
-	OrderStatus   common.OrderStatus
-	SymbolID      int
-	Side          common.Side
-	Quantity      float64
-	Price         float64
-	OrderType     common.OrderType
-	TimeInForce   common.TimeInForce
+	OrderID       int
+	Msg           string
+}
+
+type OrderError struct {
+	ClientOrderID int
+	OrderID       int
+	ErrorCode     int
+	Msg           string
+}
+
+type OrderAccepted struct {
+	ClientOrderID int
+	OrderID       int
+	CreatedAt     uint64
+}
+
+type OrderPartiallyFilled struct {
+	ClientOrderID int
+	OrderID       int
 	ExecutedQty   float64
 	UpdatedAt     uint64
 }
 
-type OrderUpdate struct {
+type OrderFilled struct {
 	ClientOrderID int
 	OrderID       int
-	OrderStatus   common.OrderStatus
 	ExecutedQty   float64
 	UpdatedAt     uint64
+}
+
+type OrderCanceled struct {
+	ClientOrderID int
+	OrderID       int
+	UpdatedAt     uint64
+}
+
+type OrderRejected struct {
+	ClientOrderID int
+	OrderID       int
+	ErrorCode     int
+	Msg           string
 }
 
 type Fill struct {
