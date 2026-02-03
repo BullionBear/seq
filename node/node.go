@@ -6,10 +6,13 @@ import (
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
 	"github.com/BullionBear/seq/internal/adapter"
+	"github.com/BullionBear/seq/internal/adapter/binance"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
@@ -77,6 +80,18 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	// Register data engine as an actor for handling depth events
 	actor.Register(n.eventBus, n.dataEngine)
 
+	// Configure data engine with subscriptions from config
+	if len(config.Data) > 0 {
+		if err := n.dataEngine.SetDataConfig(config.Data); err != nil {
+			log().Error().Err(err).Msg("Node: Failed to configure data subscriptions")
+		}
+	}
+
+	// Configure execution clients from config
+	if len(config.Execution) > 0 {
+		n.setupExecutionClients(config.Execution)
+	}
+
 	// Create strategy engine and initialize it
 	n.strategyEngine = strategy.NewEngine(strategyActor, n.catalog, n.cache)
 	n.strategyEngine.Init(config, n.eventBus)
@@ -84,8 +99,92 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	log().Info().Msg("Node initialized")
 }
 
-// Start starts all engines and the strategy.
-func (n *Node) Start() {
+// setupExecutionClients creates and registers execution clients for configured accounts.
+func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
+	accountIDs := make([]int, 0, len(execConfig))
+
+	for _, cfg := range execConfig {
+		// Resolve account from catalog
+		var account *cpanel.Account
+		if cfg.Account != "" {
+			account = n.catalog.GetAccountByName(cfg.Account)
+		} else if cfg.ID > 0 {
+			var err error
+			account, err = n.catalog.GetAccount(cfg.ID)
+			if err != nil {
+				log().Error().Err(err).Int("id", cfg.ID).Msg("Node: Failed to get account by ID")
+				continue
+			}
+		}
+
+		if account == nil {
+			log().Warn().Str("account", cfg.Account).Int("id", cfg.ID).Msg("Node: Account not found")
+			continue
+		}
+
+		accountIDs = append(accountIDs, account.ID)
+
+		// Create execution client based on exchange
+		client, err := n.createExecutionClient(account)
+		if err != nil {
+			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
+			continue
+		}
+
+		// Register client with router
+		n.executionRouter.RegisterClient(account.ID, client)
+		log().Info().
+			Str("account", account.Name).
+			Int("id", account.ID).
+			Str("exchange", account.Exchange).
+			Msg("Node: Registered execution client")
+	}
+
+	// Set configured accounts on execution engine
+	n.executionEngine.SetAccounts(accountIDs)
+}
+
+// createExecutionClient creates an execution client for the given account based on exchange.
+func (n *Node) createExecutionClient(account *cpanel.Account) (adapter.ExecutionClient, error) {
+	switch {
+	case account.Exchange == "BINANCE":
+		client, err := binance.NewBinanceSpotExecutionClient(n.catalog, n.eventBus, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	default:
+		log().Warn().Str("exchange", account.Exchange).Msg("Node: Unsupported exchange for execution")
+		return nil, nil
+	}
+}
+
+// getExchangeID returns the common.Exchange ID for an exchange name.
+func getExchangeID(exchange string) int {
+	switch exchange {
+	case "BINANCE":
+		return int(common.ExchangeBinance)
+	case "BYBIT":
+		return int(common.ExchangeBybit)
+	default:
+		return -1
+	}
+}
+
+// Start connects engines and starts the strategy.
+func (n *Node) Start(ctx context.Context) {
+	// Connect data engine (subscribes to configured streams and connects)
+	n.dataEngine.Connect(ctx)
+	log().Info().Msg("Node: DataEngine connected")
+
+	// Connect execution engine
+	if err := n.executionEngine.Connect(ctx); err != nil {
+		log().Error().Err(err).Msg("Node: Failed to connect execution engine")
+	} else {
+		log().Info().Msg("Node: ExecutionEngine connected")
+	}
+
+	// Start strategy (now just calls OnStart for business logic)
 	n.strategyEngine.Start()
 	log().Info().Msg("Node started")
 }
@@ -117,6 +216,8 @@ func (n *Node) Run(ctx context.Context) {
 // stop performs graceful shutdown of all engines.
 func (n *Node) stop() {
 	n.strategyEngine.Stop()
+	n.dataEngine.Disconnect()
+	n.executionEngine.Disconnect()
 	log().Info().Msg("Node stopped")
 }
 

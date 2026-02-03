@@ -102,3 +102,13 @@ func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
 	}
 	return &account, nil
 }
+
+// GetAccountByName returns the account with the given name, or nil if not found.
+func (c *Catalog) GetAccountByName(name string) *cpanel.Account {
+	for _, account := range c.accounts {
+		if account.Name == name {
+			return &account
+		}
+	}
+	return nil
+}

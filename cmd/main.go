@@ -92,7 +92,7 @@ func main() {
 	// Create and initialize the Node
 	n := node.NewNode(catalogService)
 	n.Init(cfg, strategyImpl)
-	n.Start()
+	n.Start(ctx)
 	go n.Run(ctx)
 
 	// Wait for context cancellation (signal)

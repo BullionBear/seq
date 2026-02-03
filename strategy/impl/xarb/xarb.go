@@ -1,7 +1,6 @@
 package xarb
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -74,18 +73,16 @@ func (x *XArb) OnInit() {
 	x.hedgingSymbol = *hedgingSymbol
 }
 
-// OnStart subscribes to market data and connects.
+// OnStart is called when the strategy starts.
+// Note: Data subscriptions are now handled by the config - no manual Subscribe/Connect needed.
 func (x *XArb) OnStart() {
-	x.SubscribeDepthUpdate(x.quotingSymbol.ID)
-	log().Info().Msgf("Subscribed to depth update for quoting symbol: %s(%d)", x.quotingSymbol.UniversalTicker, x.quotingSymbol.ID)
-	x.SubscribeDepthUpdate(x.hedgingSymbol.ID)
-	log().Info().Msgf("Subscribed to depth update for hedging symbol: %s(%d)", x.hedgingSymbol.UniversalTicker, x.hedgingSymbol.ID)
-	x.Connect(context.Background())
+	log().Info().Msgf("XArb strategy started for symbols: %s, %s",
+		x.quotingSymbol.UniversalTicker, x.hedgingSymbol.UniversalTicker)
 }
 
-// OnStop disconnects from market data.
+// OnStop is called when the strategy stops.
 func (x *XArb) OnStop() {
-	x.Disconnect()
+	log().Info().Msg("XArb strategy stopped")
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.

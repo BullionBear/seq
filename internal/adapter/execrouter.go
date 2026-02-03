@@ -22,6 +22,9 @@ type ExecutionClient interface {
 	// Disconnect closes the connection
 	Disconnect()
 
+	// SubscribeUserDataStream subscribes to user data stream for account updates
+	SubscribeUserDataStream() error
+
 	// SubmitOrder submits a new order
 	SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error
 
@@ -113,13 +116,19 @@ func (r *ExecutionRouter) SubscribeOrderFill(acctID int) {
 	// by the execution client when received from the exchange
 }
 
-// Connect connects all registered execution clients
+// Connect connects all registered execution clients and subscribes to user data streams
 func (r *ExecutionRouter) Connect(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	for acctID, client := range r.clients {
+		// Connect the client
 		if err := client.Connect(ctx); err != nil {
+			return &RouterError{AccountID: acctID, Err: err}
+		}
+
+		// Subscribe to user data stream for account updates
+		if err := client.SubscribeUserDataStream(); err != nil {
 			return &RouterError{AccountID: acctID, Err: err}
 		}
 	}

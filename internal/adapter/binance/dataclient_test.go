@@ -511,7 +511,7 @@ func TestSubscribeTrade(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
-	client.SubscribeTrade(1)
+	client.SubscribeTrade(1, nil)
 
 	if len(client.tradeSubs) != 1 {
 		t.Errorf("Expected 1 trade subscription, got %d", len(client.tradeSubs))
@@ -534,7 +534,7 @@ func TestBuildStreamList(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	client.SubscribeDepthUpdate(1, nil)
-	client.SubscribeTrade(2)
+	client.SubscribeTrade(2, nil)
 
 	streams := client.buildStreamList()
 
@@ -595,7 +595,7 @@ func TestConcurrentSubscriptions(t *testing.T) {
 		}(i)
 		go func(id int) {
 			defer wg.Done()
-			client.SubscribeTrade(id)
+			client.SubscribeTrade(id, nil)
 		}(i)
 	}
 	wg.Wait()
@@ -669,7 +669,7 @@ func TestIntegration_RealConnection(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to trade stream
-	client.SubscribeTrade(1)
+	client.SubscribeTrade(1, nil)
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -799,8 +799,8 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to multiple streams
-	client.SubscribeTrade(1)
-	client.SubscribeTrade(2)
+	client.SubscribeTrade(1, nil)
+	client.SubscribeTrade(2, nil)
 	client.SubscribeDepthUpdate(1, nil)
 
 	// Connect

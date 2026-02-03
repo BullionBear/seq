@@ -1,7 +1,6 @@
 package obtest
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -74,18 +73,15 @@ func (o *OBTest) OnInit() {
 	o.symbol = *symbol
 }
 
-// OnStart subscribes to market data and connects.
+// OnStart is called when the strategy starts.
+// Note: Data subscriptions are now handled by the config - no manual Subscribe/Connect needed.
 func (o *OBTest) OnStart() {
-	o.SubscribeDepthUpdate(o.symbol.ID)
-	log().Info().Msgf("OBTest: Subscribed to depth update for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
-	o.Connect(context.Background())
-	log().Info().Msg("OBTest: Connected to market data")
+	log().Info().Msgf("OBTest: Strategy started for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
 }
 
-// OnStop disconnects from market data.
+// OnStop is called when the strategy stops.
 func (o *OBTest) OnStop() {
-	o.Disconnect()
-	log().Info().Msg("OBTest: Disconnected from market data")
+	log().Info().Msg("OBTest: Strategy stopped")
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to OBTest's typed callbacks.
