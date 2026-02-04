@@ -1274,11 +1274,22 @@ func (c *BybitExecutionClient) Disconnect() {
 	c.privateStream.Disconnect()
 }
 
-// SubscribeUserDataStream subscribes to user data stream for account updates
-// This subscribes to order, execution, and wallet topics on the private stream
-func (c *BybitExecutionClient) SubscribeUserDataStream() error {
-	// Subscribe to all relevant private stream topics
-	return c.privateStream.Subscribe([]string{"order", "execution", "wallet"})
+// SubscribeOrderUpdate subscribes to order status update events
+// Bybit: Subscribes to "order" topic on private stream
+func (c *BybitExecutionClient) SubscribeOrderUpdate() error {
+	return c.privateStream.Subscribe([]string{"order"})
+}
+
+// SubscribeFill subscribes to execution/fill events
+// Bybit: Subscribes to "execution" topic on private stream
+func (c *BybitExecutionClient) SubscribeFill() error {
+	return c.privateStream.Subscribe([]string{"execution"})
+}
+
+// SubscribeBalance subscribes to wallet/balance update events
+// Bybit: Subscribes to "wallet" topic on private stream
+func (c *BybitExecutionClient) SubscribeBalance() error {
+	return c.privateStream.Subscribe([]string{"wallet"})
 }
 
 // SubmitOrder submits a new order via the order entry WebSocket

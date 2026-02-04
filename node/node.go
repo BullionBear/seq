@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/seq/execution"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/adapter/binance"
+	"github.com/BullionBear/seq/internal/adapter/bybit"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
@@ -150,9 +151,15 @@ func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
 
 // createExecutionClient creates an execution client for the given account based on exchange.
 func (n *Node) createExecutionClient(account *cpanel.Account) (adapter.ExecutionClient, error) {
-	switch {
-	case account.Exchange == "BINANCE":
+	switch account.Exchange {
+	case "BINANCE":
 		client, err := binance.NewBinanceSpotExecutionClient(n.catalog, n.eventBus, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	case "BYBIT":
+		client, err := bybit.NewBybitExecutionClient(n.catalog, n.eventBus, account.ID)
 		if err != nil {
 			return nil, err
 		}

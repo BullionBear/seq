@@ -35,6 +35,12 @@ const (
 // BinanceSpotExecutionClient handles Binance spot order execution via WebSocket API
 // It uses Ed25519 API key for signing and supports order submission, cancellation,
 // and receiving order updates/fills via the WebSocket connection.
+//
+// Subscription Model:
+// Binance only supports subscribing to the entire user data stream at once.
+// When any granular subscription method is called (SubscribeOrderUpdate, SubscribeFill,
+// SubscribeBalance), the client subscribes to the full stream internally but only
+// publishes events for subscribed types. Unsubscribed event types are logged as unhandled.
 type BinanceSpotExecutionClient struct {
 	catalog   *catalog.Catalog
 	eventBus  *evbus.EventBus
@@ -54,6 +60,13 @@ type BinanceSpotExecutionClient struct {
 	// Connection state
 	connected  atomic.Bool
 	shouldStop atomic.Bool
+
+	// Subscription state tracking
+	// Binance subscribes to entire user data stream, but we filter events based on these flags
+	userDataStreamSubscribed atomic.Bool // true if user data stream is subscribed
+	subOrderUpdate           atomic.Bool // true if order update events should be published
+	subFill                  atomic.Bool // true if fill events should be published
+	subBalance               atomic.Bool // true if balance events should be published
 
 	// Context for graceful shutdown
 	ctx    context.Context
@@ -351,15 +364,41 @@ func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot() error {
 	return c.sendMessage(msg)
 }
 
-// SubscribeUserDataStream subscribes to user data stream via WebSocket
-// User data stream provides real-time updates for:
-// - outboundAccountPosition: balance updates -> TopicEventBalanceUpdate
-// - executionReport: order updates -> TopicEventOrderUpdate
-// - balanceUpdate: delta balance updates (unhandled, warning logged)
-// - listStatus: OCO order updates (unhandled, warning logged)
-func (c *BinanceSpotExecutionClient) SubscribeUserDataStream() error {
+// SubscribeOrderUpdate subscribes to order status update events
+// Binance: Subscribes to user data stream if not already subscribed, enables order update filtering
+func (c *BinanceSpotExecutionClient) SubscribeOrderUpdate() error {
+	c.subOrderUpdate.Store(true)
+	return c.ensureUserDataStreamSubscribed()
+}
+
+// SubscribeFill subscribes to execution/fill events
+// Binance: Subscribes to user data stream if not already subscribed, enables fill filtering
+func (c *BinanceSpotExecutionClient) SubscribeFill() error {
+	c.subFill.Store(true)
+	return c.ensureUserDataStreamSubscribed()
+}
+
+// SubscribeBalance subscribes to wallet/balance update events
+// Binance: Subscribes to user data stream if not already subscribed, enables balance filtering
+func (c *BinanceSpotExecutionClient) SubscribeBalance() error {
+	c.subBalance.Store(true)
+	return c.ensureUserDataStreamSubscribed()
+}
+
+// ensureUserDataStreamSubscribed subscribes to user data stream if not already subscribed
+func (c *BinanceSpotExecutionClient) ensureUserDataStreamSubscribed() error {
+	// Check if already subscribed
+	if c.userDataStreamSubscribed.Load() {
+		return nil
+	}
+
 	c.bufLock.Lock()
 	defer c.bufLock.Unlock()
+
+	// Double-check after acquiring lock
+	if c.userDataStreamSubscribed.Load() {
+		return nil
+	}
 
 	// Build params for signing
 	c.msgBuffer.Reset()
@@ -377,7 +416,12 @@ func (c *BinanceSpotExecutionClient) SubscribeUserDataStream() error {
 	requestID := c.requestID.Add(1)
 	msg := c.buildUserDataStreamSubscribeRequest(timestamp, signature, requestID)
 
-	return c.sendMessage(msg)
+	if err := c.sendMessage(msg); err != nil {
+		return err
+	}
+
+	c.userDataStreamSubscribed.Store(true)
+	return nil
 }
 
 // buildUserDataStreamSubscribeRequest builds a JSON message for userDataStream.start
@@ -679,11 +723,14 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 
 // processUserDataStreamEvent processes user data stream events
 // Event types:
-// - outboundAccountPosition: account balance updates -> TopicEventBalanceUpdate
-// - executionReport: order execution updates -> TopicEventOrderUpdate
-// - balanceUpdate: delta balance updates -> TopicEventUnhandled (warning)
-// - listStatus: OCO order updates -> TopicEventUnhandled (warning)
-// - Others -> TopicEventUnknown (error)
+// - outboundAccountPosition: account balance updates -> TopicEventBalanceUpdate (if subscribed)
+// - executionReport: order execution updates -> TopicEventOrderUpdate (if subscribed)
+// - balanceUpdate: delta balance updates -> unhandled (warning logged)
+// - listStatus: OCO order updates -> unhandled (warning logged)
+// - Others -> unknown (error logged)
+//
+// Events are only published if the corresponding subscription is active.
+// Unsubscribed events are logged as unhandled.
 func (c *BinanceSpotExecutionClient) processUserDataStreamEvent(data []byte) {
 	eventType, err := jsonparser.GetString(data, "e")
 	if err != nil {
@@ -693,21 +740,30 @@ func (c *BinanceSpotExecutionClient) processUserDataStreamEvent(data []byte) {
 
 	switch eventType {
 	case "outboundAccountPosition":
-		c.processOutboundAccountPosition(data)
+		if c.subBalance.Load() {
+			c.processOutboundAccountPosition(data)
+		} else {
+			log().Debug().
+				Int("accountID", c.accountID).
+				Str("eventType", eventType).
+				Msg("Received balance event but not subscribed - ignoring")
+		}
 	case "executionReport":
+		// executionReport contains both order updates and fills
+		// Process based on which subscriptions are active
 		c.processExecutionReport(data)
 	case "balanceUpdate":
-		log().Warn().
+		log().Debug().
 			Int("accountID", c.accountID).
 			Str("eventType", eventType).
 			Msg("Received balanceUpdate event (delta update) - not handled")
 	case "listStatus":
-		log().Warn().
+		log().Debug().
 			Int("accountID", c.accountID).
 			Str("eventType", eventType).
 			Msg("Received listStatus event (OCO order) - not handled")
 	default:
-		log().Error().
+		log().Warn().
 			Int("accountID", c.accountID).
 			Str("eventType", eventType).
 			Msg("Received unknown user data stream event type")
@@ -793,6 +849,7 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 
 // processExecutionReport processes executionReport events from user data stream
 // and publishes appropriate order events and Fill events to the event bus
+// Only publishes events if the corresponding subscription is active.
 // Format:
 //
 //	{
@@ -818,6 +875,17 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 //	  "t": -1,             // Trade ID
 //	}
 func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
+	// Check if any relevant subscription is active
+	subOrderUpdate := c.subOrderUpdate.Load()
+	subFill := c.subFill.Load()
+
+	if !subOrderUpdate && !subFill {
+		log().Debug().
+			Int("accountID", c.accountID).
+			Msg("Received executionReport but neither order update nor fill subscribed - ignoring")
+		return
+	}
+
 	// Parse common order fields
 	orderID, _ := jsonparser.GetInt(data, "i")
 	clientOrderIDStr, _ := jsonparser.GetString(data, "c")
@@ -826,40 +894,58 @@ func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
 	transactTime, _ := jsonparser.GetInt(data, "T")
 	updatedAt := uint64(transactTime) * 1_000_000 // Convert ms to ns
 
-	// Publish appropriate order event based on status
+	// Publish appropriate order event based on status (if subscribed)
 	switch strings.ToUpper(status) {
 	case "NEW":
-		c.publishOrderAccepted(clientOrderID, int(orderID), updatedAt)
+		if subOrderUpdate {
+			c.publishOrderAccepted(clientOrderID, int(orderID), updatedAt)
+		}
 
 	case "PARTIALLY_FILLED":
-		executedQtyStr, _ := jsonparser.GetString(data, "z")
-		executedQty := parseFloat64([]byte(executedQtyStr))
-		c.publishOrderPartiallyFilled(clientOrderID, int(orderID), executedQty, updatedAt)
-		// Also publish Fill event
-		c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+		if subOrderUpdate {
+			executedQtyStr, _ := jsonparser.GetString(data, "z")
+			executedQty := parseFloat64([]byte(executedQtyStr))
+			c.publishOrderPartiallyFilled(clientOrderID, int(orderID), executedQty, updatedAt)
+		}
+		// Also publish Fill event (if subscribed)
+		if subFill {
+			c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+		}
 
 	case "FILLED":
-		executedQtyStr, _ := jsonparser.GetString(data, "z")
-		executedQty := parseFloat64([]byte(executedQtyStr))
-		c.publishOrderFilled(clientOrderID, int(orderID), executedQty, updatedAt)
-		// Also publish Fill event
-		c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+		if subOrderUpdate {
+			executedQtyStr, _ := jsonparser.GetString(data, "z")
+			executedQty := parseFloat64([]byte(executedQtyStr))
+			c.publishOrderFilled(clientOrderID, int(orderID), executedQty, updatedAt)
+		}
+		// Also publish Fill event (if subscribed)
+		if subFill {
+			c.publishFillFromExecutionReport(data, clientOrderID, int(orderID), transactTime)
+		}
 
 	case "CANCELED", "EXPIRED":
-		c.publishOrderCanceled(clientOrderID, int(orderID), updatedAt)
+		if subOrderUpdate {
+			c.publishOrderCanceled(clientOrderID, int(orderID), updatedAt)
+		}
 
 	case "REJECTED":
-		rejectReason, _ := jsonparser.GetString(data, "r")
-		c.publishOrderRejected(clientOrderID, int(orderID), rejectReason)
+		if subOrderUpdate {
+			rejectReason, _ := jsonparser.GetString(data, "r")
+			c.publishOrderRejected(clientOrderID, int(orderID), rejectReason)
+		}
 
 	default:
-		c.publishOrderUnknownStatus(clientOrderID, int(orderID), status)
+		if subOrderUpdate {
+			c.publishOrderUnknownStatus(clientOrderID, int(orderID), status)
+		}
 	}
 
 	log().Debug().
 		Int("accountID", c.accountID).
 		Int("orderID", int(orderID)).
 		Str("status", status).
+		Bool("subOrderUpdate", subOrderUpdate).
+		Bool("subFill", subFill).
 		Msg("Processed execution report")
 }
 

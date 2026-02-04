@@ -26,6 +26,12 @@ execution:
     account: bybit_lynxapp
   - id: 22
     account: lynxapp_ed25519
+
+portfolio:
+  - id: 19
+    account: bybit_lynxapp
+  - id: 22
+    account: lynxapp_ed25519
   
 # Strategy-specific config
 strategy:

@@ -323,13 +323,18 @@ func TestIntegration_BybitExecutionClient(t *testing.T) {
 		t.Log("Order entry authenticated successfully")
 	}
 
-	// Subscribe to user data stream
-	err = client.SubscribeUserDataStream()
-	if err != nil {
-		t.Errorf("Failed to subscribe to user data stream: %v", err)
+	// Subscribe to all private data streams using granular methods
+	if err = client.SubscribeOrderUpdate(); err != nil {
+		t.Errorf("Failed to subscribe to order updates: %v", err)
+	}
+	if err = client.SubscribeFill(); err != nil {
+		t.Errorf("Failed to subscribe to fills: %v", err)
+	}
+	if err = client.SubscribeBalance(); err != nil {
+		t.Errorf("Failed to subscribe to balance: %v", err)
 	}
 
-	t.Log("Subscribed to user data stream (order, execution, wallet)")
+	t.Log("Subscribed to order, fill, and balance streams")
 
 	// Wait a moment for subscription confirmation
 	time.Sleep(2 * time.Second)
@@ -418,13 +423,13 @@ func TestIntegration_BybitWalletUpdate(t *testing.T) {
 	// Wait for authentication
 	time.Sleep(2 * time.Second)
 
-	// Subscribe to user data stream
-	err = client.SubscribeUserDataStream()
+	// Subscribe to balance updates only (for this test)
+	err = client.SubscribeBalance()
 	if err != nil {
-		t.Fatalf("Failed to subscribe to user data stream: %v", err)
+		t.Fatalf("Failed to subscribe to balance updates: %v", err)
 	}
 
-	t.Log("Subscribed to user data stream, listening for wallet updates...")
+	t.Log("Subscribed to balance updates, listening for wallet updates...")
 	t.Log("Note: Wallet updates are pushed when there are balance changes")
 	t.Log("Waiting 10 seconds for any wallet updates...")
 

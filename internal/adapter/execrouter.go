@@ -15,6 +15,15 @@ var (
 
 // ExecutionClient is the interface that execution clients must implement.
 // Each execution client handles order operations for a specific account.
+//
+// Subscription Model:
+// The interface provides granular subscription methods for different private data types.
+// Each exchange handles these differently internally:
+//   - Bybit: Subscribes to individual topics (order, execution, wallet) as requested
+//   - Binance: Subscribes to entire user data stream on first subscribe call,
+//     then filters events internally based on which subscriptions are active
+//
+// Unsubscribed events are logged as "unhandled" and not published to the event bus.
 type ExecutionClient interface {
 	// Connect establishes the connection for trading
 	Connect(ctx context.Context) error
@@ -22,8 +31,17 @@ type ExecutionClient interface {
 	// Disconnect closes the connection
 	Disconnect()
 
-	// SubscribeUserDataStream subscribes to user data stream for account updates
-	SubscribeUserDataStream() error
+	// SubscribeOrderUpdate subscribes to order status update events
+	// Events: OrderAccepted, OrderPartiallyFilled, OrderFilled, OrderCanceled, OrderRejected
+	SubscribeOrderUpdate() error
+
+	// SubscribeFill subscribes to execution/fill events
+	// Events: Fill (trade execution details including price, quantity, fees)
+	SubscribeFill() error
+
+	// SubscribeBalance subscribes to wallet/balance update events
+	// Events: BalanceUpdate (available, locked, total for each asset)
+	SubscribeBalance() error
 
 	// SubmitOrder submits a new order
 	SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error
@@ -103,32 +121,40 @@ func (r *ExecutionRouter) CancelAllOrders(acctID int, symbolID int) error {
 }
 
 // SubscribeOrderUpdate subscribes to order update events for an account
-// Note: Order updates are published to the event bus by the execution client
-func (r *ExecutionRouter) SubscribeOrderUpdate(acctID int) {
-	// Order updates are automatically published to the event bus
-	// by the execution client when received from the exchange
+func (r *ExecutionRouter) SubscribeOrderUpdate(acctID int) error {
+	client, err := r.GetClient(acctID)
+	if err != nil {
+		return err
+	}
+	return client.SubscribeOrderUpdate()
 }
 
-// SubscribeOrderFill subscribes to order fill events for an account
-// Note: Fills are published to the event bus by the execution client
-func (r *ExecutionRouter) SubscribeOrderFill(acctID int) {
-	// Fills are automatically published to the event bus
-	// by the execution client when received from the exchange
+// SubscribeFill subscribes to fill/execution events for an account
+func (r *ExecutionRouter) SubscribeFill(acctID int) error {
+	client, err := r.GetClient(acctID)
+	if err != nil {
+		return err
+	}
+	return client.SubscribeFill()
 }
 
-// Connect connects all registered execution clients and subscribes to user data streams
+// SubscribeBalance subscribes to balance update events for an account
+func (r *ExecutionRouter) SubscribeBalance(acctID int) error {
+	client, err := r.GetClient(acctID)
+	if err != nil {
+		return err
+	}
+	return client.SubscribeBalance()
+}
+
+// Connect connects all registered execution clients
+// Note: Subscriptions must be called separately after Connect
 func (r *ExecutionRouter) Connect(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	for acctID, client := range r.clients {
-		// Connect the client
 		if err := client.Connect(ctx); err != nil {
-			return &RouterError{AccountID: acctID, Err: err}
-		}
-
-		// Subscribe to user data stream for account updates
-		if err := client.SubscribeUserDataStream(); err != nil {
 			return &RouterError{AccountID: acctID, Err: err}
 		}
 	}
