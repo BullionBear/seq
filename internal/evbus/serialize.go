@@ -12,6 +12,12 @@ const (
 	SizeOfTick       = int(unsafe.Sizeof(event.Tick{}))
 	SizeOfPriceLevel = int(unsafe.Sizeof(event.PriceLevel{}))
 
+	// State event sizes
+	SizeOfReadyEvent    = int(unsafe.Sizeof(event.ReadyEvent{}))
+	SizeOfStopEvent     = int(unsafe.Sizeof(event.StopEvent{}))
+	SizeOfFinishedEvent = int(unsafe.Sizeof(event.FinishedEvent{}))
+	SizeOfAbnormalEvent = int(unsafe.Sizeof(event.AbnormalEvent{}))
+
 	// Order event sizes
 	SizeOfOrderUnknownStatus   = int(unsafe.Sizeof(event.OrderUnknownStatus{}))
 	SizeOfOrderError           = int(unsafe.Sizeof(event.OrderError{}))
@@ -676,4 +682,76 @@ func DeserializeBalanceUpdate(buf []byte) event.BalanceUpdate {
 		Balances:  balances,
 		UpdatedAt: updatedAt,
 	}
+}
+
+// ============================================================================
+// State Event Serialization
+// ============================================================================
+
+// ReadyEventSize returns the size needed to serialize a ReadyEvent.
+func ReadyEventSize() uint64 {
+	return uint64(SizeOfReadyEvent)
+}
+
+// SerializeReadyEvent writes a ReadyEvent to the buffer.
+func SerializeReadyEvent(buf []byte, e *event.ReadyEvent) int {
+	data := (*[SizeOfReadyEvent]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfReadyEvent
+}
+
+// DeserializeReadyEvent reads a ReadyEvent from buffer.
+func DeserializeReadyEvent(buf []byte) event.ReadyEvent {
+	return *(*event.ReadyEvent)(unsafe.Pointer(&buf[0]))
+}
+
+// StopEventSize returns the size needed to serialize a StopEvent.
+func StopEventSize() uint64 {
+	return uint64(SizeOfStopEvent)
+}
+
+// SerializeStopEvent writes a StopEvent to the buffer.
+func SerializeStopEvent(buf []byte, e *event.StopEvent) int {
+	data := (*[SizeOfStopEvent]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfStopEvent
+}
+
+// DeserializeStopEvent reads a StopEvent from buffer.
+func DeserializeStopEvent(buf []byte) event.StopEvent {
+	return *(*event.StopEvent)(unsafe.Pointer(&buf[0]))
+}
+
+// FinishedEventSize returns the size needed to serialize a FinishedEvent.
+func FinishedEventSize() uint64 {
+	return uint64(SizeOfFinishedEvent)
+}
+
+// SerializeFinishedEvent writes a FinishedEvent to the buffer.
+func SerializeFinishedEvent(buf []byte, e *event.FinishedEvent) int {
+	data := (*[SizeOfFinishedEvent]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfFinishedEvent
+}
+
+// DeserializeFinishedEvent reads a FinishedEvent from buffer.
+func DeserializeFinishedEvent(buf []byte) event.FinishedEvent {
+	return *(*event.FinishedEvent)(unsafe.Pointer(&buf[0]))
+}
+
+// AbnormalEventSize returns the size needed to serialize an AbnormalEvent.
+func AbnormalEventSize() uint64 {
+	return uint64(SizeOfAbnormalEvent)
+}
+
+// SerializeAbnormalEvent writes an AbnormalEvent to the buffer.
+func SerializeAbnormalEvent(buf []byte, e *event.AbnormalEvent) int {
+	data := (*[SizeOfAbnormalEvent]byte)(unsafe.Pointer(e))[:]
+	copy(buf, data)
+	return SizeOfAbnormalEvent
+}
+
+// DeserializeAbnormalEvent reads an AbnormalEvent from buffer.
+func DeserializeAbnormalEvent(buf []byte) event.AbnormalEvent {
+	return *(*event.AbnormalEvent)(unsafe.Pointer(&buf[0]))
 }
