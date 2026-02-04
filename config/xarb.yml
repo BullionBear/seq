@@ -30,8 +30,10 @@ execution:
 portfolio:
   - id: 19
     account: bybit_lynxapp
+    subscriptions: ['balance']
   - id: 22
     account: lynxapp_ed25519
+    subscriptions: ['balance']
   
 # Strategy-specific config
 strategy:

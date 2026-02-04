@@ -5,6 +5,11 @@ type Topic int
 const (
 	TopicEventUnknown   Topic = iota
 	TopicEventUnhandled       // Known but not handled
+	// State Topic
+	TopicEventAbnormal
+	TopicEventReady
+	TopicEventStop
+	TopicEventFinished
 	// Market Data
 	TopicEventDepthSnapshot
 	TopicEventReqDepthSnapshot

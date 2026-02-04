@@ -1,10 +1,12 @@
 package bybit
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
@@ -13,6 +15,8 @@ import (
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/bytedance/sonic"
 )
+
+// Note: testConfig and loadTestConfig are defined in execclient_test.go
 
 func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	// Setup
@@ -581,4 +585,117 @@ func TestCategoryToWsURL(t *testing.T) {
 			t.Errorf("CategoryToWsURL[%s] = %v, want %v", tt.category, url, tt.expected)
 		}
 	}
+}
+
+// ============================================================================
+// ReqBalanceSnapshot Tests
+// ============================================================================
+
+// TestIntegration_ReqBalanceSnapshot tests requesting balance snapshot via HTTP API
+// Uses account id=19 (bybit_lynxapp) with HMAC authentication
+func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Load config to get cpanel credentials
+	cfg, err := loadTestConfig("../../../config/xarb.yml")
+	if err != nil {
+		t.Skipf("Skipping test: failed to load config: %v", err)
+	}
+
+	// Create cpanel client and fetch accounts
+	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	accounts, err := cpanelClient.GetAccounts(ctx)
+	if err != nil {
+		t.Skipf("Skipping test: failed to get accounts: %v", err)
+	}
+
+	// Find the bybit_lynxapp account (id=19)
+	var targetAccount *cpanel.Account
+	for i := range accounts {
+		if accounts[i].ID == 19 || accounts[i].Name == "bybit_lynxapp" {
+			targetAccount = &accounts[i]
+			break
+		}
+	}
+
+	if targetAccount == nil {
+		t.Skip("Skipping test: bybit_lynxapp account not found")
+	}
+
+	t.Logf("Found account: ID=%d, Name=%s, APIType=%s, Exchange=%s",
+		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
+
+	// Create event bus and catalog
+	eb := evbus.NewEventBus()
+	cat := &catalog.Catalog{}
+
+	// Inject account into catalog
+	accountsMap := make(map[int]cpanel.Account)
+	accountsMap[targetAccount.ID] = *targetAccount
+	setPrivateField(cat, "accounts", accountsMap)
+
+	// Create HTTP client
+	client := NewBybitHTTPClient(cat, eb)
+
+	// Request balance snapshot (UNIFIED account type for Bybit)
+	err = client.ReqBalanceSnapshot(targetAccount.ID, "UNIFIED")
+	if err != nil {
+		t.Fatalf("Failed to request balance snapshot: %v", err)
+	}
+
+	t.Log("Requested balance snapshot successfully")
+
+	// Check if event was published
+	var receivedEvent evbus.Event
+	eb.Register("test", nil, func(ev evbus.Event) {
+		receivedEvent = ev
+	})
+
+	if eb.Dispatch() {
+		if receivedEvent.Ref.Topic == event.TopicEventReqBalanceSnapshot {
+			buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+			snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+			t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
+				snapshot.AccountID, len(snapshot.Balances))
+			for i, b := range snapshot.Balances {
+				if i < 10 { // Only log first 10 balances
+					t.Logf("  Balance[%d]: TokenID=%d, Available=%.8f, Locked=%.8f, Total=%.8f",
+						i, b.TokenID, b.Available, b.Locked, b.Total)
+				}
+			}
+		}
+	} else {
+		t.Log("No balance event published (account may have zero balances)")
+	}
+}
+
+// TestUnit_SignHMAC tests the HMAC signature generation
+func TestUnit_SignHMAC(t *testing.T) {
+	eb := evbus.NewEventBus()
+	cat := &catalog.Catalog{}
+	client := NewBybitHTTPClient(cat, eb)
+
+	// Test with known values
+	payload := []byte("1234567890test_api_key5000accountType=UNIFIED")
+	secret := "test_secret"
+
+	signature := client.signHMAC(payload, secret)
+
+	// Verify signature is not empty
+	if signature == "" {
+		t.Error("Signature should not be empty")
+	}
+
+	// Verify signature is hex-encoded (length should be 64 for SHA256)
+	if len(signature) != 64 {
+		t.Errorf("Expected signature length 64, got %d", len(signature))
+	}
+
+	t.Logf("Payload: %s", string(payload))
+	t.Logf("Signature: %s", signature)
 }

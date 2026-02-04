@@ -50,3 +50,13 @@ const (
 	TimeInForceFOK
 	TimeInForcePO
 )
+
+type EngineType int
+
+const (
+	EngineData EngineType = iota
+	EngineExecution
+	EnginePortfolio
+	EngineRisk
+	EngineStrategy
+)

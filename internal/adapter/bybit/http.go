@@ -2,6 +2,10 @@ package bybit
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"time"
@@ -148,9 +152,9 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 
 	// Publish to event bus
 	c.eventBus.Publish(evbus.EventRef{
-		Topic: event.TopicEventDepthSnapshot,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventDepthSnapshot,
+		Index:  offset,
+		Length: size,
 	})
 	return nil
 }
@@ -454,4 +458,351 @@ func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapsho
 	}
 
 	return nil
+}
+
+// ============================================================================
+// Authenticated Endpoints
+// ============================================================================
+
+// ReqBalanceSnapshot fetches account wallet balance from Bybit API
+// Endpoint: GET /v5/account/wallet-balance
+// This is an authenticated endpoint requiring HMAC signature
+//
+// Bybit response format:
+//
+//	{
+//	  "retCode": 0,
+//	  "retMsg": "OK",
+//	  "result": {
+//	    "list": [{
+//	      "accountType": "UNIFIED",
+//	      "coin": [{
+//	        "coin": "BTC",
+//	        "walletBalance": "0.00000001",
+//	        "availableToWithdraw": "0.00000001",
+//	        "locked": "0"
+//	      }]
+//	    }]
+//	  }
+//	}
+func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, accountType string) error {
+	// Get account credentials from catalog
+	account, err := c.catalog.GetAccount(accountID)
+	if err != nil {
+		return err
+	}
+
+	// Default to UNIFIED account type if not specified
+	if accountType == "" {
+		accountType = "UNIFIED"
+	}
+
+	// Build query string
+	queryString := "accountType=" + accountType
+
+	// Generate timestamp
+	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+
+	// Build signature payload: timestamp + api_key + recv_window + query_string
+	c.buffer.Reset()
+	c.buffer.WriteString(timestamp)
+	c.buffer.WriteString(account.APIKey)
+	c.buffer.WriteString(HTTPRecvWindow)
+	c.buffer.WriteString(queryString)
+
+	// Sign with HMAC-SHA256
+	signature := c.signHMAC(c.buffer.Bytes(), account.APISecret)
+
+	// Build full URL
+	c.buffer.Reset()
+	c.buffer.WriteString(c.baseURL)
+	c.buffer.WriteString(EndpointWalletBalance)
+	c.buffer.WriteByte('?')
+	c.buffer.WriteString(queryString)
+
+	// Acquire request and response from fasthttp's internal pools
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	// Set request URI and method
+	req.SetRequestURIBytes(c.buffer.Bytes())
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	// Set authentication headers
+	req.Header.Set("X-BAPI-API-KEY", account.APIKey)
+	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
+	req.Header.Set("X-BAPI-SIGN", signature)
+	req.Header.Set("X-BAPI-RECV-WINDOW", HTTPRecvWindow)
+
+	// Execute the request
+	err = c.client.Do(req, resp)
+	if err != nil {
+		return err
+	}
+
+	// Check response status
+	statusCode := resp.StatusCode()
+	if statusCode != fasthttp.StatusOK {
+		return &HTTPError{
+			StatusCode: statusCode,
+			Body:       string(resp.Body()),
+		}
+	}
+
+	jsonData := resp.Body()
+
+	// Check Bybit API response code
+	if err := c.checkRetCode(jsonData); err != nil {
+		return err
+	}
+
+	// Parse and publish balance snapshot
+	return c.parseAndPublishBalanceSnapshot(jsonData, accountID)
+}
+
+// signHMAC signs the payload with HMAC-SHA256
+func (c *BybitHTTPClient) signHMAC(payload []byte, secret string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(payload)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// parseAndPublishBalanceSnapshot parses wallet balance response and publishes to event bus
+func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID int) error {
+	// Find "list" array in result
+	const listKey = "\"list\""
+	listIdx := bytes.Index(data, []byte(listKey))
+	if listIdx == -1 {
+		return errors.New("missing list in response")
+	}
+
+	// Find "coin" array within the first account in list
+	const coinKey = "\"coin\""
+	coinIdx := bytes.Index(data[listIdx:], []byte(coinKey))
+	if coinIdx == -1 {
+		return errors.New("missing coin array in response")
+	}
+	coinData := data[listIdx+coinIdx:]
+
+	// Count non-zero balances first
+	balanceCount := c.countWalletBalances(coinData)
+	if balanceCount == 0 {
+		log().Debug().Int("accountID", accountID).Msg("No non-zero balances found in wallet")
+		return nil
+	}
+
+	// Calculate size and allocate buffer
+	size := uint64(evbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(evbus.SizeOfBalance)
+	offset, buf := c.eventBus.Allocate(size)
+
+	// Write header directly to buffer
+	pos := 0
+	// AccountID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(accountID))
+	pos += 8
+	// BalancesLen (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], uint32(balanceCount))
+	pos += 4
+	// Padding (4 bytes)
+	binary.LittleEndian.PutUint32(buf[pos:], 0)
+	pos += 4
+
+	// Parse balances directly into buffer
+	c.parseWalletBalancesInto(coinData, buf[pos:], balanceCount)
+
+	// Publish to event bus
+	c.eventBus.Publish(evbus.EventRef{
+		Topic:  event.TopicEventReqBalanceSnapshot,
+		Index:  offset,
+		Length: size,
+	})
+
+	log().Debug().Int("accountID", accountID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
+	return nil
+}
+
+// countWalletBalances counts non-zero balances in the coin array
+func (c *BybitHTTPClient) countWalletBalances(data []byte) int {
+	count := 0
+	curr := 0
+
+	// Find start of coin array [
+	for curr < len(data) && data[curr] != '[' {
+		curr++
+	}
+	if curr >= len(data) {
+		return 0
+	}
+	curr++ // skip [
+
+	// Iterate through each coin object
+	depth := 0
+	for curr < len(data) {
+		b := data[curr]
+		if b == '{' {
+			depth++
+			if depth == 1 {
+				// Found a coin object, check if it has non-zero balance
+				endIdx := c.findObjectEnd(data[curr:])
+				if endIdx > 0 {
+					coinObj := data[curr : curr+endIdx+1]
+					if c.hasNonZeroBalance(coinObj) {
+						count++
+					}
+				}
+			}
+		} else if b == '}' {
+			depth--
+		} else if b == ']' && depth == 0 {
+			break
+		}
+		curr++
+	}
+
+	return count
+}
+
+// findObjectEnd finds the closing } for an object starting at data[0]
+func (c *BybitHTTPClient) findObjectEnd(data []byte) int {
+	depth := 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == '{' {
+			depth++
+		} else if data[i] == '}' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// hasNonZeroBalance checks if a coin object has non-zero walletBalance
+func (c *BybitHTTPClient) hasNonZeroBalance(coinObj []byte) bool {
+	// Find walletBalance field
+	const walletBalKey = "\"walletBalance\""
+	idx := bytes.Index(coinObj, []byte(walletBalKey))
+	if idx == -1 {
+		return false
+	}
+
+	// Find the value (it's a string)
+	idx += len(walletBalKey)
+	for idx < len(coinObj) && coinObj[idx] != '"' {
+		idx++
+	}
+	idx++ // skip opening quote
+
+	start := idx
+	for idx < len(coinObj) && coinObj[idx] != '"' {
+		idx++
+	}
+
+	// Parse the balance value
+	balance := parseFloat64(coinObj[start:idx])
+	return balance > 0
+}
+
+// parseWalletBalancesInto parses wallet balances directly into buffer
+func (c *BybitHTTPClient) parseWalletBalancesInto(data []byte, buf []byte, expectedCount int) {
+	curr := 0
+	pos := 0
+	parsed := 0
+
+	// Find start of coin array [
+	for curr < len(data) && data[curr] != '[' {
+		curr++
+	}
+	if curr >= len(data) {
+		return
+	}
+	curr++ // skip [
+
+	// Iterate through each coin object
+	depth := 0
+	for curr < len(data) && parsed < expectedCount {
+		b := data[curr]
+		if b == '{' {
+			depth++
+			if depth == 1 {
+				// Found a coin object
+				endIdx := c.findObjectEnd(data[curr:])
+				if endIdx > 0 {
+					coinObj := data[curr : curr+endIdx+1]
+					if c.hasNonZeroBalance(coinObj) {
+						// Parse and write balance to buffer
+						balance := c.parseCoinBalance(coinObj)
+						// Write Balance struct directly (40 bytes)
+						balancePtr := (*event.Balance)(unsafe.Pointer(&buf[pos]))
+						balancePtr.TokenID = balance.TokenID
+						balancePtr.Available = balance.Available
+						balancePtr.Locked = balance.Locked
+						balancePtr.Total = balance.Total
+						pos += evbus.SizeOfBalance
+						parsed++
+					}
+				}
+			}
+		} else if b == '}' {
+			depth--
+		} else if b == ']' && depth == 0 {
+			break
+		}
+		curr++
+	}
+}
+
+// parseCoinBalance parses a single coin object into a Balance struct
+func (c *BybitHTTPClient) parseCoinBalance(coinObj []byte) event.Balance {
+	var balance event.Balance
+
+	// Parse walletBalance (total)
+	balance.Total = c.parseStringField(coinObj, "\"walletBalance\"")
+
+	// Parse availableToWithdraw (available)
+	balance.Available = c.parseStringField(coinObj, "\"availableToWithdraw\"")
+
+	// Parse locked
+	// Note: Bybit may not have a direct "locked" field, calculate from total - available
+	locked := c.parseStringField(coinObj, "\"locked\"")
+	if locked > 0 {
+		balance.Locked = locked
+	} else {
+		balance.Locked = balance.Total - balance.Available
+		if balance.Locked < 0 {
+			balance.Locked = 0
+		}
+	}
+
+	// TokenID would need to be looked up from catalog - for now use 0
+	// A proper implementation would map coin name to TokenID
+	balance.TokenID = 0
+
+	return balance
+}
+
+// parseStringField parses a string field value as float64
+func (c *BybitHTTPClient) parseStringField(data []byte, key string) float64 {
+	idx := bytes.Index(data, []byte(key))
+	if idx == -1 {
+		return 0
+	}
+
+	idx += len(key)
+	// Find colon and opening quote
+	for idx < len(data) && data[idx] != '"' {
+		idx++
+	}
+	idx++ // skip opening quote
+
+	start := idx
+	for idx < len(data) && data[idx] != '"' {
+		idx++
+	}
+
+	return parseFloat64(data[start:idx])
 }

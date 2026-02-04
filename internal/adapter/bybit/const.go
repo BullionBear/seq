@@ -5,7 +5,11 @@ const (
 
 	// Bybit V5 API unifies all products into single endpoints
 	// Use "category" parameter to specify: spot, linear, inverse, option
-	EndpointOrderbook = "/v5/market/orderbook"
+	EndpointOrderbook     = "/v5/market/orderbook"
+	EndpointWalletBalance = "/v5/account/wallet-balance"
+
+	// HTTP API settings
+	HTTPRecvWindow = "5000" // 5 seconds
 
 	// WebSocket URLs - Bybit requires separate connections per channel type
 	// Public market data streams (per category)
