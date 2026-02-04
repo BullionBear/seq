@@ -27,8 +27,8 @@ type XArb struct {
 	hedgingSymbol          cpanel.Symbol
 
 	// Account IDs for trading
-	quotingAccountID int
-	hedgingAccountID int
+	quotingAccount cpanel.Account
+	hedgingAccount cpanel.Account
 }
 
 // NewXArb creates a new XArb strategy.
@@ -37,6 +37,9 @@ func NewXArb() *XArb {
 		StrategyBase:  strategy.NewStrategyBase("xarb"),
 		quotingSymbol: cpanel.Symbol{},
 		hedgingSymbol: cpanel.Symbol{},
+
+		quotingAccount: cpanel.Account{},
+		hedgingAccount: cpanel.Account{},
 	}
 }
 
@@ -81,7 +84,7 @@ func (x *XArb) OnInit() {
 	if xarbConfig.QuotingAccount != "" {
 		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
 		if quotingAccount != nil {
-			x.quotingAccountID = quotingAccount.ID
+			x.quotingAccount = *quotingAccount
 			log().Info().Msgf("Quoting account: %s(%d)", quotingAccount.Name, quotingAccount.ID)
 		} else {
 			log().Warn().Str("account", xarbConfig.QuotingAccount).Msg("quoting account not found")
@@ -91,7 +94,7 @@ func (x *XArb) OnInit() {
 	if xarbConfig.HedgingAccount != "" {
 		hedgingAccount := x.GetCatalog().GetAccountByName(xarbConfig.HedgingAccount)
 		if hedgingAccount != nil {
-			x.hedgingAccountID = hedgingAccount.ID
+			x.hedgingAccount = *hedgingAccount
 			log().Info().Msgf("Hedging account: %s(%d)", hedgingAccount.Name, hedgingAccount.ID)
 		} else {
 			log().Warn().Str("account", xarbConfig.HedgingAccount).Msg("hedging account not found")
@@ -229,26 +232,26 @@ func (x *XArb) OnFill(fill event.Fill) {}
 
 // GetQuotingAccountID returns the account ID for quoting
 func (x *XArb) GetQuotingAccountID() int {
-	return x.quotingAccountID
+	return x.quotingAccount.ID
 }
 
 // GetHedgingAccountID returns the account ID for hedging
 func (x *XArb) GetHedgingAccountID() int {
-	return x.hedgingAccountID
+	return x.hedgingAccount.ID
 }
 
 // GetQuotingBalance returns the available balance for a token in the quoting account
 func (x *XArb) GetQuotingBalance(tokenID int) float64 {
-	if x.quotingAccountID == 0 {
+	if x.quotingAccount.ID == 0 {
 		return 0
 	}
-	return x.GetAvailable(x.quotingAccountID, tokenID)
+	return x.GetAvailable(x.quotingAccount.ID, tokenID)
 }
 
 // GetHedgingBalance returns the available balance for a token in the hedging account
 func (x *XArb) GetHedgingBalance(tokenID int) float64 {
-	if x.hedgingAccountID == 0 {
+	if x.hedgingAccount.ID == 0 {
 		return 0
 	}
-	return x.GetAvailable(x.hedgingAccountID, tokenID)
+	return x.GetAvailable(x.hedgingAccount.ID, tokenID)
 }
