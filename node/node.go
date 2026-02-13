@@ -75,11 +75,18 @@ func NewNode(cat *catalog.Catalog) *Node {
 
 // Init initializes the node and all engines.
 func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) {
+	// Create state notifier for engines to broadcast state events
+	notifier := evbus.NewStateNotifier(n.eventBus)
+
 	// Initialize data engine (registers OrderBook actor)
 	n.dataEngine.Init()
 
 	// Register data engine as an actor for handling depth events
 	actor.Register(n.eventBus, n.dataEngine)
+
+	// Configure portfolio engine with execution router and notifier
+	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
+	n.portfolioEngine.SetNotifier(notifier)
 
 	// Register portfolio engine as an actor for handling balance events
 	actor.Register(n.eventBus, n.portfolioEngine)
@@ -95,6 +102,9 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	if len(config.Execution) > 0 {
 		n.setupExecutionClients(config.Execution)
 	}
+
+	// Initialize portfolio engine (subscribes to balance updates)
+	n.portfolioEngine.OnInit()
 
 	// Create strategy engine and initialize it
 	n.strategyEngine = strategy.NewEngine(strategyActor, n.catalog, n.cache)
@@ -194,6 +204,10 @@ func (n *Node) Start(ctx context.Context) {
 	} else {
 		log().Info().Msg("Node: ExecutionEngine connected")
 	}
+
+	// Start portfolio engine (requests balance snapshots, notifies ready when complete)
+	n.portfolioEngine.OnStart()
+	log().Info().Msg("Node: PortfolioEngine started")
 
 	// Start strategy (now just calls OnStart for business logic)
 	n.strategyEngine.Start()

@@ -48,6 +48,10 @@ type BybitPrivateStreamClient struct {
 	authenticated atomic.Bool
 	shouldStop    atomic.Bool
 
+	// Pending subscriptions (stored before Connect, sent after Connect)
+	pendingTopics map[string]bool
+	topicsMu      sync.Mutex
+
 	// Context for graceful shutdown
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -65,10 +69,11 @@ func NewBybitPrivateStreamClient(catalog *catalog.Catalog, eventBus *evbus.Event
 	}
 
 	return &BybitPrivateStreamClient{
-		catalog:   catalog,
-		eventBus:  eventBus,
-		accountID: accountID,
-		account:   *account,
+		catalog:       catalog,
+		eventBus:      eventBus,
+		accountID:     accountID,
+		account:       *account,
+		pendingTopics: make(map[string]bool),
 	}, nil
 }
 
@@ -110,6 +115,12 @@ func (c *BybitPrivateStreamClient) Connect(ctx context.Context) error {
 		return err
 	}
 
+	// Subscribe to all pending topics after authentication
+	if err := c.subscribePendingTopics(); err != nil {
+		log().Error().Err(err).Msg("Failed to subscribe to pending topics")
+		return err
+	}
+
 	log().Info().Int("accountID", c.accountID).Msg("Connected to Bybit Private Stream WebSocket")
 	return nil
 }
@@ -133,9 +144,42 @@ func (c *BybitPrivateStreamClient) Disconnect() {
 	log().Info().Int("accountID", c.accountID).Msg("Disconnected from Bybit Private Stream WebSocket")
 }
 
-// Subscribe subscribes to private stream topics
+// Subscribe registers topics to subscribe to.
+// If already connected, sends the subscription immediately.
+// If not connected, stores the topics and subscribes on Connect().
+// This method is idempotent - subscribing to the same topic multiple times has no effect.
 // Topics: order, execution, wallet, position
 func (c *BybitPrivateStreamClient) Subscribe(topics []string) error {
+	if len(topics) == 0 {
+		return nil
+	}
+
+	// Add topics to pending set (idempotent)
+	c.topicsMu.Lock()
+	newTopics := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		if !c.pendingTopics[topic] {
+			c.pendingTopics[topic] = true
+			newTopics = append(newTopics, topic)
+		}
+	}
+	c.topicsMu.Unlock()
+
+	// If not connected yet, topics will be subscribed on Connect()
+	if !c.connected.Load() || !c.authenticated.Load() {
+		return nil
+	}
+
+	// If already connected and there are new topics, subscribe now
+	if len(newTopics) > 0 {
+		return c.sendSubscription(newTopics)
+	}
+
+	return nil
+}
+
+// sendSubscription sends a subscription message for the given topics
+func (c *BybitPrivateStreamClient) sendSubscription(topics []string) error {
 	if len(topics) == 0 {
 		return nil
 	}
@@ -158,6 +202,23 @@ func (c *BybitPrivateStreamClient) Subscribe(topics []string) error {
 	c.msgBuffer.WriteString(`]}`)
 
 	return c.sendMessage(c.msgBuffer.Bytes())
+}
+
+// subscribePendingTopics subscribes to all topics that were registered before Connect()
+func (c *BybitPrivateStreamClient) subscribePendingTopics() error {
+	c.topicsMu.Lock()
+	topics := make([]string, 0, len(c.pendingTopics))
+	for topic := range c.pendingTopics {
+		topics = append(topics, topic)
+	}
+	c.topicsMu.Unlock()
+
+	if len(topics) == 0 {
+		return nil
+	}
+
+	log().Debug().Strs("topics", topics).Int("accountID", c.accountID).Msg("Subscribing to pending topics")
+	return c.sendSubscription(topics)
 }
 
 // SubscribeOrderUpdate subscribes to order updates
@@ -1224,12 +1285,17 @@ func (h *wsOrderEntryHandler) OnMessage(socket *gws.Conn, message *gws.Message) 
 // It coordinates between the two underlying clients:
 // - BybitPrivateStreamClient: for receiving order updates, executions, and wallet updates
 // - BybitOrderEntryClient: for sending orders via WebSocket
+// - BybitHTTPClient: for HTTP requests (e.g., balance snapshots)
 type BybitExecutionClient struct {
 	privateStream *BybitPrivateStreamClient
 	orderEntry    *BybitOrderEntryClient
+	httpClient    *BybitHTTPClient
 
 	// Client order ID counter for generating unique order link IDs
 	clientOrderID atomic.Int64
+
+	// Account info for HTTP requests
+	accountID int
 }
 
 // NewBybitExecutionClient creates a new Bybit execution client that wraps
@@ -1245,9 +1311,13 @@ func NewBybitExecutionClient(catalog *catalog.Catalog, eventBus *evbus.EventBus,
 		return nil, err
 	}
 
+	httpClient := NewBybitHTTPClient(catalog, eventBus)
+
 	return &BybitExecutionClient{
 		privateStream: privateStream,
 		orderEntry:    orderEntry,
+		httpClient:    &httpClient,
+		accountID:     accountID,
 	}, nil
 }
 
@@ -1309,6 +1379,13 @@ func (c *BybitExecutionClient) CancelOrder(symbolID int, orderID int) error {
 // CancelAllOrders cancels all open orders for a symbol via the order entry WebSocket
 func (c *BybitExecutionClient) CancelAllOrders(symbolID int) error {
 	return c.orderEntry.CancelAllOrders(symbolID)
+}
+
+// ReqBalanceSnapshot requests the current balance snapshot via HTTP API
+// The response will be published as a ReqBalanceSnapshot event
+func (c *BybitExecutionClient) ReqBalanceSnapshot() error {
+	// Use UNIFIED account type for Bybit unified margin
+	return c.httpClient.ReqBalanceSnapshot(c.accountID, "UNIFIED")
 }
 
 // PrivateStream returns the underlying private stream client for advanced usage

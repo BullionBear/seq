@@ -166,6 +166,15 @@ func (c *BinanceSpotExecutionClient) Connect(ctx context.Context) error {
 	// Start ping loop
 	go c.pingLoop()
 
+	// Subscribe to user data stream if any subscriptions were registered before Connect
+	if c.hasAnySubscription() {
+		if err := c.ensureUserDataStreamSubscribed(); err != nil {
+			log().Error().Err(err).Msg("Failed to subscribe to user data stream")
+			return err
+		}
+		log().Debug().Int("accountID", c.accountID).Msg("Subscribed to pending user data stream")
+	}
+
 	log().Info().Int("accountID", c.accountID).Msg("Connected to Binance WebSocket API for trading")
 	return nil
 }
@@ -368,24 +377,42 @@ func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot() error {
 // Binance: Subscribes to user data stream if not already subscribed, enables order update filtering
 func (c *BinanceSpotExecutionClient) SubscribeOrderUpdate() error {
 	c.subOrderUpdate.Store(true)
-	return c.ensureUserDataStreamSubscribed()
+	// If already connected, subscribe now; otherwise will subscribe on Connect()
+	if c.connected.Load() {
+		return c.ensureUserDataStreamSubscribed()
+	}
+	return nil
 }
 
 // SubscribeFill subscribes to execution/fill events
 // Binance: Subscribes to user data stream if not already subscribed, enables fill filtering
 func (c *BinanceSpotExecutionClient) SubscribeFill() error {
 	c.subFill.Store(true)
-	return c.ensureUserDataStreamSubscribed()
+	// If already connected, subscribe now; otherwise will subscribe on Connect()
+	if c.connected.Load() {
+		return c.ensureUserDataStreamSubscribed()
+	}
+	return nil
 }
 
 // SubscribeBalance subscribes to wallet/balance update events
 // Binance: Subscribes to user data stream if not already subscribed, enables balance filtering
 func (c *BinanceSpotExecutionClient) SubscribeBalance() error {
 	c.subBalance.Store(true)
-	return c.ensureUserDataStreamSubscribed()
+	// If already connected, subscribe now; otherwise will subscribe on Connect()
+	if c.connected.Load() {
+		return c.ensureUserDataStreamSubscribed()
+	}
+	return nil
+}
+
+// hasAnySubscription returns true if any subscription flag is set
+func (c *BinanceSpotExecutionClient) hasAnySubscription() bool {
+	return c.subOrderUpdate.Load() || c.subFill.Load() || c.subBalance.Load()
 }
 
 // ensureUserDataStreamSubscribed subscribes to user data stream if not already subscribed
+// Uses userDataStream.subscribe.signature method which requires apiKey, timestamp, signature
 func (c *BinanceSpotExecutionClient) ensureUserDataStreamSubscribed() error {
 	// Check if already subscribed
 	if c.userDataStreamSubscribed.Load() {
@@ -400,14 +427,12 @@ func (c *BinanceSpotExecutionClient) ensureUserDataStreamSubscribed() error {
 		return nil
 	}
 
-	// Build params for signing
+	// Build params for signing (only apiKey and timestamp)
 	c.msgBuffer.Reset()
 
 	timestamp := time.Now().UnixMilli()
 	c.msgBuffer.WriteString("apiKey=")
 	c.msgBuffer.WriteString(c.account.APIKey)
-	c.msgBuffer.WriteString("&recvWindow=")
-	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
 	c.msgBuffer.WriteString("&timestamp=")
 	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 
@@ -424,21 +449,20 @@ func (c *BinanceSpotExecutionClient) ensureUserDataStreamSubscribed() error {
 	return nil
 }
 
-// buildUserDataStreamSubscribeRequest builds a JSON message for userDataStream.start
+// buildUserDataStreamSubscribeRequest builds a JSON message for userDataStream.subscribe.signature
+// This method is used for unauthenticated sessions (no session.logon)
+// Required params: apiKey, timestamp, signature
 func (c *BinanceSpotExecutionClient) buildUserDataStreamSubscribeRequest(timestamp int64, signature string, requestID uint64) []byte {
 	var buf bytes.Buffer
 	buf.Grow(256)
 
 	buf.WriteString(`{"id":"`)
 	buf.WriteString(strconv.FormatUint(requestID, 10))
-	buf.WriteString(`","method":"userDataStream.start","params":{`)
+	buf.WriteString(`","method":"userDataStream.subscribe.signature","params":{`)
 
 	buf.WriteString(`"apiKey":"`)
 	buf.WriteString(c.account.APIKey)
 	buf.WriteString(`"`)
-
-	buf.WriteString(`,"recvWindow":`)
-	buf.WriteString(strconv.Itoa(wsAPIRecvWindow))
 
 	buf.WriteString(`,"timestamp":`)
 	buf.WriteString(strconv.FormatInt(timestamp, 10))

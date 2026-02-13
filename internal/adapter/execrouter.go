@@ -51,6 +51,10 @@ type ExecutionClient interface {
 
 	// CancelAllOrders cancels all open orders for a symbol
 	CancelAllOrders(symbolID int) error
+
+	// ReqBalanceSnapshot requests the current balance snapshot
+	// The response will be published as a ReqBalanceSnapshot event
+	ReqBalanceSnapshot() error
 }
 
 // ExecutionRouter routes order operations to the appropriate ExecutionClient
@@ -145,6 +149,15 @@ func (r *ExecutionRouter) SubscribeBalance(acctID int) error {
 		return err
 	}
 	return client.SubscribeBalance()
+}
+
+// ReqBalanceSnapshot requests the current balance snapshot for an account
+func (r *ExecutionRouter) ReqBalanceSnapshot(acctID int) error {
+	client, err := r.GetClient(acctID)
+	if err != nil {
+		return err
+	}
+	return client.ReqBalanceSnapshot()
 }
 
 // Connect connects all registered execution clients

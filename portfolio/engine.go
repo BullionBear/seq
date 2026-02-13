@@ -4,8 +4,11 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/rs/zerolog"
 )
@@ -32,7 +35,11 @@ type AccountBalance struct {
 
 // Engine manages portfolio state including balances for each account
 type Engine struct {
+	engine.EngineBase
 	eventBus *evbus.EventBus
+
+	// Execution router for subscribing and requesting balance snapshots
+	execRouter *adapter.ExecutionRouter
 
 	// Configured account IDs to track
 	accountIDs []int
@@ -40,15 +47,26 @@ type Engine struct {
 	// Balances indexed by accountID -> tokenID -> Balance
 	balances map[int]*AccountBalance
 	mu       sync.RWMutex
+
+	// Pending snapshots tracking for NotifyReady
+	pendingSnapshots map[int]bool // accountID -> snapshot received
+	snapshotMu       sync.RWMutex
 }
 
 // NewEngine creates a new portfolio engine
 func NewEngine(eventBus *evbus.EventBus) *Engine {
 	return &Engine{
-		eventBus:   eventBus,
-		accountIDs: make([]int, 0),
-		balances:   make(map[int]*AccountBalance),
+		EngineBase:       engine.NewEngineBase(common.EnginePortfolio),
+		eventBus:         eventBus,
+		accountIDs:       make([]int, 0),
+		balances:         make(map[int]*AccountBalance),
+		pendingSnapshots: make(map[int]bool),
 	}
+}
+
+// SetExecutionRouter sets the execution router for subscribing and requesting balance snapshots
+func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
+	e.execRouter = router
 }
 
 // ============================================================================
@@ -87,19 +105,67 @@ func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	}
 }
 
-// OnInit is called once when the actor is initialized
+// OnInit is called once when the actor is initialized.
+// It subscribes to balance updates for all configured accounts.
 func (e *Engine) OnInit() {
-	log().Debug().Msg("PortfolioEngine initialized")
+	if e.execRouter == nil {
+		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
+		return
+	}
+
+	// Subscribe to balance updates for all configured accounts
+	for _, acctID := range e.accountIDs {
+		if err := e.execRouter.SubscribeBalance(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to subscribe to balance updates")
+		} else {
+			log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Subscribed to balance updates")
+		}
+	}
+
+	log().Info().Msg("PortfolioEngine initialized")
 }
 
-// OnStart is called once when the actor is started
+// OnStart is called once when the actor is started.
+// It requests balance snapshots for all configured accounts.
 func (e *Engine) OnStart() {
-	log().Debug().Msg("PortfolioEngine started")
+	if e.execRouter == nil {
+		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance snapshot request")
+		// If no accounts, notify ready immediately
+		e.NotifyReady()
+		return
+	}
+
+	// Initialize pending snapshots for all accounts
+	e.snapshotMu.Lock()
+	e.pendingSnapshots = make(map[int]bool)
+	for _, acctID := range e.accountIDs {
+		e.pendingSnapshots[acctID] = false // not yet received
+	}
+	e.snapshotMu.Unlock()
+
+	// If no accounts configured, notify ready immediately
+	if len(e.accountIDs) == 0 {
+		log().Info().Msg("PortfolioEngine: No accounts configured, ready immediately")
+		e.NotifyReady()
+		return
+	}
+
+	// Request balance snapshots for all configured accounts
+	for _, acctID := range e.accountIDs {
+		if err := e.execRouter.ReqBalanceSnapshot(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to request balance snapshot")
+		} else {
+			log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Requested balance snapshot")
+		}
+	}
+
+	log().Info().Msg("PortfolioEngine started, waiting for balance snapshots")
 }
 
 // OnStop is called once when the actor is stopped
 func (e *Engine) OnStop() {
-	log().Debug().Msg("PortfolioEngine stopped")
+	e.NotifyStop()
+	log().Info().Msg("PortfolioEngine stopped")
 }
 
 // ============================================================================
@@ -281,9 +347,8 @@ func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
 
 // OnReqBalanceSnapshot handles ReqBalanceSnapshot events from the event bus
 func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
+	// Update balances
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	e.ensureAccountExistsLocked(ev.AccountID)
 
 	// Clear existing balances and set from snapshot
@@ -297,11 +362,49 @@ func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
 			Total:     b.Total,
 		}
 	}
+	e.mu.Unlock()
 
-	log().Debug().
+	// Log balance initialization
+	log().Info().
 		Int("accountID", ev.AccountID).
 		Int("balanceCount", len(ev.Balances)).
-		Msg("Balance snapshot received")
+		Msg("PortfolioEngine: Balance snapshot received and initialized")
+
+	// Log each token balance
+	for _, b := range ev.Balances {
+		if b.Total > 0 {
+			log().Debug().
+				Int("accountID", ev.AccountID).
+				Int("tokenID", b.TokenID).
+				Float64("available", b.Available).
+				Float64("locked", b.Locked).
+				Float64("total", b.Total).
+				Msg("PortfolioEngine: Token balance initialized")
+		}
+	}
+
+	// Mark this account's snapshot as received and check if all are done
+	e.snapshotMu.Lock()
+	e.pendingSnapshots[ev.AccountID] = true
+	allReceived := e.checkAllSnapshotsReceivedLocked()
+	e.snapshotMu.Unlock()
+
+	// If all snapshots received, notify ready
+	if allReceived {
+		log().Info().Msg("PortfolioEngine: All balance snapshots received, notifying ready")
+		e.NotifyReady()
+	}
+}
+
+// checkAllSnapshotsReceivedLocked checks if all pending snapshots have been received.
+// Must be called with snapshotMu held.
+func (e *Engine) checkAllSnapshotsReceivedLocked() bool {
+	for _, received := range e.pendingSnapshots {
+		if !received {
+			return false
+		}
+	}
+	return len(e.pendingSnapshots) > 0
 }
 
 // OnFill handles Fill events to update balances based on fills

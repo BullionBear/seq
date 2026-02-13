@@ -30,7 +30,7 @@ execution:
 portfolio:
   - id: 19
     account: bybit_lynxapp
-    subscriptions: [] # balance
+    subscriptions: [] # wallet, order, fill
   - id: 22
     account: lynxapp_ed25519
     subscriptions: []
@@ -41,4 +41,4 @@ strategy:
   hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
   # Account assignments for trading
   quoting_account: bybit_lynxapp  # Account for quoting (Bybit) - not configured yet
-  hedging_account: binance_lynxapp  # Account for hedging (Binance)
+  hedging_account: lynxapp_ed25519  # Account for hedging (Binance)
