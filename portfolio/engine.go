@@ -105,9 +105,26 @@ func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	}
 }
 
-// OnInit is called once when the actor is initialized.
+// ============================================================================
+// Actor Interface Implementation (for EventBus registration)
+// ============================================================================
+
+// OnInit is called by the actor system. Engine initialization is done via Init().
+func (e *Engine) OnInit() {}
+
+// OnStart is called by the actor system. Engine startup is done via Start().
+func (e *Engine) OnStart() {}
+
+// OnStop is called by the actor system. Engine shutdown is done via Stop().
+func (e *Engine) OnStop() {}
+
+// ============================================================================
+// Engine Interface Implementation
+// ============================================================================
+
+// Init initializes the engine.
 // It subscribes to balance updates for all configured accounts.
-func (e *Engine) OnInit() {
+func (e *Engine) Init() {
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
 		return
@@ -125,9 +142,9 @@ func (e *Engine) OnInit() {
 	log().Info().Msg("PortfolioEngine initialized")
 }
 
-// OnStart is called once when the actor is started.
+// Start starts the engine.
 // It requests balance snapshots for all configured accounts.
-func (e *Engine) OnStart() {
+func (e *Engine) Start() {
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance snapshot request")
 		// If no accounts, notify ready immediately
@@ -162,8 +179,8 @@ func (e *Engine) OnStart() {
 	log().Info().Msg("PortfolioEngine started, waiting for balance snapshots")
 }
 
-// OnStop is called once when the actor is stopped
-func (e *Engine) OnStop() {
+// Stop stops the engine.
+func (e *Engine) Stop() {
 	e.NotifyStop()
 	log().Info().Msg("PortfolioEngine stopped")
 }

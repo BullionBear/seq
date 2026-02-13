@@ -104,7 +104,7 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	}
 
 	// Initialize portfolio engine (subscribes to balance updates)
-	n.portfolioEngine.OnInit()
+	n.portfolioEngine.Init()
 
 	// Create strategy engine and initialize it
 	n.strategyEngine = strategy.NewEngine(strategyActor, n.catalog, n.cache)
@@ -206,7 +206,7 @@ func (n *Node) Start(ctx context.Context) {
 	}
 
 	// Start portfolio engine (requests balance snapshots, notifies ready when complete)
-	n.portfolioEngine.OnStart()
+	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
 	// Start strategy (now just calls OnStart for business logic)
