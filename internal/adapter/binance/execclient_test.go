@@ -185,7 +185,7 @@ func TestBuildOrderNewRequest(t *testing.T) {
 func TestProcessAccountStatusResponse(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		msgBus:  eb,
+		msgBus:    eb,
 		accountID: 123,
 	}
 
@@ -219,12 +219,12 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 		t.Fatal("Expected balance snapshot event to be published")
 	}
 
-	if receivedEvent.Ref.Topic != event.TopicEventReqBalanceSnapshot {
+	if receivedEvent.Ref.Topic != event.TopicEventRespBalanceSnapshot {
 		t.Errorf("Expected TopicEventReqBalanceSnapshot, got %v", receivedEvent.Ref.Topic)
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
+	snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
 
 	if snapshot.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", snapshot.AccountID)
@@ -350,7 +350,7 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 func TestProcessOutboundAccountPosition(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		msgBus:  eb,
+		msgBus:    eb,
 		accountID: 123,
 	}
 
@@ -412,7 +412,7 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 func TestProcessExecutionReport(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		msgBus:  eb,
+		msgBus:    eb,
 		accountID: 123,
 	}
 
@@ -470,7 +470,7 @@ func TestProcessExecutionReport(t *testing.T) {
 func TestProcessExecutionReportWithFill(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		msgBus:  eb,
+		msgBus:    eb,
 		accountID: 123,
 	}
 
@@ -563,7 +563,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 func TestProcessUserDataStreamEvent(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		msgBus:  eb,
+		msgBus:    eb,
 		accountID: 123,
 	}
 
@@ -769,9 +769,9 @@ loop:
 			break loop
 		default:
 			ok := eb.Poll(func(e msgbus.Event) {
-				if e.Ref.Topic == event.TopicEventReqBalanceSnapshot {
+				if e.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
+					snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
 					t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 						snapshot.AccountID, len(snapshot.Balances))
 					for i, b := range snapshot.Balances {

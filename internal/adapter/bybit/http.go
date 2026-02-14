@@ -25,9 +25,9 @@ func unsafeString(b []byte) string {
 type BybitHTTPClient struct {
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
-	client   fasthttp.Client
-	buffer   bytes.Buffer
-	baseURL  string
+	client  fasthttp.Client
+	buffer  bytes.Buffer
+	baseURL string
 }
 
 func NewBybitHTTPClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) BybitHTTPClient {
@@ -615,7 +615,7 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 
 	// Publish to event bus
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventReqBalanceSnapshot,
+		Topic:  event.TopicEventRespBalanceSnapshot,
 		Index:  offset,
 		Length: size,
 	})

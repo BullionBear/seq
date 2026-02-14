@@ -3,6 +3,7 @@ package msgbus
 import (
 	"testing"
 
+	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 )
@@ -12,7 +13,7 @@ import (
 // ============================================================================
 
 func TestSerializeDeserializeOrderSubmitCommand(t *testing.T) {
-	cmd := event.OrderSubmitCommand{
+	cmd := command.SubmitOrder{
 		AccountID:   1,
 		SymbolID:    42,
 		Side:        common.SideBuy,
@@ -56,7 +57,7 @@ func TestSerializeDeserializeOrderSubmitCommand(t *testing.T) {
 }
 
 func TestSerializeDeserializeOrderCancelCommand(t *testing.T) {
-	cmd := event.OrderCancelCommand{
+	cmd := command.CancelOrder{
 		AccountID:     1,
 		ClientOrderID: 42,
 	}
@@ -80,7 +81,7 @@ func TestSerializeDeserializeOrderCancelCommand(t *testing.T) {
 }
 
 func TestSerializeDeserializeCancelAllCommand(t *testing.T) {
-	cmd := event.CancelAllCommand{
+	cmd := command.CancelAll{
 		AccountID: 1,
 		SymbolID:  42,
 	}
@@ -135,7 +136,7 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 	})
 
 	// Send a command
-	cmd := event.OrderSubmitCommand{
+	cmd := command.SubmitOrder{
 		AccountID: 1,
 		SymbolID:  42,
 		Side:      common.SideBuy,
@@ -204,7 +205,7 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	// Then send a command
 	cmdSize := OrderSubmitCommandSize()
 	cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
-	SerializeOrderSubmitCommand(cmdBuf, &event.OrderSubmitCommand{
+	SerializeOrderSubmitCommand(cmdBuf, &command.SubmitOrder{
 		AccountID: 1,
 		SymbolID:  42,
 	})
@@ -258,7 +259,7 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		cmdSize := OrderSubmitCommandSize()
 		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
-		SerializeOrderSubmitCommand(cmdBuf, &event.OrderSubmitCommand{AccountID: i})
+		SerializeOrderSubmitCommand(cmdBuf, &command.SubmitOrder{AccountID: i})
 		bus.Send(CommandRef{
 			Topic:  event.TopicCommandOrderSubmit,
 			Index:  cmdOffset,
@@ -332,7 +333,7 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 	bus := NewMsgBus()
 	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {})
 
-	cmd := event.OrderSubmitCommand{
+	cmd := command.SubmitOrder{
 		AccountID: 1,
 		SymbolID:  42,
 		Side:      common.SideBuy,

@@ -545,16 +545,16 @@ const (
 	SizeOfReqBalanceSnapshotHeader = 16
 )
 
-// ReqBalanceSnapshotSize calculates the total size needed to serialize a ReqBalanceSnapshot.
-func ReqBalanceSnapshotSize(snapshot *event.ReqBalanceSnapshot) uint64 {
+// ReqBalanceSnapshotSize calculates the total size needed to serialize a RespBalanceSnapshot.
+func RespBalanceSnapshotSize(snapshot *event.RespBalanceSnapshot) uint64 {
 	balancesLen := len(snapshot.Balances)
 	return uint64(SizeOfReqBalanceSnapshotHeader) + uint64(balancesLen)*uint64(SizeOfBalance)
 }
 
-// SerializeReqBalanceSnapshot writes a ReqBalanceSnapshot to the buffer.
+// SerializeRespBalanceSnapshot writes a RespBalanceSnapshot to the buffer.
 // Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balances...]
 // Returns the number of bytes written.
-func SerializeReqBalanceSnapshot(buf []byte, snapshot *event.ReqBalanceSnapshot) int {
+func SerializeRespBalanceSnapshot(buf []byte, snapshot *event.RespBalanceSnapshot) int {
 	balancesLen := uint32(len(snapshot.Balances))
 	pos := 0
 
@@ -580,9 +580,9 @@ func SerializeReqBalanceSnapshot(buf []byte, snapshot *event.ReqBalanceSnapshot)
 	return pos
 }
 
-// DeserializeReqBalanceSnapshot reads a ReqBalanceSnapshot from buffer.
+// DeserializeRespBalanceSnapshot reads a RespBalanceSnapshot from buffer.
 // The returned slice points directly into the buffer - no copy is made.
-func DeserializeReqBalanceSnapshot(buf []byte) event.ReqBalanceSnapshot {
+func DeserializeRespBalanceSnapshot(buf []byte) event.RespBalanceSnapshot {
 	pos := 0
 
 	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -600,7 +600,7 @@ func DeserializeReqBalanceSnapshot(buf []byte) event.ReqBalanceSnapshot {
 		balances = unsafe.Slice((*event.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
 	}
 
-	return event.ReqBalanceSnapshot{
+	return event.RespBalanceSnapshot{
 		AccountID: accountID,
 		Balances:  balances,
 	}

@@ -42,8 +42,8 @@ const (
 // SubscribeBalance), the client subscribes to the full stream internally but only
 // publishes events for subscribed types. Unsubscribed event types are logged as unhandled.
 type BinanceSpotExecutionClient struct {
-	catalog  *catalog.Catalog
-	msgBus   *msgbus.MsgBus
+	catalog   *catalog.Catalog
+	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
 
@@ -91,8 +91,8 @@ func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgB
 	}
 
 	return &BinanceSpotExecutionClient{
-		catalog:   catalog,
-		msgBus:    msgBus,
+		catalog:    catalog,
+		msgBus:     msgBus,
 		accountID:  accountID,
 		account:    *account,
 		privateKey: privateKey,
@@ -1286,7 +1286,7 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 	}, "balances")
 
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventReqBalanceSnapshot,
+		Topic:  event.TopicEventRespBalanceSnapshot,
 		Index:  offset,
 		Length: size,
 	})

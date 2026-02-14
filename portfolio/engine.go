@@ -284,7 +284,7 @@ func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
 
 // OnReqBalanceSnapshot handles ReqBalanceSnapshot events from the event bus.
 // Balance state is updated here; the BalanceActor tracks completion and calls NotifyReady.
-func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
+func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 	e.mu.Lock()
 	e.ensureAccountExistsLocked(ev.AccountID)
 

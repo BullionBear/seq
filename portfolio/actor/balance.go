@@ -17,7 +17,7 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 // It receives event callbacks and lifecycle notifications from BalanceActor.
 type BalanceEngineHandler interface {
 	OnBalanceUpdate(ev event.BalanceUpdate)
-	OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot)
+	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
 	OnFill(ev event.Fill)
 	NotifyReady()
 }
@@ -45,7 +45,7 @@ func NewBalanceActor(handler BalanceEngineHandler) *BalanceActor {
 	return &BalanceActor{
 		ActorBase: coreactor.NewActorBase("portfolio-balance", []event.Topic{
 			event.TopicEventBalanceUpdate,
-			event.TopicEventReqBalanceSnapshot,
+			event.TopicEventRespBalanceSnapshot,
 			event.TopicEventFill,
 		}),
 		handler: handler,
@@ -93,10 +93,10 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := msgbus.DeserializeBalanceUpdate(buf)
 		b.handler.OnBalanceUpdate(update)
-	case event.TopicEventReqBalanceSnapshot:
+	case event.TopicEventRespBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
-		b.handler.OnReqBalanceSnapshot(snapshot)
+		snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
