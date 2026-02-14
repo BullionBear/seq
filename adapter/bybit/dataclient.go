@@ -11,6 +11,7 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
@@ -555,9 +556,9 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 	// Serialize and publish
 	msgbus.SerializeDepthSnapshot(buf, &snapshot)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic: event.TopicEventDepthSnapshot,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventDepthSnapshot,
+		Index:  offset,
+		Length: size,
 	})
 }
 
@@ -586,9 +587,9 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 	// Serialize and publish
 	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic: event.TopicEventDepthUpdate,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventDepthUpdate,
+		Index:  offset,
+		Length: size,
 	})
 }
 
@@ -638,14 +639,14 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	offset, buf := c.msgBus.Allocate(size)
 	msgbus.SerializeTick(buf, &tick)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic: event.TopicEventTick,
-		Index:    offset,
-		Length:   size,
+		Topic:  event.TopicEventTick,
+		Index:  offset,
+		Length: size,
 	})
 }
 
 // parsePriceLevels parses an array of [price, qty] arrays from JSON
-func (c *BybitDataClient) parsePriceLevels(data []byte, key string) []event.PriceLevel {
+func (c *BybitDataClient) parsePriceLevels(data []byte, key string) []common.PriceLevel {
 	// First pass: count elements
 	count := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
@@ -657,7 +658,7 @@ func (c *BybitDataClient) parsePriceLevels(data []byte, key string) []event.Pric
 	}
 
 	// Allocate slice
-	levels := make([]event.PriceLevel, count)
+	levels := make([]common.PriceLevel, count)
 
 	// Second pass: parse values
 	idx := 0

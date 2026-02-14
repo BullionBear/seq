@@ -108,13 +108,13 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	asksStart := msgbus.SizeOfDepthSnapshotHeader
 	bidsStart := asksStart + askCount*msgbus.SizeOfPriceLevel
 
-	var asks []event.PriceLevel
-	var bids []event.PriceLevel
+	var asks []common.PriceLevel
+	var bids []common.PriceLevel
 	if askCount > 0 {
-		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[asksStart])), askCount)
+		asks = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[asksStart])), askCount)
 	}
 	if bidCount > 0 {
-		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[bidsStart])), bidCount)
+		bids = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[bidsStart])), bidCount)
 	}
 
 	// Parse price levels directly into arena
@@ -224,7 +224,7 @@ func (c *BinanceHTTPClient) countArrayElements(data []byte, key string) int {
 }
 
 // parsePriceLevelsInto parses price levels directly into a pre-allocated slice (zero-allocation)
-func (c *BinanceHTTPClient) parsePriceLevelsInto(data []byte, key string, levels []event.PriceLevel) error {
+func (c *BinanceHTTPClient) parsePriceLevelsInto(data []byte, key string, levels []common.PriceLevel) error {
 	if len(levels) == 0 {
 		return nil
 	}
@@ -309,13 +309,13 @@ func (c *BinanceHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSna
 
 	// Allocate slices (non-zero-allocation path, for testing)
 	if askCount > 0 {
-		respDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
+		respDepthSnapshot.Asks = make([]common.PriceLevel, askCount)
 		if err := c.parsePriceLevelsInto(data, "\"asks\"", respDepthSnapshot.Asks); err != nil {
 			return err
 		}
 	}
 	if bidCount > 0 {
-		respDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
+		respDepthSnapshot.Bids = make([]common.PriceLevel, bidCount)
 		if err := c.parsePriceLevelsInto(data, "\"bids\"", respDepthSnapshot.Bids); err != nil {
 			return err
 		}
