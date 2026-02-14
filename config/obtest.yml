@@ -7,8 +7,7 @@ logger:
 
 catalog:
   base_url: https://capi.lynxlinkage.com
-  api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidXNlcm5hbWUiOiJlZGR5IiwiZW1haWwiOiJlZGR5QGx5bnhsaW5rYWdlLmNvbSIsImlzX2FjdGl2ZSI6dHJ1ZSwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODUyOTk3MzEsImlhdCI6MTc2OTkzOTczMS4xOTk5NjUsImp0aSI6InpMWTFWX1VuUTZFIn0.juriLjvquoqAZXEXGZy0zhojbEqOK63btaJ0MezZLiE
-
+  api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
 # Data subscriptions - flat list, per-symbol config
 data:
   - symbol: BYBIT_SPOT_BTCUSDT
