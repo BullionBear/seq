@@ -104,6 +104,12 @@ func (s *StrategyBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 }
 
+// Process processes a command by dispatching to typed callbacks.
+// Override the specific typed callbacks (OnBalanceUpdate, OnFill, etc.)
+// in your strategy implementation.
+func (s *StrategyBase) Process(cmd msgbus.Command, bus *msgbus.MsgBus) {
+}
+
 // ============================================================================
 // Lifecycle Methods (override in your strategy)
 // ============================================================================

@@ -30,6 +30,9 @@ type Actor interface {
 	// commands via the command channel.
 	Handle(ev msgbus.Event, bus *msgbus.MsgBus)
 
+	// Command handling
+	Process(cmd msgbus.Command, bus *msgbus.MsgBus)
+
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.
 	OnInit()
