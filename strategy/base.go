@@ -3,7 +3,6 @@ package strategy
 import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 )
 
@@ -18,11 +17,11 @@ var _ actor.Actor = (*StrategyBase)(nil)
 // StrategyBase MUST override the Handle() method to dispatch events to their
 // own typed callbacks. See XArb for an example:
 //
-//	func (x *XArb) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
+//	func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 //	    switch ev.Ref.Topic {
 //	    case event.TopicEventDepthUpdate:
 //	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-//	        x.OnDepthUpdate(evbus.DeserializeDepthUpdate(buf))
+//	        x.OnDepthUpdate(msgbus.DeserializeDepthUpdate(buf))
 //	    // ... etc
 //	    }
 //	}
@@ -83,23 +82,23 @@ func (s *StrategyBase) SubscribedTypes() []event.Topic {
 // Handle processes an event by dispatching to typed callbacks.
 // Override the specific typed callbacks (OnDepthUpdate, OnTick, etc.)
 // in your strategy implementation.
-func (s *StrategyBase) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
+func (s *StrategyBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeDepthSnapshot(buf)
+		snapshot := msgbus.DeserializeDepthSnapshot(buf)
 		s.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeDepthUpdate(buf)
+		update := msgbus.DeserializeDepthUpdate(buf)
 		s.OnDepthUpdate(update)
 	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := evbus.DeserializeTick(buf)
+		tick := msgbus.DeserializeTick(buf)
 		s.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
+		fill := msgbus.DeserializeFill(buf)
 		s.OnFill(fill)
 		// TODO: Add TopicEventBalanceUpdate when EventBus supports it
 	}

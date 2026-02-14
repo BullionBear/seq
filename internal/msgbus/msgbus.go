@@ -6,7 +6,6 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/rs/zerolog"
 )
 
@@ -41,8 +40,8 @@ const (
 //   - Send/AllocateCmd should only be called from the dispatch thread (command channel)
 //   - Dispatch should be called from a single goroutine
 type MsgBus struct {
-	// Event channel (pub-sub, MPSC) - delegates to existing EventBus
-	eventBus *evbus.EventBus
+	// Event channel (pub-sub, MPSC)
+	eventBus *EventBus
 
 	// Command channel (point-to-point, SPSC)
 	nextCommandID uint64
@@ -54,7 +53,7 @@ type MsgBus struct {
 // NewMsgBus creates a new MsgBus with default capacities.
 func NewMsgBus() *MsgBus {
 	return &MsgBus{
-		eventBus:      evbus.NewEventBus(),
+		eventBus:      NewEventBus(),
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
@@ -65,7 +64,7 @@ func NewMsgBus() *MsgBus {
 // NewMsgBusWithCapacity creates a new MsgBus with custom event arena capacity.
 func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 	return &MsgBus{
-		eventBus:      evbus.NewEventBusWithCapacity(eventArenaCapacity),
+		eventBus:      NewEventBusWithCapacity(eventArenaCapacity),
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
@@ -74,20 +73,20 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 }
 
 // =============================================================================
-// Event API (pub-sub, MPSC) - delegated to inner EventBus
+// Event API (pub-sub, MPSC)
 // =============================================================================
 
 // Register adds an event consumer to the MsgBus with optional topic filtering.
 // If topics is nil or empty, the consumer will receive all event topics.
 // Consumers should be registered before calling Dispatch.
-func (m *MsgBus) Register(name string, topics []event.Topic, handler evbus.EventHandler) {
+func (m *MsgBus) Register(name string, topics []event.Topic, handler EventHandler) {
 	m.eventBus.Register(name, topics, handler)
 }
 
 // Publish publishes an EventRef to the event ring buffer. The caller should have
 // already serialized data into the arena buffer obtained via Allocate.
 // This method is thread-safe and can be called from multiple goroutines.
-func (m *MsgBus) Publish(ref evbus.EventRef) {
+func (m *MsgBus) Publish(ref EventRef) {
 	m.eventBus.Publish(ref)
 }
 
@@ -106,7 +105,7 @@ func (m *MsgBus) ReadBuffer(offset, length uint64) []byte {
 // Poll reads the next event from the ring buffer and calls the handler.
 // Returns true if an event was processed, false if the ring buffer is empty.
 // This is a single-consumer convenience method (no topic filtering).
-func (m *MsgBus) Poll(handler evbus.EventHandler) bool {
+func (m *MsgBus) Poll(handler EventHandler) bool {
 	return m.eventBus.Poll(handler)
 }
 

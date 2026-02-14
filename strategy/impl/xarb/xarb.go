@@ -9,7 +9,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
@@ -117,27 +116,27 @@ func (x *XArb) OnStop() {
 
 // Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
-func (x *XArb) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
+func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeDepthSnapshot(buf)
+		snapshot := msgbus.DeserializeDepthSnapshot(buf)
 		x.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeDepthUpdate(buf)
+		update := msgbus.DeserializeDepthUpdate(buf)
 		x.OnDepthUpdate(update)
 	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := evbus.DeserializeTick(buf)
+		tick := msgbus.DeserializeTick(buf)
 		x.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
+		fill := msgbus.DeserializeFill(buf)
 		x.OnFill(fill)
 	case event.TopicEventReqDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
+		snapshot := msgbus.DeserializeReqDepthSnapshot(buf)
 		x.OnReqDepthSnapshot(snapshot)
 	}
 }

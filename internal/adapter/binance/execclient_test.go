@@ -14,7 +14,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"gopkg.in/yaml.v3"
 )
@@ -211,8 +210,8 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 	client.processAccountStatusResponse(accountResponse)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -225,7 +224,7 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+	snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
 
 	if snapshot.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", snapshot.AccountID)
@@ -277,8 +276,8 @@ func TestProcessOrderResponse(t *testing.T) {
 	client.processOrderResponse(orderResponse)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -291,7 +290,7 @@ func TestProcessOrderResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := evbus.DeserializeOrderAccepted(buf)
+	orderAccepted := msgbus.DeserializeOrderAccepted(buf)
 
 	if orderAccepted.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderAccepted.OrderID)
@@ -323,8 +322,8 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 
 	client.processOrderResponse(orderResponse)
 
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -337,7 +336,7 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderCanceled := evbus.DeserializeOrderCanceled(buf)
+	orderCanceled := msgbus.DeserializeOrderCanceled(buf)
 
 	if orderCanceled.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderCanceled.OrderID)
@@ -370,8 +369,8 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 	client.processOutboundAccountPosition(eventData)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -384,7 +383,7 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	balanceUpdate := evbus.DeserializeBalanceUpdate(buf)
+	balanceUpdate := msgbus.DeserializeBalanceUpdate(buf)
 
 	if balanceUpdate.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", balanceUpdate.AccountID)
@@ -443,8 +442,8 @@ func TestProcessExecutionReport(t *testing.T) {
 	client.processExecutionReport(eventData)
 
 	// Verify OrderAccepted event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -457,7 +456,7 @@ func TestProcessExecutionReport(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := evbus.DeserializeOrderAccepted(buf)
+	orderAccepted := msgbus.DeserializeOrderAccepted(buf)
 
 	if orderAccepted.OrderID != 4293153 {
 		t.Errorf("Expected OrderID 4293153, got %d", orderAccepted.OrderID)
@@ -501,12 +500,12 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 	client.processExecutionReport(eventData)
 
 	// Should receive OrderPartiallyFilled first, then Fill
-	var partialFillEvent evbus.Event
-	var fillEvent evbus.Event
+	var partialFillEvent msgbus.Event
+	var fillEvent msgbus.Event
 	eventCount := 0
 
 	for i := 0; i < 2; i++ {
-		ok := eb.Poll(func(e evbus.Event) {
+		ok := eb.Poll(func(e msgbus.Event) {
 			if e.Ref.Topic == event.TopicEventPartialFill {
 				partialFillEvent = e
 				eventCount++
@@ -526,7 +525,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify OrderPartiallyFilled
 	orderBuf := eb.ReadBuffer(partialFillEvent.Ref.Index, partialFillEvent.Ref.Length)
-	orderPartiallyFilled := evbus.DeserializeOrderPartiallyFilled(orderBuf)
+	orderPartiallyFilled := msgbus.DeserializeOrderPartiallyFilled(orderBuf)
 
 	if orderPartiallyFilled.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", orderPartiallyFilled.OrderID)
@@ -538,7 +537,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify Fill
 	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
-	fill := evbus.DeserializeFill(fillBuf)
+	fill := msgbus.DeserializeFill(fillBuf)
 
 	if fill.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)
@@ -630,7 +629,7 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear event bus
 			for {
-				ok := eb.Poll(func(e evbus.Event) {})
+				ok := eb.Poll(func(e msgbus.Event) {})
 				if !ok {
 					break
 				}
@@ -638,8 +637,8 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 
 			client.processUserDataStreamEvent(tt.eventData)
 
-			var receivedEvent evbus.Event
-			ok := eb.Poll(func(e evbus.Event) {
+			var receivedEvent msgbus.Event
+			ok := eb.Poll(func(e msgbus.Event) {
 				receivedEvent = e
 			})
 
@@ -769,10 +768,10 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventReqBalanceSnapshot {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+					snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
 					t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 						snapshot.AccountID, len(snapshot.Balances))
 					for i, b := range snapshot.Balances {

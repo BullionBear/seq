@@ -13,7 +13,6 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
@@ -465,10 +464,10 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.Asks = c.parsePriceLevels(data, "a")
 
 	// Publish to event bus using new generic API
-	size := evbus.DepthUpdateSize(&depthUpdate)
+	size := msgbus.DepthUpdateSize(&depthUpdate)
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeDepthUpdate(buf, &depthUpdate)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthUpdate,
 		Index:  offset,
 		Length: size,
@@ -514,10 +513,10 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	}
 
 	// Publish to event bus using new generic API
-	size := evbus.TickSize()
+	size := msgbus.TickSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeTick(buf, &tick)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeTick(buf, &tick)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
 		Length: size,

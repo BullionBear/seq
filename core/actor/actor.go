@@ -2,7 +2,6 @@ package actor
 
 import (
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 )
 
@@ -29,7 +28,7 @@ type Actor interface {
 	// The MsgBus reference is provided to allow reading the full event data
 	// from the appropriate arena based on the event reference, and to send
 	// commands via the command channel.
-	Handle(ev evbus.Event, bus *msgbus.MsgBus)
+	Handle(ev msgbus.Event, bus *msgbus.MsgBus)
 
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.
@@ -43,7 +42,7 @@ type Actor interface {
 // Register is a helper function that registers an Actor with the MsgBus.
 // It creates a handler that calls the actor's Handle method with the MsgBus reference.
 func Register(bus *msgbus.MsgBus, actor Actor) {
-	handler := func(ev evbus.Event) {
+	handler := func(ev msgbus.Event) {
 		actor.Handle(ev, bus)
 	}
 	bus.Register(actor.Name(), actor.SubscribedTypes(), handler)

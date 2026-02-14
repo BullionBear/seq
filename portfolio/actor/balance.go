@@ -7,7 +7,6 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/rs/zerolog"
 )
@@ -88,20 +87,20 @@ func (b *BalanceActor) OnStart() {
 }
 
 // Handle routes events to the engine's update methods.
-func (b *BalanceActor) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
+func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeBalanceUpdate(buf)
+		update := msgbus.DeserializeBalanceUpdate(buf)
 		b.handler.OnBalanceUpdate(update)
 	case event.TopicEventReqBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+		snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
 		b.handler.OnReqBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
+		fill := msgbus.DeserializeFill(buf)
 		b.handler.OnFill(fill)
 	}
 }

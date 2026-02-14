@@ -11,7 +11,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"gopkg.in/yaml.v3"
 )
@@ -444,10 +443,10 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventBalanceUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					update := evbus.DeserializeBalanceUpdate(buf)
+					update := msgbus.DeserializeBalanceUpdate(buf)
 					t.Logf("Received balance update: AccountID=%d, Balances=%d",
 						update.AccountID, len(update.Balances))
 					for i, b := range update.Balances {

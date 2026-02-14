@@ -5,7 +5,6 @@ import (
 
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 )
 
 // ============================================================================
@@ -183,7 +182,7 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	var order []string
 
 	// Register event consumer
-	bus.Register("test-consumer", nil, func(ev evbus.Event) {
+	bus.Register("test-consumer", nil, func(ev Event) {
 		order = append(order, "event")
 	})
 
@@ -193,10 +192,10 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	})
 
 	// Publish an event first
-	size := evbus.TickSize()
+	size := TickSize()
 	offset, buf := bus.Allocate(size)
-	evbus.SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 50000.0})
-	bus.Publish(evbus.EventRef{
+	SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 50000.0})
+	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
 		Length: size,
@@ -236,7 +235,7 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	eventCount := 0
 
 	// Register event consumer
-	bus.Register("test-consumer", nil, func(ev evbus.Event) {
+	bus.Register("test-consumer", nil, func(ev Event) {
 		eventCount++
 	})
 
@@ -246,10 +245,10 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	})
 
 	// Publish an event
-	size := evbus.TickSize()
+	size := TickSize()
 	offset, buf := bus.Allocate(size)
-	evbus.SerializeTick(buf, &event.Tick{SymbolID: 1})
-	bus.Publish(evbus.EventRef{
+	SerializeTick(buf, &event.Tick{SymbolID: 1})
+	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
 		Length: size,
@@ -305,14 +304,14 @@ func TestMsgBus_EventDispatchDelegation(t *testing.T) {
 	bus := NewMsgBus()
 
 	var receivedTopic event.Topic
-	bus.Register("test", []event.Topic{event.TopicEventTick}, func(ev evbus.Event) {
+	bus.Register("test", []event.Topic{event.TopicEventTick}, func(ev Event) {
 		receivedTopic = ev.Ref.Topic
 	})
 
-	size := evbus.TickSize()
+	size := TickSize()
 	offset, buf := bus.Allocate(size)
-	evbus.SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 100.0})
-	bus.Publish(evbus.EventRef{
+	SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 100.0})
+	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
 		Length: size,
@@ -358,17 +357,17 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 
 func BenchmarkMsgBus_DispatchEvent(b *testing.B) {
 	bus := NewMsgBus()
-	bus.Register("bench", nil, func(ev evbus.Event) {})
+	bus.Register("bench", nil, func(ev Event) {})
 
 	tick := event.Tick{SymbolID: 1, Price: 50000.0}
-	tickSize := evbus.TickSize()
+	tickSize := TickSize()
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		offset, buf := bus.Allocate(tickSize)
-		evbus.SerializeTick(buf, &tick)
-		bus.Publish(evbus.EventRef{
+		SerializeTick(buf, &tick)
+		bus.Publish(EventRef{
 			Topic:  event.TopicEventTick,
 			Index:  offset,
 			Length: tickSize,

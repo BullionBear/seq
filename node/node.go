@@ -14,7 +14,6 @@ import (
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/adapter/binance"
 	"github.com/BullionBear/seq/internal/adapter/bybit"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
@@ -77,7 +76,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 // Init initializes the node and all engines.
 func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) {
 	// Create state notifier for engines to broadcast state events
-	notifier := evbus.NewStateNotifier(n.msgBus)
+	notifier := msgbus.NewStateNotifier(n.msgBus)
 
 	// Initialize data engine (registers OrderBook and SnapshotCoordinator actors)
 	n.dataEngine.Init()

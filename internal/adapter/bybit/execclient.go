@@ -15,7 +15,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
@@ -510,10 +509,10 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 		FilledAt:      uint64(execTime) * 1_000_000,
 	}
 
-	size := evbus.FillSize()
+	size := msgbus.FillSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeFill(buf, &fill)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeFill(buf, &fill)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -592,10 +591,10 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
 
-	size := evbus.BalanceUpdateSize(&balanceUpdate)
+	size := msgbus.BalanceUpdateSize(&balanceUpdate)
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeBalanceUpdate(buf, &balanceUpdate)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventBalanceUpdate,
 		Index:  offset,
 		Length: size,
@@ -614,10 +613,10 @@ func (c *BybitPrivateStreamClient) publishOrderAccepted(clientOrderID, orderID i
 		OrderID:       orderID,
 		CreatedAt:     createdAt,
 	}
-	size := evbus.OrderAcceptedSize()
+	size := msgbus.OrderAcceptedSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderAccepted(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderAccepted(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderAccepted,
 		Index:  offset,
 		Length: size,
@@ -632,10 +631,10 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderPartiallyFilledSize()
+	size := msgbus.OrderPartiallyFilledSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderPartiallyFilled(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderPartiallyFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventPartialFill,
 		Index:  offset,
 		Length: size,
@@ -650,10 +649,10 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderFilledSize()
+	size := msgbus.OrderFilledSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderFilled(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -667,10 +666,10 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 		OrderID:       orderID,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderCanceledSize()
+	size := msgbus.OrderCanceledSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderCanceled(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderCanceled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderCanceled,
 		Index:  offset,
 		Length: size,
@@ -685,10 +684,10 @@ func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID i
 		ErrorCode:     0,
 		Msg:           reason,
 	}
-	size := evbus.OrderRejectedSize()
+	size := msgbus.OrderRejectedSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderRejected(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderRejected(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderRejected,
 		Index:  offset,
 		Length: size,
@@ -702,10 +701,10 @@ func (c *BybitPrivateStreamClient) publishOrderUnknownStatus(clientOrderID, orde
 		OrderID:       orderID,
 		Msg:           status,
 	}
-	size := evbus.OrderUnknownStatusSize()
+	size := msgbus.OrderUnknownStatusSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeOrderUnknownStatus(buf, &e)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeOrderUnknownStatus(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderUnknownStatus,
 		Index:  offset,
 		Length: size,

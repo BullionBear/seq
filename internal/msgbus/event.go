@@ -1,4 +1,4 @@
-package evbus
+package msgbus
 
 import (
 	"github.com/BullionBear/seq/core/model/event"

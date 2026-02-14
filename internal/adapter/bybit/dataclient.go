@@ -12,7 +12,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
@@ -550,12 +549,12 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 	}
 
 	// Calculate size and allocate buffer
-	size := evbus.DepthSnapshotSize(&snapshot)
+	size := msgbus.DepthSnapshotSize(&snapshot)
 	offset, buf := c.msgBus.Allocate(size)
 
 	// Serialize and publish
-	evbus.SerializeDepthSnapshot(buf, &snapshot)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeDepthSnapshot(buf, &snapshot)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventDepthSnapshot,
 		Index:    offset,
 		Length:   size,
@@ -581,12 +580,12 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 	}
 
 	// Calculate size and allocate buffer
-	size := evbus.DepthUpdateSize(&depthUpdate)
+	size := msgbus.DepthUpdateSize(&depthUpdate)
 	offset, buf := c.msgBus.Allocate(size)
 
 	// Serialize and publish
-	evbus.SerializeDepthUpdate(buf, &depthUpdate)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventDepthUpdate,
 		Index:    offset,
 		Length:   size,
@@ -635,10 +634,10 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	}
 
 	// Publish to event bus
-	size := evbus.TickSize()
+	size := msgbus.TickSize()
 	offset, buf := c.msgBus.Allocate(size)
-	evbus.SerializeTick(buf, &tick)
-	c.msgBus.Publish(evbus.EventRef{
+	msgbus.SerializeTick(buf, &tick)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventTick,
 		Index:    offset,
 		Length:   size,

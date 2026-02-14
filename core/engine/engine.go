@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 )
 
 // Engine is the common interface for all engines in the system.
@@ -29,7 +29,7 @@ type Engine interface {
 // Embed this in concrete engine implementations to get state notification support.
 type EngineBase struct {
 	engineType common.EngineType
-	notifier   *evbus.StateNotifier
+	notifier   *msgbus.StateNotifier
 }
 
 // NewEngineBase creates a new EngineBase with the given engine type.
@@ -47,12 +47,12 @@ func (e *EngineBase) Type() common.EngineType {
 
 // SetNotifier sets the StateNotifier for this engine.
 // This must be called before any notification methods are used.
-func (e *EngineBase) SetNotifier(notifier *evbus.StateNotifier) {
+func (e *EngineBase) SetNotifier(notifier *msgbus.StateNotifier) {
 	e.notifier = notifier
 }
 
 // Notifier returns the StateNotifier for this engine.
-func (e *EngineBase) Notifier() *evbus.StateNotifier {
+func (e *EngineBase) Notifier() *msgbus.StateNotifier {
 	return e.notifier
 }
 

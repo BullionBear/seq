@@ -12,7 +12,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/bytedance/sonic"
 )
@@ -286,8 +285,8 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 	}
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -432,8 +431,8 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	client.processMessage(msg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -445,7 +444,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	snapshot := evbus.DeserializeDepthSnapshot(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	snapshot := msgbus.DeserializeDepthSnapshot(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if snapshot.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", snapshot.SymbolID)
 	}
@@ -514,8 +513,8 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	client.processMessage(msg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -527,7 +526,7 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	update := evbus.DeserializeDepthUpdate(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	update := msgbus.DeserializeDepthUpdate(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if update.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", update.SymbolID)
 	}
@@ -652,15 +651,15 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	t.Log("Requested balance snapshot successfully")
 
 	// Check if event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 
 	if eb.Dispatch() {
 		if receivedEvent.Ref.Topic == event.TopicEventReqBalanceSnapshot {
 			buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-			snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+			snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
 			t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 				snapshot.AccountID, len(snapshot.Balances))
 			for i, b := range snapshot.Balances {
