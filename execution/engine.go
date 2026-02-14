@@ -5,10 +5,11 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/actor"
-	eactor "github.com/BullionBear/seq/execution/actor"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
+	eactor "github.com/BullionBear/seq/execution/actor"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/rs/zerolog"
@@ -69,9 +70,9 @@ func (e *Engine) Init() {
 	actor.Register(e.msgBus, e.ems)
 
 	// Register command handlers (point-to-point)
-	e.msgBus.RegisterCommand(event.TopicCommandOrderSubmit, e.handleOrderSubmitCmd)
-	e.msgBus.RegisterCommand(event.TopicCommandOrderCancel, e.handleOrderCancelCmd)
-	e.msgBus.RegisterCommand(event.TopicCommandCancelAll, e.handleCancelAllCmd)
+	e.msgBus.RegisterCommand(command.CommandTypeOrderSubmit, e.handleOrderSubmitCmd)
+	e.msgBus.RegisterCommand(command.CommandTypeOrderCancel, e.handleOrderCancelCmd)
+	e.msgBus.RegisterCommand(command.CommandTypeCancelAll, e.handleCancelAllCmd)
 	log().Debug().Msg("ExecutionEngine initialized")
 }
 

@@ -1,15 +1,13 @@
 package msgbus
 
-import (
-	"github.com/BullionBear/seq/core/model/event"
-)
+import "github.com/BullionBear/seq/core/model/command"
 
 // CommandRef is a reference to command data stored in the command arena.
-// It contains the topic (command type), the offset in the arena, and the data length.
+// It contains the command type, the offset in the arena, and the data length.
 type CommandRef struct {
-	Topic  event.Topic
-	Index  uint64 // offset in command arena
-	Length uint64 // size of data in bytes
+	CommandType command.CommandType
+	Index       uint64 // offset in command arena
+	Length      uint64 // size of data in bytes
 }
 
 // Command wraps a CommandRef with metadata.

@@ -26,8 +26,4 @@ const (
 	// Reconciliation Data
 	TopicEventRespBalanceSnapshot
 	TopicEventBalanceUpdate
-	// Command
-	TopicCommandOrderSubmit
-	TopicCommandOrderCancel
-	TopicCommandCancelAll
 )

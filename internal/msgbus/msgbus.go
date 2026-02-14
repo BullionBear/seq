@@ -5,6 +5,7 @@ import (
 
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
+	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/rs/zerolog"
 )
@@ -47,7 +48,7 @@ type MsgBus struct {
 	nextCommandID uint64
 	rbCommand     *mem.SPSCRingBuffer[Command]
 	cmdArena      *mem.SimpleByteArena
-	cmdHandlers   map[event.Topic]CommandHandler
+	cmdHandlers   map[command.CommandType]CommandHandler
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -57,7 +58,7 @@ func NewMsgBus() *MsgBus {
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
-		cmdHandlers:   make(map[event.Topic]CommandHandler),
+		cmdHandlers:   make(map[command.CommandType]CommandHandler),
 	}
 }
 
@@ -68,7 +69,7 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
-		cmdHandlers:   make(map[event.Topic]CommandHandler),
+		cmdHandlers:   make(map[command.CommandType]CommandHandler),
 	}
 }
 
@@ -126,13 +127,13 @@ func (m *MsgBus) MinSequence() uint64 {
 // RegisterCommand registers a handler for a specific command topic.
 // Each command topic can have at most one handler (point-to-point).
 // Panics if a handler is already registered for the given topic.
-func (m *MsgBus) RegisterCommand(topic event.Topic, handler CommandHandler) {
-	if _, exists := m.cmdHandlers[topic]; exists {
+func (m *MsgBus) RegisterCommand(cmdType command.CommandType, handler CommandHandler) {
+	if _, exists := m.cmdHandlers[cmdType]; exists {
 		log().Panic().
-			Int("topic", int(topic)).
+			Int("cmdType", int(cmdType)).
 			Msg("MsgBus: duplicate command handler registration")
 	}
-	m.cmdHandlers[topic] = handler
+	m.cmdHandlers[cmdType] = handler
 }
 
 // Send sends a command to the SPSC command ring buffer.
@@ -147,7 +148,7 @@ func (m *MsgBus) Send(ref CommandRef) {
 		CreatedAt: now,
 	}) {
 		log().Error().
-			Int("topic", int(ref.Topic)).
+			Int("cmdType", int(ref.CommandType)).
 			Uint64("commandID", commandID).
 			Msg("MsgBus: command ring buffer full, dropping command")
 	}
@@ -186,12 +187,12 @@ func (m *MsgBus) Dispatch() bool {
 			break
 		}
 		hasWork = true
-		handler, exists := m.cmdHandlers[cmd.Ref.Topic]
+		handler, exists := m.cmdHandlers[cmd.Ref.CommandType]
 		if !exists {
 			log().Warn().
-				Int("topic", int(cmd.Ref.Topic)).
+				Int("cmdType", int(cmd.Ref.CommandType)).
 				Uint64("commandID", cmd.CommandID).
-				Msg("MsgBus: no handler registered for command topic")
+				Msg("MsgBus: no handler registered for command type")
 			continue
 		}
 		handler(cmd)

@@ -130,7 +130,7 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 	handled := false
 
 	// Register command handler
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {
 		handledCmd = cmd
 		handled = true
 	})
@@ -148,9 +148,9 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 	offset, buf := bus.AllocateCmd(size)
 	SerializeOrderSubmitCommand(buf, &cmd)
 	bus.Send(CommandRef{
-		Topic:  event.TopicCommandOrderSubmit,
-		Index:  offset,
-		Length: size,
+		CommandType: command.CommandTypeOrderSubmit,
+		Index:       offset,
+		Length:      size,
 	})
 
 	// Dispatch should process the command
@@ -161,8 +161,8 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 	if !handled {
 		t.Fatal("Expected command handler to be called")
 	}
-	if handledCmd.Ref.Topic != event.TopicCommandOrderSubmit {
-		t.Errorf("Expected topic %d, got %d", event.TopicCommandOrderSubmit, handledCmd.Ref.Topic)
+	if handledCmd.Ref.CommandType != command.CommandTypeOrderSubmit {
+		t.Errorf("Expected command type %d, got %d", command.CommandTypeOrderSubmit, handledCmd.Ref.CommandType)
 	}
 
 	// Verify command payload
@@ -188,7 +188,7 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	})
 
 	// Register command handler
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {
 		order = append(order, "command")
 	})
 
@@ -210,9 +210,9 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 		SymbolID:  42,
 	})
 	bus.Send(CommandRef{
-		Topic:  event.TopicCommandOrderSubmit,
-		Index:  cmdOffset,
-		Length: cmdSize,
+		CommandType: command.CommandTypeOrderSubmit,
+		Index:       cmdOffset,
+		Length:      cmdSize,
 	})
 
 	// Dispatch should process command FIRST, then event
@@ -241,7 +241,7 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	})
 
 	// Register command handler
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {
 		cmdCount++
 	})
 
@@ -261,9 +261,9 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
 		SerializeOrderSubmitCommand(cmdBuf, &command.SubmitOrder{AccountID: i})
 		bus.Send(CommandRef{
-			Topic:  event.TopicCommandOrderSubmit,
-			Index:  cmdOffset,
-			Length: cmdSize,
+			CommandType: command.CommandTypeOrderSubmit,
+			Index:       cmdOffset,
+			Length:      cmdSize,
 		})
 	}
 
@@ -281,7 +281,7 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 func TestMsgBus_RegisterCommandDuplicate(t *testing.T) {
 	bus := NewMsgBus()
 
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {})
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {})
 
 	// Registering duplicate should panic
 	defer func() {
@@ -290,7 +290,7 @@ func TestMsgBus_RegisterCommandDuplicate(t *testing.T) {
 		}
 	}()
 
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {})
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {})
 }
 
 func TestMsgBus_DispatchEmptyReturns_false(t *testing.T) {
@@ -331,7 +331,7 @@ func TestMsgBus_EventDispatchDelegation(t *testing.T) {
 
 func BenchmarkMsgBus_SendCommand(b *testing.B) {
 	bus := NewMsgBus()
-	bus.RegisterCommand(event.TopicCommandOrderSubmit, func(cmd Command) {})
+	bus.RegisterCommand(command.CommandTypeOrderSubmit, func(cmd Command) {})
 
 	cmd := command.SubmitOrder{
 		AccountID: 1,
@@ -348,9 +348,9 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
 		SerializeOrderSubmitCommand(cmdBuf, &cmd)
 		bus.Send(CommandRef{
-			Topic:  event.TopicCommandOrderSubmit,
-			Index:  cmdOffset,
-			Length: cmdSize,
+			CommandType: command.CommandTypeOrderSubmit,
+			Index:       cmdOffset,
+			Length:      cmdSize,
 		})
 		bus.Dispatch()
 	}
