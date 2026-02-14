@@ -3,10 +3,12 @@ package command
 type CommandType int
 
 const (
+	// Order Commands
 	CommandTypeUnknown CommandType = iota
 	CommandTypeOrderSubmit
 	CommandTypeOrderCancel
 	CommandTypeCancelAll
 
-	CommandTypeReqBalanceSnapshot
+	// Account Commands
+	CommandTypeQryBalanceSnapshot
 )

@@ -7,9 +7,17 @@ type StopEvent struct {
 	Timestamp uint64
 }
 
+func (s StopEvent) Topic() Topic {
+	return TopicEventStop
+}
+
 type ReadyEvent struct {
 	Source    common.EngineType
 	Timestamp uint64
+}
+
+func (r ReadyEvent) Topic() Topic {
+	return TopicEventReady
 }
 
 type FinishedEvent struct {
@@ -17,8 +25,16 @@ type FinishedEvent struct {
 	Timestamp uint64
 }
 
+func (f FinishedEvent) Topic() Topic {
+	return TopicEventFinished
+}
+
 type AbnormalEvent struct {
 	Source    common.EngineType
 	ErrorCode int
 	Timestamp uint64
+}
+
+func (a AbnormalEvent) Topic() Topic {
+	return TopicEventAbnormal
 }

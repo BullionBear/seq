@@ -12,12 +12,24 @@ type SubmitOrder struct {
 	Quantity    float64
 }
 
+func (s SubmitOrder) CommandType() CommandType {
+	return CommandTypeOrderSubmit
+}
+
 type CancelOrder struct {
 	AccountID     int
 	ClientOrderID int
 }
 
+func (c CancelOrder) CommandType() CommandType {
+	return CommandTypeOrderCancel
+}
+
 type CancelAll struct {
 	AccountID int
 	SymbolID  int
+}
+
+func (c CancelAll) CommandType() CommandType {
+	return CommandTypeCancelAll
 }

@@ -9,3 +9,7 @@ type Tick struct {
 	Price     float64
 	Qty       float64
 }
+
+func (t Tick) Topic() Topic {
+	return TopicEventTick
+}

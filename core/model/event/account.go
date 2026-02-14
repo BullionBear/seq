@@ -13,7 +13,15 @@ type BalanceUpdate struct {
 	UpdatedAt uint64
 }
 
+func (b BalanceUpdate) Topic() Topic {
+	return TopicEventBalanceUpdate
+}
+
 type RespBalanceSnapshot struct {
 	AccountID int
 	Balances  []Balance
+}
+
+func (r RespBalanceSnapshot) Topic() Topic {
+	return TopicEventRespBalanceSnapshot
 }

@@ -6,6 +6,10 @@ type OrderUnknownStatus struct {
 	Msg           string
 }
 
+func (o OrderUnknownStatus) Topic() Topic {
+	return TopicEventOrderUnknownStatus
+}
+
 type OrderError struct {
 	ClientOrderID int
 	OrderID       int
@@ -13,10 +17,18 @@ type OrderError struct {
 	Msg           string
 }
 
+func (o OrderError) Topic() Topic {
+	return TopicEventOrderError
+}
+
 type OrderAccepted struct {
 	ClientOrderID int
 	OrderID       int
 	CreatedAt     uint64
+}
+
+func (o OrderAccepted) Topic() Topic {
+	return TopicEventOrderAccepted
 }
 
 type OrderPartiallyFilled struct {
@@ -26,11 +38,19 @@ type OrderPartiallyFilled struct {
 	UpdatedAt     uint64
 }
 
+func (o OrderPartiallyFilled) Topic() Topic {
+	return TopicEventPartialFill
+}
+
 type OrderFilled struct {
 	ClientOrderID int
 	OrderID       int
 	ExecutedQty   float64
 	UpdatedAt     uint64
+}
+
+func (o OrderFilled) Topic() Topic {
+	return TopicEventFill
 }
 
 type OrderCanceled struct {
@@ -39,11 +59,19 @@ type OrderCanceled struct {
 	UpdatedAt     uint64
 }
 
+func (o OrderCanceled) Topic() Topic {
+	return TopicEventOrderCanceled
+}
+
 type OrderRejected struct {
 	ClientOrderID int
 	OrderID       int
 	ErrorCode     int
 	Msg           string
+}
+
+func (o OrderRejected) Topic() Topic {
+	return TopicEventOrderRejected
 }
 
 type Fill struct {
@@ -55,4 +83,8 @@ type Fill struct {
 	FeeCcyID      int
 	FeeQty        float64
 	FilledAt      uint64
+}
+
+func (f Fill) Topic() Topic {
+	return TopicEventFill
 }

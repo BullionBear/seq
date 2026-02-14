@@ -16,12 +16,20 @@ type DepthUpdate struct {
 	Bids            []PriceLevel
 }
 
+func (d DepthUpdate) Topic() Topic {
+	return TopicEventDepthUpdate
+}
+
 type DepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
 	Timestamp uint64
 	Asks      []PriceLevel
 	Bids      []PriceLevel
+}
+
+func (d DepthSnapshot) Topic() Topic {
+	return TopicEventDepthSnapshot
 }
 
 type ReqDepthSnapshot struct {
@@ -32,4 +40,8 @@ type ReqDepthSnapshot struct {
 	BidLength int          // number of bid price levels
 	Asks      []PriceLevel // points into arena buffer
 	Bids      []PriceLevel // points into arena buffer
+}
+
+func (r ReqDepthSnapshot) Topic() Topic {
+	return TopicEventReqDepthSnapshot
 }
