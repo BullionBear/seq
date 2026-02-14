@@ -364,18 +364,28 @@ func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := evbus.DeserializeDepthUpdate(buf)
 		ob.onDepthUpdate(update)
-	case event.TopicEventReqDepthSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
-		ob.onReqDepthSnapshot(snapshot)
 	}
 }
 
-func (ob *OrderBook) onReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+// OnInit is called once when the actor is initialized.
+func (ob *OrderBook) OnInit() {
+	log().Info().Msg("OrderBook: initialized")
+}
+
+// OnStart is called once when the actor is started.
+func (ob *OrderBook) OnStart() {
+	log().Info().Msg("OrderBook: started")
+}
+
+// OnStop is called once when the actor is stopped.
+// It resets all registered symbol orderbooks to a clean state.
+func (ob *OrderBook) OnStop() {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
-
-	log().Info().Msgf("Orderbook Actor: Req depth snapshot received: symbolID=%d", snapshot.SymbolID)
+	for _, book := range ob.books {
+		book.Reset()
+	}
+	log().Info().Int("symbols", len(ob.books)).Msg("OrderBook: stopped, all books reset")
 }
 
 func (ob *OrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {

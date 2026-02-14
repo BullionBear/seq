@@ -78,18 +78,12 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	// Create state notifier for engines to broadcast state events
 	notifier := evbus.NewStateNotifier(n.eventBus)
 
-	// Initialize data engine (registers OrderBook actor)
+	// Initialize data engine (registers OrderBook and SnapshotCoordinator actors)
 	n.dataEngine.Init()
-
-	// Register data engine as an actor for handling depth events
-	actor.Register(n.eventBus, n.dataEngine)
 
 	// Configure portfolio engine with execution router and notifier
 	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
 	n.portfolioEngine.SetNotifier(notifier)
-
-	// Register portfolio engine as an actor for handling balance events
-	actor.Register(n.eventBus, n.portfolioEngine)
 
 	// Configure data engine with subscriptions from config
 	if len(config.Data) > 0 {
