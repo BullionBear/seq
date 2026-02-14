@@ -2,7 +2,7 @@ package actor
 
 import (
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Actor is the unified interface for all event-driven components.
@@ -29,9 +29,6 @@ type Actor interface {
 	// from the appropriate arena based on the event reference, and to send
 	// commands via the command channel.
 	Handle(ev msgbus.Event, bus *msgbus.MsgBus)
-
-	// Command handling
-	Process(cmd msgbus.Command, bus *msgbus.MsgBus)
 
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.

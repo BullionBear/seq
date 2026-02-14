@@ -9,12 +9,13 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/adapter/binance"
-	"github.com/BullionBear/seq/internal/adapter/bybit"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/bybit"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
 	"github.com/BullionBear/seq/strategy"
@@ -42,7 +43,7 @@ type Node struct {
 	strategyEngine *strategy.Engine
 
 	// Cache for strategy access
-	cache *Cache
+	cache *cache.Cache
 }
 
 // NewNode creates a new Node with the given catalog.
@@ -59,7 +60,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 	executionEngine := execution.NewEngine(executionRouter, bus)
 
 	// Create cache with all engines
-	cache := NewCache(dataEngine, executionEngine, portfolioEngine)
+	c := cache.NewCache(dataEngine, executionEngine, portfolioEngine)
 
 	return &Node{
 		msgBus:          bus,
@@ -69,7 +70,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		portfolioEngine: portfolioEngine,
 		executionEngine: executionEngine,
 		executionRouter: executionRouter,
-		cache:           cache,
+		cache:           c,
 	}
 }
 
@@ -246,7 +247,7 @@ func (n *Node) MsgBus() *msgbus.MsgBus {
 }
 
 // Cache returns the node's Cache for strategy access.
-func (n *Node) Cache() *Cache {
+func (n *Node) Cache() *cache.Cache {
 	return n.cache
 }
 

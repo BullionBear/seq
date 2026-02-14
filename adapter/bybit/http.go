@@ -13,7 +13,7 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 
 	"github.com/valyala/fasthttp"
 )

@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
 	"github.com/rs/zerolog"

@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Engine is the common interface for all engines in the system.
@@ -48,10 +48,10 @@ func (e *EngineBase) Type() common.EngineType {
 	return e.engineType
 }
 
-// Execute processes a command by dispatching to typed callbacks.
-// Override the specific typed callbacks (ProcessRespBalanceUpdate, ProcessRespDepthSnapshot, etc.)
+// Process a command by dispatching to typed callbacks.
+// Override the specific typed callbacks (ProcessOrderSubmitCmd, ProcessOrderCancelCmd, etc.)
 // in your engine implementation.
-func (e *EngineBase) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
+func (e *EngineBase) Process(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	// Default no-op - concrete engines should override
 }
 

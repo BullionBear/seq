@@ -8,7 +8,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 

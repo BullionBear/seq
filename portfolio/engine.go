@@ -8,8 +8,8 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/msgbus"
 	pactor "github.com/BullionBear/seq/portfolio/actor"
 	"github.com/rs/zerolog"
 )

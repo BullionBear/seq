@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/internal/adapter/binance"
-	"github.com/BullionBear/seq/internal/adapter/bybit"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/bybit"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // DepthOptions contains generic depth subscription options

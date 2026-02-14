@@ -3,7 +3,7 @@ package strategy
 import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Ensure StrategyBase implements the Actor interface

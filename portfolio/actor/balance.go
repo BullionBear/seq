@@ -6,8 +6,8 @@ import (
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 

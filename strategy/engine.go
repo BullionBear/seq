@@ -3,7 +3,7 @@ package strategy
 import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Engine manages strategy lifecycle.

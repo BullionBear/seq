@@ -9,8 +9,8 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 	dactor "github.com/BullionBear/seq/data/actor"
 	"github.com/BullionBear/seq/data/ob"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )

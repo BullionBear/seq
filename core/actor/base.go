@@ -2,7 +2,7 @@ package actor
 
 import (
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/msgbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // ActorBase provides a default implementation for the Actor interface.
