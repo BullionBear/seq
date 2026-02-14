@@ -1,15 +1,10 @@
 package event
 
-type Balance struct {
-	TokenID   int
-	Available float64
-	Locked    float64
-	Total     float64
-}
+import "github.com/BullionBear/seq/core/model/common"
 
 type BalanceUpdate struct {
 	AccountID int
-	Balances  []Balance
+	Balances  []common.Balance
 	UpdatedAt uint64
 }
 
@@ -19,7 +14,7 @@ func (b BalanceUpdate) Topic() Topic {
 
 type RespBalanceSnapshot struct {
 	AccountID int
-	Balances  []Balance
+	Balances  []common.Balance
 }
 
 func (r RespBalanceSnapshot) Topic() Topic {

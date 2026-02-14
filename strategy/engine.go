@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/msgbus"
 )
@@ -12,13 +13,13 @@ import (
 type Engine struct {
 	strategyActor actor.Actor
 	catalog       *catalog.Catalog
-	cache         CacheService
+	cache         *cache.Cache
 	config        *StrategyConfig
 }
 
 // NewEngine creates a new Engine with the given strategy actor, catalog, and cache.
 // The strategy must implement the Actor interface (e.g., by embedding StrategyBase).
-func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache CacheService) *Engine {
+func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache *cache.Cache) *Engine {
 	return &Engine{
 		strategyActor: strat,
 		catalog:       cat,

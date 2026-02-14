@@ -1,51 +1,24 @@
 package strategy
 
 import (
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/core/model/event"
 	"github.com/rs/zerolog"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// CacheService is the interface that Cache implements for read-only access.
-// Write methods are not exposed here because strategies should not write to cache directly.
-type CacheService interface {
-	// OrderBook queries
-	GetBestBid(symbolID int) (price, qty float64, ok bool)
-	GetBestAsk(symbolID int) (price, qty float64, ok bool)
-	GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel)
-	GetMidPrice(symbolID int) (price float64, ok bool)
-	GetSpread(symbolID int) (spread float64, ok bool)
-	IsSymbolReady(symbolID int) bool
-	GetBookState(symbolID int) (common.BookState, bool)
-
-	// Execution queries
-	GetOpenOrder(acctID int, clientOrderID int) *common.Order
-	GetOpenOrdersByAccount(acctID int) []*common.Order
-	GetOpenOrdersBySymbol(acctID int, symbolID int) []*common.Order
-	OpenOrderCount(acctID int) int
-
-	// Portfolio queries
-	GetBalance(acctID int, tokenID int) *event.Balance
-	GetAvailable(acctID int, tokenID int) float64
-	GetLocked(acctID int, tokenID int) float64
-	GetTotal(acctID int, tokenID int) float64
-	GetAccountBalances(acctID int) map[int]*event.Balance
-	HasSufficientBalance(acctID int, tokenID int, amount float64) bool
-}
-
 // StrategyCommon provides the common infrastructure for all strategies.
-// It wraps the CacheService to provide a clean facade API for strategies.
+// It wraps the Cache to provide a clean facade API for strategies.
 type StrategyCommon struct {
-	cache   CacheService
+	cache   *cache.Cache
 	catalog *catalog.Catalog
 }
 
 // NewStrategyCommon creates a new StrategyCommon with the given cache.
-func NewStrategyCommon(cache CacheService, cat *catalog.Catalog) *StrategyCommon {
+func NewStrategyCommon(cache *cache.Cache, cat *catalog.Catalog) *StrategyCommon {
 	return &StrategyCommon{
 		cache:   cache,
 		catalog: cat,
@@ -125,7 +98,7 @@ func (s *StrategyCommon) OpenOrderCount(acctID int) int {
 // ============================================================================
 
 // GetBalance returns the balance for a specific account and token.
-func (s *StrategyCommon) GetBalance(acctID int, tokenID int) *event.Balance {
+func (s *StrategyCommon) GetBalance(acctID int, tokenID int) *common.Balance {
 	return s.cache.GetBalance(acctID, tokenID)
 }
 
@@ -145,7 +118,7 @@ func (s *StrategyCommon) GetTotalBalance(acctID int, tokenID int) float64 {
 }
 
 // GetAccountBalances returns all balances for an account.
-func (s *StrategyCommon) GetAccountBalances(acctID int) map[int]*event.Balance {
+func (s *StrategyCommon) GetAccountBalances(acctID int) map[int]*common.Balance {
 	return s.cache.GetAccountBalances(acctID)
 }
 

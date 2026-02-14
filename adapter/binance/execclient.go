@@ -826,7 +826,7 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 	}
 
 	// Allocate balances slice
-	balances := make([]event.Balance, 0, balanceCount)
+	balances := make([]common.Balance, 0, balanceCount)
 
 	// Parse balances
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
@@ -840,7 +840,7 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 
 		// Only include non-zero balances
 		if total > 0 {
-			balances = append(balances, event.Balance{
+			balances = append(balances, common.Balance{
 				TokenID:   c.getTokenID(asset),
 				Available: free,
 				Locked:    locked,
@@ -1276,7 +1276,7 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 		// Only include non-zero balances
 		if total > 0 {
 			// Write Balance directly to buffer using unsafe pointer
-			balance := (*event.Balance)(unsafe.Pointer(&buf[pos]))
+			balance := (*common.Balance)(unsafe.Pointer(&buf[pos]))
 			balance.TokenID = c.getTokenID(asset)
 			balance.Available = free
 			balance.Locked = locked

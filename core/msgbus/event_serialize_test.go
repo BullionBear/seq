@@ -3,6 +3,7 @@ package msgbus
 import (
 	"testing"
 
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 )
 
@@ -26,7 +27,7 @@ func TestReqBalanceSnapshotSize(t *testing.T) {
 			name: "single balance",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 1,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 				},
 			},
@@ -35,7 +36,7 @@ func TestReqBalanceSnapshotSize(t *testing.T) {
 			name: "multiple balances",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 123,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 					{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
@@ -64,14 +65,14 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 			name: "empty balances",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 1,
-				Balances:  []event.Balance{},
+				Balances:  []common.Balance{},
 			},
 		},
 		{
 			name: "single balance",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 42,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 				},
 			},
@@ -80,7 +81,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 			name: "multiple balances",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 123,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 					{TokenID: 3, Available: 100.12345678, Locked: 50.87654321, Total: 150.99999999},
@@ -91,7 +92,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 			name: "large account ID",
 			snapshot: event.RespBalanceSnapshot{
 				AccountID: 999999999,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1000, Available: 0.00000001, Locked: 0.0, Total: 0.00000001},
 				},
 			},
@@ -148,7 +149,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 func BenchmarkSerializeReqBalanceSnapshot(b *testing.B) {
 	snapshot := event.RespBalanceSnapshot{
 		AccountID: 123,
-		Balances: []event.Balance{
+		Balances: []common.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
@@ -169,7 +170,7 @@ func BenchmarkSerializeReqBalanceSnapshot(b *testing.B) {
 func BenchmarkDeserializeRespBalanceSnapshot(b *testing.B) {
 	snapshot := event.RespBalanceSnapshot{
 		AccountID: 123,
-		Balances: []event.Balance{
+		Balances: []common.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
@@ -385,7 +386,7 @@ func TestBalanceUpdateSize(t *testing.T) {
 			name: "single balance",
 			update: event.BalanceUpdate{
 				AccountID: 1,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 				},
 				UpdatedAt: 1672531200000000000,
@@ -395,7 +396,7 @@ func TestBalanceUpdateSize(t *testing.T) {
 			name: "multiple balances",
 			update: event.BalanceUpdate{
 				AccountID: 123,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 					{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
@@ -425,7 +426,7 @@ func TestSerializeDeserializeBalanceUpdate(t *testing.T) {
 			name: "empty balances",
 			update: event.BalanceUpdate{
 				AccountID: 1,
-				Balances:  []event.Balance{},
+				Balances:  []common.Balance{},
 				UpdatedAt: 1672531200000000000,
 			},
 		},
@@ -433,7 +434,7 @@ func TestSerializeDeserializeBalanceUpdate(t *testing.T) {
 			name: "single balance",
 			update: event.BalanceUpdate{
 				AccountID: 42,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 				},
 				UpdatedAt: 1672531200000000000,
@@ -443,7 +444,7 @@ func TestSerializeDeserializeBalanceUpdate(t *testing.T) {
 			name: "multiple balances",
 			update: event.BalanceUpdate{
 				AccountID: 123,
-				Balances: []event.Balance{
+				Balances: []common.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 					{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 					{TokenID: 3, Available: 100.12345678, Locked: 50.87654321, Total: 150.99999999},
@@ -508,7 +509,7 @@ func TestSerializeDeserializeBalanceUpdate(t *testing.T) {
 func BenchmarkSerializeBalanceUpdate(b *testing.B) {
 	update := event.BalanceUpdate{
 		AccountID: 123,
-		Balances: []event.Balance{
+		Balances: []common.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},
@@ -530,7 +531,7 @@ func BenchmarkSerializeBalanceUpdate(b *testing.B) {
 func BenchmarkDeserializeBalanceUpdate(b *testing.B) {
 	update := event.BalanceUpdate{
 		AccountID: 123,
-		Balances: []event.Balance{
+		Balances: []common.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
 			{TokenID: 2, Available: 10.0, Locked: 0.0, Total: 10.0},
 			{TokenID: 3, Available: 100.0, Locked: 50.0, Total: 150.0},

@@ -4,7 +4,6 @@ import (
 	"github.com/alphadose/haxmap"
 
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/core/model/event"
 )
 
 // bookData holds the orderbook state for a single symbol.
@@ -25,7 +24,7 @@ type Cache struct {
 	openOrders *haxmap.Map[int, *haxmap.Map[int, *common.Order]]
 
 	// Balances: acctID -> (tokenID -> Balance)
-	balances *haxmap.Map[int, *haxmap.Map[int, *event.Balance]]
+	balances *haxmap.Map[int, *haxmap.Map[int, *common.Balance]]
 }
 
 // NewCache creates a new empty Cache.
@@ -33,7 +32,7 @@ func NewCache() *Cache {
 	return &Cache{
 		books:      haxmap.New[int, *bookData](),
 		openOrders: haxmap.New[int, *haxmap.Map[int, *common.Order]](),
-		balances:   haxmap.New[int, *haxmap.Map[int, *event.Balance]](),
+		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
 	}
 }
 
@@ -216,7 +215,7 @@ func (c *Cache) RemoveOpenOrder(acctID int, clientOrderID int) {
 // ============================================================================
 
 // GetBalance returns the balance for a specific account and token.
-func (c *Cache) GetBalance(acctID int, tokenID int) *event.Balance {
+func (c *Cache) GetBalance(acctID int, tokenID int) *common.Balance {
 	acctBalances, ok := c.balances.Get(acctID)
 	if !ok {
 		return nil
@@ -253,13 +252,13 @@ func (c *Cache) GetTotal(acctID int, tokenID int) float64 {
 }
 
 // GetAccountBalances returns all balances for an account as a map of tokenID to Balance.
-func (c *Cache) GetAccountBalances(acctID int) map[int]*event.Balance {
+func (c *Cache) GetAccountBalances(acctID int) map[int]*common.Balance {
 	acctBalances, ok := c.balances.Get(acctID)
 	if !ok {
 		return nil
 	}
-	result := make(map[int]*event.Balance)
-	acctBalances.ForEach(func(tokenID int, bal *event.Balance) bool {
+	result := make(map[int]*common.Balance)
+	acctBalances.ForEach(func(tokenID int, bal *common.Balance) bool {
 		result[tokenID] = bal
 		return true
 	})
@@ -277,10 +276,10 @@ func (c *Cache) HasSufficientBalance(acctID int, tokenID int, amount float64) bo
 
 // SetBalance sets the balance for a specific account and token.
 func (c *Cache) SetBalance(acctID int, tokenID int, available, locked, total float64) {
-	acctBalances, _ := c.balances.GetOrCompute(acctID, func() *haxmap.Map[int, *event.Balance] {
-		return haxmap.New[int, *event.Balance]()
+	acctBalances, _ := c.balances.GetOrCompute(acctID, func() *haxmap.Map[int, *common.Balance] {
+		return haxmap.New[int, *common.Balance]()
 	})
-	acctBalances.Set(tokenID, &event.Balance{
+	acctBalances.Set(tokenID, &common.Balance{
 		TokenID:   tokenID,
 		Available: available,
 		Locked:    locked,
@@ -289,8 +288,8 @@ func (c *Cache) SetBalance(acctID int, tokenID int, available, locked, total flo
 }
 
 // SetAccountBalances replaces all balances for an account.
-func (c *Cache) SetAccountBalances(acctID int, balances []event.Balance) {
-	acctBalances := haxmap.New[int, *event.Balance](uintptr(len(balances)))
+func (c *Cache) SetAccountBalances(acctID int, balances []common.Balance) {
+	acctBalances := haxmap.New[int, *common.Balance](uintptr(len(balances)))
 	for i := range balances {
 		b := balances[i]
 		acctBalances.Set(b.TokenID, &b)
