@@ -11,7 +11,7 @@ var _ actor.Actor = (*StrategyBase)(nil)
 
 // StrategyBase provides the foundation for trading strategies.
 // It implements the Actor interface and embeds StrategyCommon for
-// convenience methods (GetBestBid, SubmitOrder, etc.).
+// convenience methods (GetBestBid, GetOpenOrder, etc.).
 //
 // IMPORTANT: Go doesn't have virtual method dispatch, so strategies that embed
 // StrategyBase MUST override the Handle() method to dispatch events to their
@@ -26,7 +26,7 @@ var _ actor.Actor = (*StrategyBase)(nil)
 //	    }
 //	}
 type StrategyBase struct {
-	*StrategyCommon // Provides service methods: GetBestBid, SubmitOrder, etc.
+	*StrategyCommon // Provides service methods: GetBestBid, GetOpenOrder, etc.
 	name            string
 	config          *StrategyConfig
 }
@@ -40,7 +40,7 @@ func NewStrategyBase(name string) *StrategyBase {
 }
 
 // SetCommon is called by the Engine to inject StrategyCommon.
-// This provides access to service methods like GetBestBid, SubmitOrder, etc.
+// This provides access to service methods like GetBestBid, GetOpenOrder, etc.
 func (s *StrategyBase) SetCommon(common *StrategyCommon) {
 	s.StrategyCommon = common
 }

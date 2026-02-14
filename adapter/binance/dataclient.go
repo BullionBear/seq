@@ -524,7 +524,7 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 }
 
 // parsePriceLevels parses an array of [price, qty] arrays from JSON
-func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []event.PriceLevel {
+func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []common.PriceLevel {
 	// First pass: count elements
 	count := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
@@ -536,7 +536,7 @@ func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []even
 	}
 
 	// Allocate slice for price levels
-	levels := make([]event.PriceLevel, count)
+	levels := make([]common.PriceLevel, count)
 
 	// Second pass: parse values
 	idx := 0

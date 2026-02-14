@@ -7,6 +7,7 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
@@ -35,7 +36,7 @@ type SymbolOrderBook struct {
 	TickMultiplier float64 // = 10^PricePrecision, cached for conversion
 
 	// State machine
-	State   BookState
+	State   common.BookState
 	DepthID int
 
 	// Order book data (map-based BST)
@@ -58,7 +59,7 @@ func NewSymbolOrderBook(symbolID int, pricePrecision int) *SymbolOrderBook {
 		SymbolID:       symbolID,
 		PricePrecision: pricePrecision,
 		TickMultiplier: math.Pow(10, float64(pricePrecision)),
-		State:          StateWaitForSnapshot,
+		State:          common.BookStateWaitForSnapshot,
 		DepthID:        0,
 		Bids:           NewOrderedPriceMap(true),  // descending
 		Asks:           NewOrderedPriceMap(false), // ascending
@@ -80,7 +81,7 @@ func (sob *SymbolOrderBook) TickToPrice(tick int64) float64 {
 }
 
 // convertEventLevels converts event.PriceLevel slice to internal PriceLevel slice
-func (sob *SymbolOrderBook) convertEventLevels(eventLevels []event.PriceLevel, arena *mem.SliceArena[PriceLevel]) []PriceLevel {
+func (sob *SymbolOrderBook) convertEventLevels(eventLevels []common.PriceLevel, arena *mem.SliceArena[PriceLevel]) []PriceLevel {
 	if len(eventLevels) == 0 {
 		return nil
 	}
@@ -116,7 +117,7 @@ func (sob *SymbolOrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
 	sob.LastUpdated = snapshot.Timestamp
 
 	// Transition to Updating state to process buffered updates
-	sob.State = StateUpdating
+	sob.State = common.BookStateUpdating
 
 	// Process any buffered updates
 	sob.processBufferedUpdates()
@@ -125,7 +126,7 @@ func (sob *SymbolOrderBook) onDepthSnapshot(snapshot event.DepthSnapshot) {
 // onDepthUpdate handles a depth update event
 func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 	switch sob.State {
-	case StateWaitForSnapshot:
+	case common.BookStateWaitForSnapshot:
 		// Buffer the update for later processing
 		sob.bufferUpdate(update)
 		log().Debug().
@@ -134,12 +135,12 @@ func (sob *SymbolOrderBook) onDepthUpdate(update event.DepthUpdate) {
 			Uint64("buffered", sob.UpdateBuffer.Count()).
 			Msg("SymbolOrderBook: Buffered update (waiting for snapshot)")
 
-	case StateUpdating:
+	case common.BookStateUpdating:
 		// Buffer and try to process
 		sob.bufferUpdate(update)
 		sob.processBufferedUpdates()
 
-	case StateReady:
+	case common.BookStateReady:
 		// For Binance's aggregated diff stream (@depth@100ms):
 		// - PreviousDepthID = U - 1 (one before first update ID)
 		// - CurrentDepthID = u (final update ID in event)
@@ -234,8 +235,8 @@ func (sob *SymbolOrderBook) processBufferedUpdates() {
 	}
 
 	// Transition to Ready if buffer is empty
-	if sob.UpdateBuffer.IsEmpty() && sob.State == StateUpdating {
-		sob.State = StateReady
+	if sob.UpdateBuffer.IsEmpty() && sob.State == common.BookStateUpdating {
+		sob.State = common.BookStateReady
 		log().Info().
 			Int("symbolID", sob.SymbolID).
 			Int("depthID", sob.DepthID).
@@ -303,12 +304,12 @@ func (sob *SymbolOrderBook) GetTopAsks(n int) []PriceLevel {
 
 // IsReady returns true if the orderbook is in Ready state
 func (sob *SymbolOrderBook) IsReady() bool {
-	return sob.State == StateReady
+	return sob.State == common.BookStateReady
 }
 
 // Reset resets the orderbook to WaitForSnapshot state
 func (sob *SymbolOrderBook) Reset() {
-	sob.State = StateWaitForSnapshot
+	sob.State = common.BookStateWaitForSnapshot
 	sob.DepthID = 0
 	sob.Bids.Clear()
 	sob.Asks.Clear()
@@ -454,7 +455,7 @@ func (ob *OrderBook) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
 
 // GetDepth returns the top N levels of bids and asks for the given symbol.
 // Returns event.PriceLevel for compatibility with the OrderBookService interface.
-func (ob *OrderBook) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
+func (ob *OrderBook) GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel) {
 	ob.mu.RLock()
 	defer ob.mu.RUnlock()
 
@@ -468,17 +469,17 @@ func (ob *OrderBook) GetDepth(symbolID int, levels int) (bids, asks []event.Pric
 	askLevels := book.GetTopAsks(levels)
 
 	// Convert to event.PriceLevel
-	bids = make([]event.PriceLevel, len(bidLevels))
+	bids = make([]common.PriceLevel, len(bidLevels))
 	for i, level := range bidLevels {
-		bids[i] = event.PriceLevel{
+		bids[i] = common.PriceLevel{
 			Price:    book.TickToPrice(level.PriceTick),
 			Quantity: level.Quantity,
 		}
 	}
 
-	asks = make([]event.PriceLevel, len(askLevels))
+	asks = make([]common.PriceLevel, len(askLevels))
 	for i, level := range askLevels {
-		asks[i] = event.PriceLevel{
+		asks[i] = common.PriceLevel{
 			Price:    book.TickToPrice(level.PriceTick),
 			Quantity: level.Quantity,
 		}
@@ -528,13 +529,13 @@ func (ob *OrderBook) GetSpread(symbolID int) (spread float64, ok bool) {
 }
 
 // GetBookState returns the state of the orderbook for a symbol.
-func (ob *OrderBook) GetBookState(symbolID int) (BookState, bool) {
+func (ob *OrderBook) GetBookState(symbolID int) (common.BookState, bool) {
 	ob.mu.RLock()
 	defer ob.mu.RUnlock()
 
 	book, exists := ob.books[symbolID]
 	if !exists {
-		return StateWaitForSnapshot, false
+		return common.BookStateWaitForSnapshot, false
 	}
 	return book.State, true
 }

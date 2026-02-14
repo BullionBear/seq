@@ -5,48 +5,36 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/data/ob"
-	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/portfolio"
 	"github.com/rs/zerolog"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// CacheService is the interface that Node's Cache implements.
-// This interface is defined here to avoid circular imports.
-// Note: Subscription and connection methods are removed - engines handle this via config.
+// CacheService is the interface that Cache implements for read-only access.
+// Write methods are not exposed here because strategies should not write to cache directly.
 type CacheService interface {
 	// OrderBook queries
 	GetBestBid(symbolID int) (price, qty float64, ok bool)
 	GetBestAsk(symbolID int) (price, qty float64, ok bool)
-	GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel)
+	GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel)
 	GetMidPrice(symbolID int) (price float64, ok bool)
 	GetSpread(symbolID int) (spread float64, ok bool)
 	IsSymbolReady(symbolID int) bool
-	GetBookState(symbolID int) (ob.BookState, bool)
+	GetBookState(symbolID int) (common.BookState, bool)
 
 	// Execution queries
-	GetOpenOrder(acctID int, clientOrderID int) *execution.OpenOrder
-	GetOpenOrdersByAccount(acctID int) []*execution.OpenOrder
-	GetOpenOrdersBySymbol(acctID int, symbolID int) []*execution.OpenOrder
+	GetOpenOrder(acctID int, clientOrderID int) *common.Order
+	GetOpenOrdersByAccount(acctID int) []*common.Order
+	GetOpenOrdersBySymbol(acctID int, symbolID int) []*common.Order
 	OpenOrderCount(acctID int) int
 
 	// Portfolio queries
-	GetBalance(acctID int, tokenID int) *portfolio.Balance
+	GetBalance(acctID int, tokenID int) *event.Balance
 	GetAvailable(acctID int, tokenID int) float64
 	GetLocked(acctID int, tokenID int) float64
 	GetTotal(acctID int, tokenID int) float64
-	GetAccountBalances(acctID int) *portfolio.AccountBalance
+	GetAccountBalances(acctID int) map[int]*event.Balance
 	HasSufficientBalance(acctID int, tokenID int, amount float64) bool
-
-	// Order submission
-	SubmitOrder(acctID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) (int, error)
-	CancelOrder(acctID int, clientOrderID int) error
-	CancelAllOrders(acctID int, symbolID int) error
-
-	// Catalog access
-	GetCatalog() interface{}
 }
 
 // StrategyCommon provides the common infrastructure for all strategies.
@@ -84,7 +72,7 @@ func (s *StrategyCommon) GetBestAsk(symbolID int) (price, qty float64, ok bool) 
 }
 
 // GetDepth returns the top N levels of bids and asks for the given symbol.
-func (s *StrategyCommon) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
+func (s *StrategyCommon) GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel) {
 	return s.cache.GetDepth(symbolID, levels)
 }
 
@@ -104,46 +92,26 @@ func (s *StrategyCommon) IsSymbolReady(symbolID int) bool {
 }
 
 // GetBookState returns the state of the orderbook for a symbol.
-func (s *StrategyCommon) GetBookState(symbolID int) (ob.BookState, bool) {
+func (s *StrategyCommon) GetBookState(symbolID int) (common.BookState, bool) {
 	return s.cache.GetBookState(symbolID)
 }
 
 // ============================================================================
-// Order Management Methods (delegated to Execution Engine via Cache)
+// Order Query Methods (delegated to Cache)
 // ============================================================================
 
-// SubmitLimitOrder submits a new limit order and returns the client order ID.
-func (s *StrategyCommon) SubmitLimitOrder(acctID int, symbolID int, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) (int, error) {
-	return s.cache.SubmitOrder(acctID, symbolID, side, common.OrderTypeLimit, timeInForce, price, quantity)
-}
-
-// SubmitMarketOrder submits a new market order and returns the client order ID.
-func (s *StrategyCommon) SubmitMarketOrder(acctID int, symbolID int, side common.Side, quantity float64) (int, error) {
-	return s.cache.SubmitOrder(acctID, symbolID, side, common.OrderTypeMarket, common.TimeInForceGTC, 0, quantity)
-}
-
-// CancelOrder cancels an existing order.
-func (s *StrategyCommon) CancelOrder(acctID int, clientOrderID int) error {
-	return s.cache.CancelOrder(acctID, clientOrderID)
-}
-
-// CancelAllOrders cancels all open orders for a symbol.
-func (s *StrategyCommon) CancelAllOrders(acctID int, symbolID int) error {
-	return s.cache.CancelAllOrders(acctID, symbolID)
-}
-
 // GetOpenOrder retrieves an open order by account ID and client order ID.
-func (s *StrategyCommon) GetOpenOrder(acctID int, clientOrderID int) *execution.OpenOrder {
+func (s *StrategyCommon) GetOpenOrder(acctID int, clientOrderID int) *common.Order {
 	return s.cache.GetOpenOrder(acctID, clientOrderID)
 }
 
 // GetOpenOrders returns all currently open orders for an account.
-func (s *StrategyCommon) GetOpenOrders(acctID int) []*execution.OpenOrder {
+func (s *StrategyCommon) GetOpenOrders(acctID int) []*common.Order {
 	return s.cache.GetOpenOrdersByAccount(acctID)
 }
 
 // GetOpenOrdersBySymbol returns all open orders for an account and symbol.
-func (s *StrategyCommon) GetOpenOrdersBySymbol(acctID int, symbolID int) []*execution.OpenOrder {
+func (s *StrategyCommon) GetOpenOrdersBySymbol(acctID int, symbolID int) []*common.Order {
 	return s.cache.GetOpenOrdersBySymbol(acctID, symbolID)
 }
 
@@ -153,11 +121,11 @@ func (s *StrategyCommon) OpenOrderCount(acctID int) int {
 }
 
 // ============================================================================
-// Portfolio Methods (delegated to Portfolio Engine via Cache)
+// Portfolio Methods (delegated to Cache)
 // ============================================================================
 
 // GetBalance returns the balance for a specific account and token.
-func (s *StrategyCommon) GetBalance(acctID int, tokenID int) *portfolio.Balance {
+func (s *StrategyCommon) GetBalance(acctID int, tokenID int) *event.Balance {
 	return s.cache.GetBalance(acctID, tokenID)
 }
 
@@ -177,7 +145,7 @@ func (s *StrategyCommon) GetTotalBalance(acctID int, tokenID int) float64 {
 }
 
 // GetAccountBalances returns all balances for an account.
-func (s *StrategyCommon) GetAccountBalances(acctID int) *portfolio.AccountBalance {
+func (s *StrategyCommon) GetAccountBalances(acctID int) map[int]*event.Balance {
 	return s.cache.GetAccountBalances(acctID)
 }
 

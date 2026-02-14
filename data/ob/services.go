@@ -2,7 +2,6 @@ package ob
 
 import (
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/core/model/event"
 )
 
 // OrderBookService provides orderbook query methods.
@@ -17,7 +16,7 @@ type OrderBookService interface {
 	GetBestAsk(symbolID int) (price, qty float64, ok bool)
 
 	// GetDepth returns the top N levels of bids and asks for the given symbol.
-	GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel)
+	GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel)
 
 	// GetMidPrice returns the mid price for the given symbol.
 	// Returns ok=false if orderbook is empty on either side.

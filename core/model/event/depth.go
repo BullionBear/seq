@@ -1,9 +1,6 @@
 package event
 
-type PriceLevel struct {
-	Price    float64
-	Quantity float64
-}
+import "github.com/BullionBear/seq/core/model/common"
 
 type DepthUpdate struct {
 	SymbolID        int
@@ -12,8 +9,8 @@ type DepthUpdate struct {
 	CurrentDepthID  int
 	NextDepthID     int
 	Timestamp       uint64
-	Asks            []PriceLevel
-	Bids            []PriceLevel
+	Asks            []common.PriceLevel
+	Bids            []common.PriceLevel
 }
 
 func (d DepthUpdate) Topic() Topic {
@@ -24,8 +21,8 @@ type DepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
 	Timestamp uint64
-	Asks      []PriceLevel
-	Bids      []PriceLevel
+	Asks      []common.PriceLevel
+	Bids      []common.PriceLevel
 }
 
 func (d DepthSnapshot) Topic() Topic {
@@ -36,10 +33,10 @@ type RespDepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
 	Timestamp uint64
-	AskLength int          // number of ask price levels
-	BidLength int          // number of bid price levels
-	Asks      []PriceLevel // points into arena buffer
-	Bids      []PriceLevel // points into arena buffer
+	AskLength int                 // number of ask price levels
+	BidLength int                 // number of bid price levels
+	Asks      []common.PriceLevel // points into arena buffer
+	Bids      []common.PriceLevel // points into arena buffer
 }
 
 func (r RespDepthSnapshot) Topic() Topic {
