@@ -59,8 +59,8 @@ func NewNode(cat *catalog.Catalog) *Node {
 	portfolioEngine := portfolio.NewEngine(bus)
 	executionEngine := execution.NewEngine(executionRouter, bus)
 
-	// Create cache with all engines
-	c := cache.NewCache(dataEngine, executionEngine, portfolioEngine)
+	// Create cache (self-contained, no engine dependencies)
+	c := cache.NewCache()
 
 	return &Node{
 		msgBus:          bus,

@@ -60,3 +60,24 @@ const (
 	EngineRisk
 	EngineStrategy
 )
+
+type BookState int
+
+const (
+	BookStateWaitForSnapshot BookState = iota
+	BookStateUpdating
+	BookStateReady
+)
+
+func (s BookState) String() string {
+	switch s {
+	case BookStateWaitForSnapshot:
+		return "WaitForSnapshot"
+	case BookStateUpdating:
+		return "Updating"
+	case BookStateReady:
+		return "Ready"
+	default:
+		return "Unknown"
+	}
+}
