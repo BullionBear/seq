@@ -33,7 +33,7 @@ const (
 // Command channel (point-to-point):
 //   - Uses SPSC (Single Producer Single Consumer) ring buffer
 //   - Commands are produced on the dispatch thread (during event handling)
-//   - Each command topic maps to exactly one handler
+//   - Each command topic maps to exactly one processor
 //   - Commands always have higher priority than events
 //
 // Thread safety:

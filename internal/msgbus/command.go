@@ -11,13 +11,13 @@ type CommandRef struct {
 }
 
 // Command wraps a CommandRef with metadata.
-// Commands are point-to-point: each command topic maps to exactly one handler.
+// Commands are point-to-point: each command topic maps to exactly one processor.
 type Command struct {
 	Ref       CommandRef
 	CommandID uint64
 	CreatedAt uint64
 }
 
-// CommandHandler is a function type for handling commands.
-// Each command topic maps to exactly one CommandHandler (point-to-point).
-type CommandHandler func(cmd Command)
+// CommandProcessor is a function type for processing commands.
+// Each command topic maps to exactly one CommandProcessor (point-to-point).
+type CommandProcessor func(cmd Command)
