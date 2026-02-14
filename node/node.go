@@ -4,18 +4,18 @@ import (
 	"context"
 	"runtime"
 
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/bybit"
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/adapter"
-	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/adapter/binance"
-	"github.com/BullionBear/seq/adapter/bybit"
-	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
 	"github.com/BullionBear/seq/strategy"
@@ -217,11 +217,11 @@ func (n *Node) Run(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
-			hasWork := n.msgBus.Dispatch()
-			if hasWork {
-				// Update minSequence and release arena memory
-				n.msgBus.Release()
-				n.msgBus.ReleaseArenas()
+				hasWork := n.msgBus.Dispatch()
+				if hasWork {
+					// Update minSequence and release arena memory
+					n.msgBus.Release()
+					n.msgBus.ReleaseArenas()
 				} else {
 					runtime.Gosched()
 				}

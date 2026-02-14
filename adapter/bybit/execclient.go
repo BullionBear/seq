@@ -559,7 +559,7 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 		return
 	}
 
-	balances := make([]event.Balance, 0, coinCount)
+	balances := make([]common.Balance, 0, coinCount)
 
 	_, _ = jsonparser.ArrayEach(data, func(coinData []byte, _ jsonparser.ValueType, _ int, _ error) {
 		coin, _ := jsonparser.GetString(coinData, "coin")
@@ -572,7 +572,7 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 		locked := parseFloat64([]byte(lockedStr))
 
 		if total > 0 || available > 0 || locked > 0 {
-			balances = append(balances, event.Balance{
+			balances = append(balances, common.Balance{
 				TokenID:   c.getTokenID(coin),
 				Available: available,
 				Locked:    locked,

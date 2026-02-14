@@ -738,7 +738,7 @@ func (c *BybitHTTPClient) parseWalletBalancesInto(data []byte, buf []byte, expec
 						// Parse and write balance to buffer
 						balance := c.parseCoinBalance(coinObj)
 						// Write Balance struct directly (40 bytes)
-						balancePtr := (*event.Balance)(unsafe.Pointer(&buf[pos]))
+						balancePtr := (*common.Balance)(unsafe.Pointer(&buf[pos]))
 						balancePtr.TokenID = balance.TokenID
 						balancePtr.Available = balance.Available
 						balancePtr.Locked = balance.Locked
@@ -758,8 +758,8 @@ func (c *BybitHTTPClient) parseWalletBalancesInto(data []byte, buf []byte, expec
 }
 
 // parseCoinBalance parses a single coin object into a Balance struct
-func (c *BybitHTTPClient) parseCoinBalance(coinObj []byte) event.Balance {
-	var balance event.Balance
+func (c *BybitHTTPClient) parseCoinBalance(coinObj []byte) common.Balance {
+	var balance common.Balance
 
 	// Parse walletBalance (total)
 	balance.Total = c.parseStringField(coinObj, "\"walletBalance\"")

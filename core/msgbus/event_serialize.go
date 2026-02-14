@@ -543,7 +543,7 @@ func DeserializeRespDepthSnapshot(buf []byte) event.RespDepthSnapshot {
 
 // Size constants for balance events
 const (
-	SizeOfBalance = int(unsafe.Sizeof(event.Balance{}))
+	SizeOfBalance = int(unsafe.Sizeof(common.Balance{}))
 
 	// ReqBalanceSnapshot header: AccountID(8) + BalancesLen(4) + padding(4) = 16 bytes
 	SizeOfReqBalanceSnapshotHeader = 16
@@ -599,9 +599,9 @@ func DeserializeRespBalanceSnapshot(buf []byte) event.RespBalanceSnapshot {
 	pos += 4
 
 	// Create slice pointing directly into the buffer
-	var balances []event.Balance
+	var balances []common.Balance
 	if balancesLen > 0 {
-		balances = unsafe.Slice((*event.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
 	}
 
 	return event.RespBalanceSnapshot{
@@ -676,9 +676,9 @@ func DeserializeBalanceUpdate(buf []byte) event.BalanceUpdate {
 	pos += 4
 
 	// Create slice pointing directly into the buffer
-	var balances []event.Balance
+	var balances []common.Balance
 	if balancesLen > 0 {
-		balances = unsafe.Slice((*event.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
 	}
 
 	return event.BalanceUpdate{
