@@ -4,13 +4,17 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
+)
+
+const (
+	SizeOfPriceLevel = int(unsafe.Sizeof(common.PriceLevel{}))
 )
 
 // Size constants for fixed-size event types
 const (
-	SizeOfTick       = int(unsafe.Sizeof(event.Tick{}))
-	SizeOfPriceLevel = int(unsafe.Sizeof(event.PriceLevel{}))
+	SizeOfTick = int(unsafe.Sizeof(event.Tick{}))
 
 	// State event sizes
 	SizeOfReadyEvent    = int(unsafe.Sizeof(event.ReadyEvent{}))
@@ -298,16 +302,16 @@ func DeserializeDepthSnapshot(buf []byte) event.DepthSnapshot {
 	pos += 4
 
 	// Create slices pointing directly into the buffer
-	var asks []event.PriceLevel
-	var bids []event.PriceLevel
+	var asks []common.PriceLevel
+	var bids []common.PriceLevel
 
 	if asksLen > 0 {
-		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
+		asks = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
 		pos += int(asksLen) * SizeOfPriceLevel
 	}
 
 	if bidsLen > 0 {
-		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
+		bids = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
 	}
 
 	return event.DepthSnapshot{
@@ -415,16 +419,16 @@ func DeserializeDepthUpdate(buf []byte) event.DepthUpdate {
 	pos += 4
 
 	// Create slices pointing directly into the buffer
-	var asks []event.PriceLevel
-	var bids []event.PriceLevel
+	var asks []common.PriceLevel
+	var bids []common.PriceLevel
 
 	if asksLen > 0 {
-		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
+		asks = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
 		pos += int(asksLen) * SizeOfPriceLevel
 	}
 
 	if bidsLen > 0 {
-		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
+		bids = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
 	}
 
 	return event.DepthUpdate{
@@ -512,16 +516,16 @@ func DeserializeRespDepthSnapshot(buf []byte) event.RespDepthSnapshot {
 	pos += 4
 
 	// Create slices pointing directly into the buffer
-	var asks []event.PriceLevel
-	var bids []event.PriceLevel
+	var asks []common.PriceLevel
+	var bids []common.PriceLevel
 
 	if asksLen > 0 {
-		asks = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
+		asks = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), asksLen)
 		pos += int(asksLen) * SizeOfPriceLevel
 	}
 
 	if bidsLen > 0 {
-		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
+		bids = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
 	}
 
 	return event.RespDepthSnapshot{

@@ -16,7 +16,7 @@ type CacheService interface {
 	// OrderBook queries
 	GetBestBid(symbolID int) (price, qty float64, ok bool)
 	GetBestAsk(symbolID int) (price, qty float64, ok bool)
-	GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel)
+	GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel)
 	GetMidPrice(symbolID int) (price float64, ok bool)
 	GetSpread(symbolID int) (spread float64, ok bool)
 	IsSymbolReady(symbolID int) bool
@@ -72,7 +72,7 @@ func (s *StrategyCommon) GetBestAsk(symbolID int) (price, qty float64, ok bool) 
 }
 
 // GetDepth returns the top N levels of bids and asks for the given symbol.
-func (s *StrategyCommon) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
+func (s *StrategyCommon) GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel) {
 	return s.cache.GetDepth(symbolID, levels)
 }
 

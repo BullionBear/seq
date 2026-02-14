@@ -3,12 +3,13 @@ package actor
 import (
 	"sync"
 
+	"github.com/BullionBear/seq/adapter"
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/data/ob"
-	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/data/ob"
 	"github.com/rs/zerolog"
 )
 
@@ -67,7 +68,7 @@ func (c *Coordinator) onDepthUpdate(update event.DepthUpdate) {
 		return
 	}
 
-	if state != ob.StateWaitForSnapshot {
+	if state != common.BookStateWaitForSnapshot {
 		return
 	}
 

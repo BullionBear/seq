@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"sync"
+	"github.com/alphadose/haxmap"
 
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -9,8 +9,8 @@ import (
 
 // bookData holds the orderbook state for a single symbol.
 type bookData struct {
-	bids  []event.PriceLevel
-	asks  []event.PriceLevel
+	bids  []common.PriceLevel
+	asks  []common.PriceLevel
 	state common.BookState
 }
 
@@ -18,24 +18,22 @@ type bookData struct {
 // Engines write data into the cache; strategies read from it.
 // Cache has no dependency on any engine package.
 type Cache struct {
-	mu sync.RWMutex
-
 	// Orderbook data: symbolID -> bookData
-	books map[int]*bookData
+	books *haxmap.Map[int, *bookData]
 
-	// Open orders: acctID -> clientOrderID -> Order
-	openOrders map[int]map[int]*common.Order
+	// Open orders: acctID -> (clientOrderID -> Order)
+	openOrders *haxmap.Map[int, *haxmap.Map[int, *common.Order]]
 
-	// Balances: acctID -> tokenID -> Balance
-	balances map[int]map[int]*event.Balance
+	// Balances: acctID -> (tokenID -> Balance)
+	balances *haxmap.Map[int, *haxmap.Map[int, *event.Balance]]
 }
 
 // NewCache creates a new empty Cache.
 func NewCache() *Cache {
 	return &Cache{
-		books:      make(map[int]*bookData),
-		openOrders: make(map[int]map[int]*common.Order),
-		balances:   make(map[int]map[int]*event.Balance),
+		books:      haxmap.New[int, *bookData](),
+		openOrders: haxmap.New[int, *haxmap.Map[int, *common.Order]](),
+		balances:   haxmap.New[int, *haxmap.Map[int, *event.Balance]](),
 	}
 }
 
@@ -45,10 +43,7 @@ func NewCache() *Cache {
 
 // GetBestBid returns the best bid price and quantity for the given symbol.
 func (c *Cache) GetBestBid(symbolID int) (price, qty float64, ok bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 {
 		return 0, 0, false
 	}
@@ -57,10 +52,7 @@ func (c *Cache) GetBestBid(symbolID int) (price, qty float64, ok bool) {
 
 // GetBestAsk returns the best ask price and quantity for the given symbol.
 func (c *Cache) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists || book.state != common.BookStateReady || len(book.asks) == 0 {
 		return 0, 0, false
 	}
@@ -68,11 +60,8 @@ func (c *Cache) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
 }
 
 // GetDepth returns the top N levels of bids and asks for the given symbol.
-func (c *Cache) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+func (c *Cache) GetDepth(symbolID int, levels int) (bids, asks []common.PriceLevel) {
+	book, exists := c.books.Get(symbolID)
 	if !exists {
 		return nil, nil
 	}
@@ -86,9 +75,9 @@ func (c *Cache) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLeve
 		askN = len(book.asks)
 	}
 
-	bidsCopy := make([]event.PriceLevel, bidN)
+	bidsCopy := make([]common.PriceLevel, bidN)
 	copy(bidsCopy, book.bids[:bidN])
-	asksCopy := make([]event.PriceLevel, askN)
+	asksCopy := make([]common.PriceLevel, askN)
 	copy(asksCopy, book.asks[:askN])
 
 	return bidsCopy, asksCopy
@@ -96,10 +85,7 @@ func (c *Cache) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLeve
 
 // GetMidPrice returns the mid price for the given symbol.
 func (c *Cache) GetMidPrice(symbolID int) (price float64, ok bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 || len(book.asks) == 0 {
 		return 0, false
 	}
@@ -108,10 +94,7 @@ func (c *Cache) GetMidPrice(symbolID int) (price float64, ok bool) {
 
 // GetSpread returns the bid-ask spread for the given symbol.
 func (c *Cache) GetSpread(symbolID int) (spread float64, ok bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 || len(book.asks) == 0 {
 		return 0, false
 	}
@@ -120,10 +103,7 @@ func (c *Cache) GetSpread(symbolID int) (spread float64, ok bool) {
 
 // IsSymbolReady returns true if the orderbook for a symbol is ready.
 func (c *Cache) IsSymbolReady(symbolID int) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists {
 		return false
 	}
@@ -132,10 +112,7 @@ func (c *Cache) IsSymbolReady(symbolID int) bool {
 
 // GetBookState returns the state of the orderbook for a symbol.
 func (c *Cache) GetBookState(symbolID int) (common.BookState, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	book, exists := c.books[symbolID]
+	book, exists := c.books.Get(symbolID)
 	if !exists {
 		return common.BookStateWaitForSnapshot, false
 	}
@@ -148,10 +125,7 @@ func (c *Cache) GetBookState(symbolID int) (common.BookState, bool) {
 
 // UpdateBook updates the orderbook depth for a symbol.
 // bids and asks should be sorted (best first).
-func (c *Cache) UpdateBook(symbolID int, bids, asks []event.PriceLevel) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *Cache) UpdateBook(symbolID int, bids, asks []common.PriceLevel) {
 	book := c.ensureBook(symbolID)
 	book.bids = bids
 	book.asks = asks
@@ -159,9 +133,6 @@ func (c *Cache) UpdateBook(symbolID int, bids, asks []event.PriceLevel) {
 
 // SetBookState sets the synchronization state of the orderbook for a symbol.
 func (c *Cache) SetBookState(symbolID int, state common.BookState) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	book := c.ensureBook(symbolID)
 	book.state = state
 }
@@ -172,62 +143,53 @@ func (c *Cache) SetBookState(symbolID int, state common.BookState) {
 
 // GetOpenOrder returns an open order by account ID and client order ID.
 func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) *common.Order {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	acctOrders, ok := c.openOrders[acctID]
+	acctOrders, ok := c.openOrders.Get(acctID)
 	if !ok {
 		return nil
 	}
-	return acctOrders[clientOrderID]
+	order, _ := acctOrders.Get(clientOrderID)
+	return order
 }
 
 // GetOpenOrdersByAccount returns all open orders for an account.
 func (c *Cache) GetOpenOrdersByAccount(acctID int) []*common.Order {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	acctOrders, ok := c.openOrders[acctID]
+	acctOrders, ok := c.openOrders.Get(acctID)
 	if !ok {
 		return nil
 	}
 
-	orders := make([]*common.Order, 0, len(acctOrders))
-	for _, order := range acctOrders {
+	orders := make([]*common.Order, 0, acctOrders.Len())
+	acctOrders.ForEach(func(_ int, order *common.Order) bool {
 		orders = append(orders, order)
-	}
+		return true
+	})
 	return orders
 }
 
 // GetOpenOrdersBySymbol returns all open orders for an account and symbol.
 func (c *Cache) GetOpenOrdersBySymbol(acctID int, symbolID int) []*common.Order {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	acctOrders, ok := c.openOrders[acctID]
+	acctOrders, ok := c.openOrders.Get(acctID)
 	if !ok {
 		return nil
 	}
 
 	orders := make([]*common.Order, 0)
-	for _, order := range acctOrders {
+	acctOrders.ForEach(func(_ int, order *common.Order) bool {
 		if order.SymbolID == symbolID {
 			orders = append(orders, order)
 		}
-	}
+		return true
+	})
 	return orders
 }
 
 // OpenOrderCount returns the number of open orders for an account.
 func (c *Cache) OpenOrderCount(acctID int) int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	acctOrders, ok := c.openOrders[acctID]
+	acctOrders, ok := c.openOrders.Get(acctID)
 	if !ok {
 		return 0
 	}
-	return len(acctOrders)
+	return int(acctOrders.Len())
 }
 
 // ============================================================================
@@ -236,22 +198,16 @@ func (c *Cache) OpenOrderCount(acctID int) int {
 
 // SetOpenOrder adds or updates an open order in the cache.
 func (c *Cache) SetOpenOrder(acctID int, order *common.Order) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if _, ok := c.openOrders[acctID]; !ok {
-		c.openOrders[acctID] = make(map[int]*common.Order)
-	}
-	c.openOrders[acctID][order.ClientOrderID] = order
+	acctOrders, _ := c.openOrders.GetOrCompute(acctID, func() *haxmap.Map[int, *common.Order] {
+		return haxmap.New[int, *common.Order]()
+	})
+	acctOrders.Set(order.ClientOrderID, order)
 }
 
 // RemoveOpenOrder removes an open order from the cache.
 func (c *Cache) RemoveOpenOrder(acctID int, clientOrderID int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if acctOrders, ok := c.openOrders[acctID]; ok {
-		delete(acctOrders, clientOrderID)
+	if acctOrders, ok := c.openOrders.Get(acctID); ok {
+		acctOrders.Del(clientOrderID)
 	}
 }
 
@@ -261,14 +217,12 @@ func (c *Cache) RemoveOpenOrder(acctID int, clientOrderID int) {
 
 // GetBalance returns the balance for a specific account and token.
 func (c *Cache) GetBalance(acctID int, tokenID int) *event.Balance {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	acctBalances, ok := c.balances[acctID]
+	acctBalances, ok := c.balances.Get(acctID)
 	if !ok {
 		return nil
 	}
-	return acctBalances[tokenID]
+	bal, _ := acctBalances.Get(tokenID)
+	return bal
 }
 
 // GetAvailable returns the available balance for a specific account and token.
@@ -300,10 +254,16 @@ func (c *Cache) GetTotal(acctID int, tokenID int) float64 {
 
 // GetAccountBalances returns all balances for an account as a map of tokenID to Balance.
 func (c *Cache) GetAccountBalances(acctID int) map[int]*event.Balance {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.balances[acctID]
+	acctBalances, ok := c.balances.Get(acctID)
+	if !ok {
+		return nil
+	}
+	result := make(map[int]*event.Balance)
+	acctBalances.ForEach(func(tokenID int, bal *event.Balance) bool {
+		result[tokenID] = bal
+		return true
+	})
+	return result
 }
 
 // HasSufficientBalance checks if an account has sufficient available balance.
@@ -317,28 +277,25 @@ func (c *Cache) HasSufficientBalance(acctID int, tokenID int, amount float64) bo
 
 // SetBalance sets the balance for a specific account and token.
 func (c *Cache) SetBalance(acctID int, tokenID int, available, locked, total float64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.ensureAccount(acctID)
-	c.balances[acctID][tokenID] = &event.Balance{
+	acctBalances, _ := c.balances.GetOrCompute(acctID, func() *haxmap.Map[int, *event.Balance] {
+		return haxmap.New[int, *event.Balance]()
+	})
+	acctBalances.Set(tokenID, &event.Balance{
 		TokenID:   tokenID,
 		Available: available,
 		Locked:    locked,
 		Total:     total,
-	}
+	})
 }
 
 // SetAccountBalances replaces all balances for an account.
 func (c *Cache) SetAccountBalances(acctID int, balances []event.Balance) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.balances[acctID] = make(map[int]*event.Balance, len(balances))
+	acctBalances := haxmap.New[int, *event.Balance](uintptr(len(balances)))
 	for i := range balances {
 		b := balances[i]
-		c.balances[acctID][b.TokenID] = &b
+		acctBalances.Set(b.TokenID, &b)
 	}
+	c.balances.Set(acctID, acctBalances)
 }
 
 // ============================================================================
@@ -346,18 +303,10 @@ func (c *Cache) SetAccountBalances(acctID int, balances []event.Balance) {
 // ============================================================================
 
 func (c *Cache) ensureBook(symbolID int) *bookData {
-	book, exists := c.books[symbolID]
-	if !exists {
-		book = &bookData{
+	book, _ := c.books.GetOrCompute(symbolID, func() *bookData {
+		return &bookData{
 			state: common.BookStateWaitForSnapshot,
 		}
-		c.books[symbolID] = book
-	}
+	})
 	return book
-}
-
-func (c *Cache) ensureAccount(acctID int) {
-	if _, ok := c.balances[acctID]; !ok {
-		c.balances[acctID] = make(map[int]*event.Balance)
-	}
 }

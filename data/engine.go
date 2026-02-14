@@ -3,14 +3,13 @@ package data
 import (
 	"context"
 
+	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
-	"github.com/BullionBear/seq/core/model/event"
+	"github.com/BullionBear/seq/core/msgbus"
 	dactor "github.com/BullionBear/seq/data/actor"
 	"github.com/BullionBear/seq/data/ob"
-	"github.com/BullionBear/seq/adapter"
-	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
@@ -29,11 +28,11 @@ type DataSubscription struct {
 // It owns the OrderBook and SnapshotCoordinator actors, and registers them
 // with the EventBus. The engine itself is NOT an actor.
 type Engine struct {
-	catalog              *catalog.Catalog
-	msgBus               *msgbus.MsgBus
-	orderBook            *ob.OrderBook
-	snapshotCoordinator  *dactor.Coordinator
-	router               *adapter.DataRouter
+	catalog             *catalog.Catalog
+	msgBus              *msgbus.MsgBus
+	orderBook           *ob.OrderBook
+	snapshotCoordinator *dactor.Coordinator
+	router              *adapter.DataRouter
 
 	// Data subscriptions from config
 	dataSubs []DataSubscription
@@ -182,48 +181,4 @@ func (e *Engine) Connect(ctx context.Context) {
 // Disconnect disconnects from all data sources.
 func (e *Engine) Disconnect() {
 	e.router.Disconnect()
-}
-
-// ============================================================================
-// OrderBook Query Methods (implements OrderBookService interface)
-// ============================================================================
-
-// GetBestBid returns the best bid price and quantity for the given symbol.
-func (e *Engine) GetBestBid(symbolID int) (price, qty float64, ok bool) {
-	return e.orderBook.GetBestBid(symbolID)
-}
-
-// GetBestAsk returns the best ask price and quantity for the given symbol.
-func (e *Engine) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
-	return e.orderBook.GetBestAsk(symbolID)
-}
-
-// GetDepth returns the top N levels of bids and asks for the given symbol.
-func (e *Engine) GetDepth(symbolID int, levels int) (bids, asks []event.PriceLevel) {
-	return e.orderBook.GetDepth(symbolID, levels)
-}
-
-// GetMidPrice returns the mid price for the given symbol.
-func (e *Engine) GetMidPrice(symbolID int) (price float64, ok bool) {
-	return e.orderBook.GetMidPrice(symbolID)
-}
-
-// GetSpread returns the bid-ask spread for the given symbol.
-func (e *Engine) GetSpread(symbolID int) (spread float64, ok bool) {
-	return e.orderBook.GetSpread(symbolID)
-}
-
-// IsSymbolReady returns true if the orderbook for a symbol is ready.
-func (e *Engine) IsSymbolReady(symbolID int) bool {
-	return e.orderBook.IsSymbolReady(symbolID)
-}
-
-// GetBookState returns the state of the orderbook for a symbol.
-func (e *Engine) GetBookState(symbolID int) (ob.BookState, bool) {
-	return e.orderBook.GetBookState(symbolID)
-}
-
-// Catalog returns the catalog.
-func (e *Engine) Catalog() *catalog.Catalog {
-	return e.catalog
 }
