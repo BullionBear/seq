@@ -51,7 +51,7 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	var depth event.RespDepthSnapshot
 	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err != nil {
-		t.Fatalf("unmarshalReqDepthSnapshot failed: %v", err)
+		t.Fatalf("unmarshalRespDepthSnapshot failed: %v", err)
 	}
 
 	if depth.DepthID != 230704 {

@@ -48,7 +48,7 @@ type MsgBus struct {
 	nextCommandID uint64
 	rbCommand     *mem.SPSCRingBuffer[Command]
 	cmdArena      *mem.SimpleByteArena
-	cmdHandlers   map[command.CommandType]CommandHandler
+	cmdProcessors map[command.CommandType]CommandProcessor
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -58,7 +58,7 @@ func NewMsgBus() *MsgBus {
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
-		cmdHandlers:   make(map[command.CommandType]CommandHandler),
+		cmdProcessors: make(map[command.CommandType]CommandProcessor),
 	}
 }
 
@@ -69,7 +69,7 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 		nextCommandID: 0,
 		rbCommand:     mem.NewSPSCRingBuffer[Command](DefaultCommandRingBufferSize),
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
-		cmdHandlers:   make(map[command.CommandType]CommandHandler),
+		cmdProcessors: make(map[command.CommandType]CommandProcessor),
 	}
 }
 
@@ -124,16 +124,16 @@ func (m *MsgBus) MinSequence() uint64 {
 // Command API (point-to-point, SPSC)
 // =============================================================================
 
-// RegisterCommand registers a handler for a specific command topic.
+// RegisterCommand registers a processor for a specific command topic.
 // Each command topic can have at most one handler (point-to-point).
-// Panics if a handler is already registered for the given topic.
-func (m *MsgBus) RegisterCommand(cmdType command.CommandType, handler CommandHandler) {
-	if _, exists := m.cmdHandlers[cmdType]; exists {
+// Panics if a processor is already registered for the given topic.
+func (m *MsgBus) RegisterCommand(cmdType command.CommandType, processor CommandProcessor) {
+	if _, exists := m.cmdProcessors[cmdType]; exists {
 		log().Panic().
 			Int("cmdType", int(cmdType)).
-			Msg("MsgBus: duplicate command handler registration")
+			Msg("MsgBus: duplicate command processor registration")
 	}
-	m.cmdHandlers[cmdType] = handler
+	m.cmdProcessors[cmdType] = processor
 }
 
 // Send sends a command to the SPSC command ring buffer.
@@ -164,7 +164,7 @@ func (m *MsgBus) AllocateCmd(size uint64) (offset uint64, buffer []byte) {
 }
 
 // ReadCmdBuffer returns a []byte slice from the command arena at the given offset/length
-// for command handlers to deserialize command data from.
+// for command processors to deserialize command data from.
 func (m *MsgBus) ReadCmdBuffer(offset, length uint64) []byte {
 	return m.cmdArena.ReadSlice(offset, length)
 }
@@ -187,15 +187,15 @@ func (m *MsgBus) Dispatch() bool {
 			break
 		}
 		hasWork = true
-		handler, exists := m.cmdHandlers[cmd.Ref.CommandType]
+		processor, exists := m.cmdProcessors[cmd.Ref.CommandType]
 		if !exists {
 			log().Warn().
 				Int("cmdType", int(cmd.Ref.CommandType)).
 				Uint64("commandID", cmd.CommandID).
-				Msg("MsgBus: no handler registered for command type")
+				Msg("MsgBus: no processor registered for command type")
 			continue
 		}
-		handler(cmd)
+		processor(cmd)
 	}
 
 	// Phase 2: Process one event (lower priority)
