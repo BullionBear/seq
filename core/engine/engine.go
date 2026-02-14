@@ -18,6 +18,9 @@ type Engine interface {
 	Start()
 	Stop()
 
+	// Execute methods
+	Execute(cmd msgbus.Command, bus *msgbus.MsgBus)
+
 	// State notification methods
 	NotifyReady()
 	NotifyStop()
@@ -43,6 +46,13 @@ func NewEngineBase(engineType common.EngineType) EngineBase {
 // Type returns the engine type identifier.
 func (e *EngineBase) Type() common.EngineType {
 	return e.engineType
+}
+
+// Execute processes a command by dispatching to typed callbacks.
+// Override the specific typed callbacks (ProcessRespBalanceUpdate, ProcessRespDepthSnapshot, etc.)
+// in your engine implementation.
+func (e *EngineBase) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
+	// Default no-op - concrete engines should override
 }
 
 // SetNotifier sets the StateNotifier for this engine.

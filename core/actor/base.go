@@ -36,11 +36,6 @@ func (a *ActorBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	// Default no-op - concrete actors should override
 }
 
-// Execute is a no-op default. Concrete actors should override this.
-func (a *ActorBase) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
-	// Default no-op - concrete actors should override
-}
-
 // OnInit is a no-op default lifecycle method.
 func (a *ActorBase) OnInit() {}
 
