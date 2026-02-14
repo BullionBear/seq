@@ -439,8 +439,8 @@ func DeserializeDepthUpdate(buf []byte) event.DepthUpdate {
 	}
 }
 
-// ReqDepthSnapshotSize calculates the total size needed to serialize a ReqDepthSnapshot.
-func ReqDepthSnapshotSize(snapshot *event.ReqDepthSnapshot) uint64 {
+// RespDepthSnapshotSize calculates the total size needed to serialize a RespDepthSnapshot.
+func RespDepthSnapshotSize(snapshot *event.RespDepthSnapshot) uint64 {
 	asksLen := len(snapshot.Asks)
 	bidsLen := len(snapshot.Bids)
 	return uint64(SizeOfDepthSnapshotHeader) +
@@ -448,9 +448,9 @@ func ReqDepthSnapshotSize(snapshot *event.ReqDepthSnapshot) uint64 {
 		uint64(bidsLen)*uint64(SizeOfPriceLevel)
 }
 
-// SerializeReqDepthSnapshot writes a ReqDepthSnapshot to the buffer.
+// SerializeRespDepthSnapshot writes a RespDepthSnapshot to the buffer.
 // Uses the same layout as DepthSnapshot.
-func SerializeReqDepthSnapshot(buf []byte, snapshot *event.ReqDepthSnapshot) int {
+func SerializeRespDepthSnapshot(buf []byte, snapshot *event.RespDepthSnapshot) int {
 	asksLen := uint32(len(snapshot.Asks))
 	bidsLen := uint32(len(snapshot.Bids))
 	pos := 0
@@ -492,8 +492,8 @@ func SerializeReqDepthSnapshot(buf []byte, snapshot *event.ReqDepthSnapshot) int
 	return pos
 }
 
-// DeserializeReqDepthSnapshot reads a ReqDepthSnapshot from buffer.
-func DeserializeReqDepthSnapshot(buf []byte) event.ReqDepthSnapshot {
+// DeserializeRespDepthSnapshot reads a RespDepthSnapshot from buffer.
+func DeserializeRespDepthSnapshot(buf []byte) event.RespDepthSnapshot {
 	pos := 0
 
 	symbolID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -524,7 +524,7 @@ func DeserializeReqDepthSnapshot(buf []byte) event.ReqDepthSnapshot {
 		bids = unsafe.Slice((*event.PriceLevel)(unsafe.Pointer(&buf[pos])), bidsLen)
 	}
 
-	return event.ReqDepthSnapshot{
+	return event.RespDepthSnapshot{
 		SymbolID:  symbolID,
 		DepthID:   depthID,
 		Timestamp: timestamp,

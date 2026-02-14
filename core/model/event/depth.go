@@ -32,7 +32,7 @@ func (d DepthSnapshot) Topic() Topic {
 	return TopicEventDepthSnapshot
 }
 
-type ReqDepthSnapshot struct {
+type RespDepthSnapshot struct {
 	SymbolID  int
 	DepthID   int
 	Timestamp uint64
@@ -42,6 +42,6 @@ type ReqDepthSnapshot struct {
 	Bids      []PriceLevel // points into arena buffer
 }
 
-func (r ReqDepthSnapshot) Topic() Topic {
-	return TopicEventReqDepthSnapshot
+func (r RespDepthSnapshot) Topic() Topic {
+	return TopicEventRespDepthSnapshot
 }

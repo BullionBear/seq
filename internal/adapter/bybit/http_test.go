@@ -48,8 +48,8 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
   "time": 1716863719382
 }`)
 
-	var depth event.ReqDepthSnapshot
-	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+	var depth event.RespDepthSnapshot
+	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err != nil {
 		t.Fatalf("unmarshalReqDepthSnapshot failed: %v", err)
 	}
@@ -102,8 +102,8 @@ func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
   "time": 1716863719382
 }`)
 
-	var depth event.ReqDepthSnapshot
-	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+	var depth event.RespDepthSnapshot
+	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err == nil {
 		t.Fatal("Expected error for non-zero retCode")
 	}
@@ -150,8 +150,8 @@ func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		var depth event.ReqDepthSnapshot
-		err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+		var depth event.RespDepthSnapshot
+		err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)
 		}
@@ -657,9 +657,9 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	})
 
 	if eb.Dispatch() {
-		if receivedEvent.Ref.Topic == event.TopicEventReqBalanceSnapshot {
+		if receivedEvent.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 			buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-			snapshot := msgbus.DeserializeReqBalanceSnapshot(buf)
+			snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
 			t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 				snapshot.AccountID, len(snapshot.Balances))
 			for i, b := range snapshot.Balances {

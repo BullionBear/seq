@@ -110,10 +110,10 @@ func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := msgbus.DeserializeFill(buf)
 		o.OnFill(fill)
-	case event.TopicEventReqDepthSnapshot:
+	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeReqDepthSnapshot(buf)
-		o.OnReqDepthSnapshot(snapshot)
+		snapshot := msgbus.DeserializeRespDepthSnapshot(buf)
+		o.OnRespDepthSnapshot(snapshot)
 	default:
 		log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")
 	}
@@ -230,14 +230,14 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 }
 
 // OnReqDepthSnapshot processes the response to a depth snapshot request.
-func (o *OBTest) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+func (o *OBTest) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 	symbolID := snapshot.SymbolID
 	log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asksCount", len(snapshot.Asks)).
 		Int("bidsCount", len(snapshot.Bids)).
-		Msg("OBTest: ReqDepthSnapshot received")
+		Msg("OBTest: RespDepthSnapshot received")
 }
 
 // printSummary prints a brief summary of the orderbook state.

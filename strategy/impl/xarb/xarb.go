@@ -134,10 +134,10 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := msgbus.DeserializeFill(buf)
 		x.OnFill(fill)
-	case event.TopicEventReqDepthSnapshot:
+	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeReqDepthSnapshot(buf)
-		x.OnReqDepthSnapshot(snapshot)
+		snapshot := msgbus.DeserializeRespDepthSnapshot(buf)
+		x.OnRespDepthSnapshot(snapshot)
 	}
 }
 
@@ -169,15 +169,15 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	}
 }
 
-// OnReqDepthSnapshot processes the response to a depth snapshot request.
-func (x *XArb) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+// OnRespDepthSnapshot processes the response to a depth snapshot request.
+func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 	symbolID := snapshot.SymbolID
 	log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asks", len(snapshot.Asks)).
 		Int("bids", len(snapshot.Bids)).
-		Msg("ReqDepthSnapshot received")
+		Msg("RespDepthSnapshot received")
 }
 
 // printTop5 prints the top 5 bid and ask levels for a symbol.

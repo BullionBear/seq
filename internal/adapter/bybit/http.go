@@ -418,8 +418,8 @@ func (c *BybitHTTPClient) parsePriceLevelsInto(data []byte, key string, levels [
 	return nil
 }
 
-// unmarshalReqDepthSnapshot parses JSON into ReqDepthSnapshot (allocates slices - use for testing)
-func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapshot *event.ReqDepthSnapshot) error {
+// unmarshalRespDepthSnapshot parses JSON into RespDepthSnapshot (allocates slices - use for testing)
+func (c *BybitHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSnapshot *event.RespDepthSnapshot) error {
 	// Check Bybit API response code first
 	if err := c.checkRetCode(data); err != nil {
 		return err
@@ -430,10 +430,10 @@ func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapsho
 	if err != nil {
 		return err
 	}
-	reqDepthSnapshot.DepthID = depthID
-	reqDepthSnapshot.Timestamp = timestamp * 1000000 // convert ms to ns
-	reqDepthSnapshot.AskLength = askCount
-	reqDepthSnapshot.BidLength = bidCount
+	respDepthSnapshot.DepthID = depthID
+	respDepthSnapshot.Timestamp = timestamp * 1000000 // convert ms to ns
+	respDepthSnapshot.AskLength = askCount
+	respDepthSnapshot.BidLength = bidCount
 
 	// Find "result" object for parsing price levels
 	const resultKey = "\"result\""
@@ -445,14 +445,14 @@ func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapsho
 
 	// Allocate slices (non-zero-allocation path, for testing)
 	if askCount > 0 {
-		reqDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"a\"", reqDepthSnapshot.Asks); err != nil {
+		respDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
+		if err := c.parsePriceLevelsInto(resultData, "\"a\"", respDepthSnapshot.Asks); err != nil {
 			return err
 		}
 	}
 	if bidCount > 0 {
-		reqDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"b\"", reqDepthSnapshot.Bids); err != nil {
+		respDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
+		if err := c.parsePriceLevelsInto(resultData, "\"b\"", respDepthSnapshot.Bids); err != nil {
 			return err
 		}
 	}

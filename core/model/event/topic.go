@@ -12,7 +12,7 @@ const (
 	TopicEventFinished
 	// Market Data
 	TopicEventDepthSnapshot
-	TopicEventReqDepthSnapshot
+	TopicEventRespDepthSnapshot
 	TopicEventDepthUpdate
 	TopicEventTick
 	// Execution Data
