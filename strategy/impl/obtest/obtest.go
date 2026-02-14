@@ -10,6 +10,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -86,7 +87,7 @@ func (o *OBTest) OnStop() {
 
 // Handle overrides StrategyBase.Handle to dispatch events to OBTest's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
-func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (o *OBTest) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 	// Log ALL incoming events at the top level for debugging
 	log().Debug().
 		Int("topic", int(ev.Ref.Topic)).

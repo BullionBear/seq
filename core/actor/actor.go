@@ -3,6 +3,7 @@ package actor
 import (
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 )
 
 // Actor is the unified interface for all event-driven components.
@@ -24,10 +25,11 @@ type Actor interface {
 	SubscribedTypes() []event.Topic
 
 	// Event handling
-	// Handle processes an event from the EventBus.
-	// The EventBus reference is provided to allow reading the full event data
-	// from the appropriate arena based on the event reference.
-	Handle(ev evbus.Event, bus *evbus.EventBus)
+	// Handle processes an event from the MsgBus.
+	// The MsgBus reference is provided to allow reading the full event data
+	// from the appropriate arena based on the event reference, and to send
+	// commands via the command channel.
+	Handle(ev evbus.Event, bus *msgbus.MsgBus)
 
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.
@@ -38,9 +40,9 @@ type Actor interface {
 	OnStop()
 }
 
-// Register is a helper function that registers an Actor with the EventBus.
-// It creates a handler that calls the actor's Handle method with the EventBus reference.
-func Register(bus *evbus.EventBus, actor Actor) {
+// Register is a helper function that registers an Actor with the MsgBus.
+// It creates a handler that calls the actor's Handle method with the MsgBus reference.
+func Register(bus *msgbus.MsgBus, actor Actor) {
 	handler := func(ev evbus.Event) {
 		actor.Handle(ev, bus)
 	}

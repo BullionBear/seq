@@ -10,7 +10,7 @@ import (
 	dactor "github.com/BullionBear/seq/data/actor"
 	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
@@ -30,7 +30,7 @@ type DataSubscription struct {
 // with the EventBus. The engine itself is NOT an actor.
 type Engine struct {
 	catalog              *catalog.Catalog
-	eventBus             *evbus.EventBus
+	msgBus               *msgbus.MsgBus
 	orderBook            *ob.OrderBook
 	snapshotCoordinator  *dactor.Coordinator
 	router               *adapter.DataRouter
@@ -40,22 +40,22 @@ type Engine struct {
 }
 
 // NewEngine creates a new data engine.
-func NewEngine(cat *catalog.Catalog, eventBus *evbus.EventBus) *Engine {
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus) *Engine {
 	orderBook := ob.NewOrderBook()
-	router := adapter.NewDataRouter(cat, eventBus)
+	router := adapter.NewDataRouter(cat, msgBus)
 	return &Engine{
 		catalog:             cat,
-		eventBus:            eventBus,
+		msgBus:              msgBus,
 		orderBook:           orderBook,
 		snapshotCoordinator: dactor.NewCoordinator(orderBook, router),
 		router:              router,
 	}
 }
 
-// Init registers the engine's actors with the EventBus.
+// Init registers the engine's actors with the MsgBus.
 func (e *Engine) Init() {
-	actor.Register(e.eventBus, e.orderBook)
-	actor.Register(e.eventBus, e.snapshotCoordinator)
+	actor.Register(e.msgBus, e.orderBook)
+	actor.Register(e.msgBus, e.snapshotCoordinator)
 	log().Info().Msg("DataEngine initialized")
 }
 

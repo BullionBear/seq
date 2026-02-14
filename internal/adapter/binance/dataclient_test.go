@@ -15,6 +15,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 )
 
 // ============================================================================
@@ -75,7 +76,7 @@ func BenchmarkParseFloat64Quoted(b *testing.B) {
 // ============================================================================
 
 func TestBuildStreamURL(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := NewBinanceSpotDataClient(nil, eb)
 
 	tests := []struct {
@@ -115,7 +116,7 @@ func TestBuildStreamURL(t *testing.T) {
 // ============================================================================
 
 func TestProcessDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
@@ -195,7 +196,7 @@ func TestProcessDepthUpdate(t *testing.T) {
 }
 
 func TestProcessTrade(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
@@ -288,7 +289,7 @@ func TestProcessTrade(t *testing.T) {
 }
 
 func TestProcessMessage_CombinedStream(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -331,7 +332,7 @@ func TestProcessMessage_CombinedStream(t *testing.T) {
 }
 
 func TestProcessMessage_SingleStream(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -375,7 +376,7 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 // ============================================================================
 
 func BenchmarkProcessDepthUpdate(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -418,7 +419,7 @@ func BenchmarkProcessDepthUpdate(b *testing.B) {
 }
 
 func BenchmarkProcessTrade(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -450,7 +451,7 @@ func BenchmarkProcessTrade(b *testing.B) {
 }
 
 func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -475,7 +476,7 @@ func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
 // ============================================================================
 
 func TestSubscribeDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -502,7 +503,7 @@ func TestSubscribeDepthUpdate(t *testing.T) {
 }
 
 func TestSubscribeTrade(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -523,7 +524,7 @@ func TestSubscribeTrade(t *testing.T) {
 }
 
 func TestBuildStreamList(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -575,7 +576,7 @@ func TestBuildStreamList(t *testing.T) {
 // ============================================================================
 
 func TestConcurrentSubscriptions(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -609,7 +610,7 @@ func TestConcurrentSubscriptions(t *testing.T) {
 }
 
 func TestConcurrentMessageProcessing(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -659,7 +660,7 @@ func TestIntegration_RealConnection(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -724,7 +725,7 @@ func TestIntegration_DepthUpdates(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -788,7 +789,7 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)

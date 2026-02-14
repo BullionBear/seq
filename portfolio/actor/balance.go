@@ -8,6 +8,7 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/rs/zerolog"
 )
 
@@ -87,7 +88,7 @@ func (b *BalanceActor) OnStart() {
 }
 
 // Handle routes events to the engine's update methods.
-func (b *BalanceActor) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (b *BalanceActor) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)

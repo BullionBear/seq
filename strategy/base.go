@@ -4,6 +4,7 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 )
 
 // Ensure StrategyBase implements the Actor interface
@@ -17,7 +18,7 @@ var _ actor.Actor = (*StrategyBase)(nil)
 // StrategyBase MUST override the Handle() method to dispatch events to their
 // own typed callbacks. See XArb for an example:
 //
-//	func (x *XArb) Handle(ev evbus.Event, bus *evbus.EventBus) {
+//	func (x *XArb) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 //	    switch ev.Ref.Topic {
 //	    case event.TopicEventDepthUpdate:
 //	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
@@ -82,7 +83,7 @@ func (s *StrategyBase) SubscribedTypes() []event.Topic {
 // Handle processes an event by dispatching to typed callbacks.
 // Override the specific typed callbacks (OnDepthUpdate, OnTick, etc.)
 // in your strategy implementation.
-func (s *StrategyBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (s *StrategyBase) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)

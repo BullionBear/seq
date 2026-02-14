@@ -9,6 +9,7 @@ import (
 	"github.com/BullionBear/seq/data/ob"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/rs/zerolog"
 )
 
@@ -45,7 +46,7 @@ func NewCoordinator(ob *ob.OrderBook, router *adapter.DataRouter) *Coordinator {
 }
 
 // Handle routes events to the appropriate handler.
-func (c *Coordinator) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (c *Coordinator) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)

@@ -9,7 +9,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	pactor "github.com/BullionBear/seq/portfolio/actor"
 	"github.com/rs/zerolog"
 )
@@ -35,7 +35,7 @@ type AccountBalance struct {
 // It is NOT an actor — it owns a BalanceActor that handles EventBus events.
 type Engine struct {
 	engine.EngineBase
-	eventBus     *evbus.EventBus
+	msgBus       *msgbus.MsgBus
 	balanceActor *pactor.BalanceActor
 
 	// Execution router for subscribing and requesting balance snapshots
@@ -50,10 +50,10 @@ type Engine struct {
 }
 
 // NewEngine creates a new portfolio engine
-func NewEngine(eventBus *evbus.EventBus) *Engine {
+func NewEngine(msgBus *msgbus.MsgBus) *Engine {
 	e := &Engine{
 		EngineBase: engine.NewEngineBase(common.EnginePortfolio),
-		eventBus:   eventBus,
+		msgBus:     msgBus,
 		accountIDs: make([]int, 0),
 		balances:   make(map[int]*AccountBalance),
 	}
@@ -74,7 +74,7 @@ func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
 // to ongoing balance updates for all configured accounts.
 func (e *Engine) Init() {
 	e.balanceActor.Configure(e.execRouter, e.accountIDs)
-	actor.Register(e.eventBus, e.balanceActor)
+	actor.Register(e.msgBus, e.balanceActor)
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
 		return

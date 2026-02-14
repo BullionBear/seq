@@ -14,6 +14,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 
 	"github.com/valyala/fasthttp"
 )
@@ -23,17 +24,17 @@ func unsafeString(b []byte) string {
 }
 
 type BybitHTTPClient struct {
-	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
 	client   fasthttp.Client
 	buffer   bytes.Buffer
 	baseURL  string
 }
 
-func NewBybitHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) BybitHTTPClient {
+func NewBybitHTTPClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) BybitHTTPClient {
 	return BybitHTTPClient{
-		catalog:  catalog,
-		eventBus: eventBus,
+		catalog: catalog,
+		msgBus:  msgBus,
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
@@ -118,7 +119,7 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		uint64(askCount)*uint64(evbus.SizeOfPriceLevel) +
 		uint64(bidCount)*uint64(evbus.SizeOfPriceLevel)
 
-	offset, buf := c.eventBus.Allocate(size)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
@@ -151,7 +152,7 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	evbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestampNano, uint32(askCount), uint32(bidCount))
 
 	// Publish to event bus
-	c.eventBus.Publish(evbus.EventRef{
+	c.msgBus.Publish(evbus.EventRef{
 		Topic:  event.TopicEventDepthSnapshot,
 		Index:  offset,
 		Length: size,
@@ -596,7 +597,7 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 
 	// Calculate size and allocate buffer
 	size := uint64(evbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(evbus.SizeOfBalance)
-	offset, buf := c.eventBus.Allocate(size)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Write header directly to buffer
 	pos := 0
@@ -614,7 +615,7 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 	c.parseWalletBalancesInto(coinData, buf[pos:], balanceCount)
 
 	// Publish to event bus
-	c.eventBus.Publish(evbus.EventRef{
+	c.msgBus.Publish(evbus.EventRef{
 		Topic:  event.TopicEventReqBalanceSnapshot,
 		Index:  offset,
 		Length: size,

@@ -14,6 +14,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 
 	"github.com/valyala/fasthttp"
 )
@@ -24,16 +25,16 @@ func unsafeString(b []byte) string {
 
 type BinanceHTTPClient struct {
 	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
+	msgBus *msgbus.MsgBus
 	client   fasthttp.Client
 	buffer   bytes.Buffer
 	baseURL  string
 }
 
-func NewBinanceHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) BinanceHTTPClient {
+func NewBinanceHTTPClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) BinanceHTTPClient {
 	return BinanceHTTPClient{
-		catalog:  catalog,
-		eventBus: eventBus,
+		catalog: catalog,
+		msgBus:  msgBus,
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
@@ -101,7 +102,7 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		uint64(askCount)*uint64(evbus.SizeOfPriceLevel) +
 		uint64(bidCount)*uint64(evbus.SizeOfPriceLevel)
 
-	offset, buf := c.eventBus.Allocate(size)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
@@ -132,7 +133,7 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	evbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestamp, uint32(askCount), uint32(bidCount))
 
 	// Publish to event bus
-	c.eventBus.Publish(evbus.EventRef{
+	c.msgBus.Publish(evbus.EventRef{
 		Topic: event.TopicEventDepthSnapshot,
 		Index:    offset,
 		Length:   size,

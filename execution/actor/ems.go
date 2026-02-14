@@ -4,6 +4,7 @@ import (
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 )
 
 // EMSEngineHandler is implemented by the execution engine.
@@ -42,7 +43,7 @@ func NewEMS(engine EMSEngineHandler) *EMS {
 }
 
 // Handle routes order and fill events to the engine's update methods.
-func (e *EMS) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (e *EMS) Handle(ev evbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventOrderAccepted:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)

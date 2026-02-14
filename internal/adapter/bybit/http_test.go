@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"github.com/bytedance/sonic"
 )
 
@@ -20,7 +21,7 @@ import (
 
 func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	// Setup
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{} // Mock catalog not needed for unmarshal
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -89,7 +90,7 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 }
 
 func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -115,7 +116,7 @@ func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
 }
 
 func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -255,7 +256,7 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 	defer server.Close()
 
 	// Setup Dependencies
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
@@ -323,7 +324,7 @@ func TestReqDepthSnapshot_LinearCategory(t *testing.T) {
 	}))
 	defer server.Close()
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -358,7 +359,7 @@ func setPrivateField(obj interface{}, fieldName string, value interface{}) {
 // DataClient tests
 
 func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -384,7 +385,7 @@ func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
 }
 
 func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -466,7 +467,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 }
 
 func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -631,7 +632,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -676,7 +677,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 
 // TestUnit_SignHMAC tests the HMAC signature generation
 func TestUnit_SignHMAC(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 

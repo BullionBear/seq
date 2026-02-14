@@ -15,6 +15,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/internal/msgbus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -183,9 +184,9 @@ func TestBuildOrderNewRequest(t *testing.T) {
 // ============================================================================
 
 func TestProcessAccountStatusResponse(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus:  eb,
+		msgBus:  eb,
 		accountID: 123,
 	}
 
@@ -251,9 +252,9 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 }
 
 func TestProcessOrderResponse(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus: eb,
+		msgBus: eb,
 	}
 
 	// Mock Binance order response for NEW order
@@ -302,9 +303,9 @@ func TestProcessOrderResponse(t *testing.T) {
 }
 
 func TestProcessOrderResponseCanceled(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus: eb,
+		msgBus: eb,
 	}
 
 	// Mock Binance order response for CANCELED order
@@ -348,9 +349,9 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 // ============================================================================
 
 func TestProcessOutboundAccountPosition(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus:  eb,
+		msgBus:  eb,
 		accountID: 123,
 	}
 
@@ -410,9 +411,9 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 }
 
 func TestProcessExecutionReport(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus:  eb,
+		msgBus:  eb,
 		accountID: 123,
 	}
 
@@ -468,9 +469,9 @@ func TestProcessExecutionReport(t *testing.T) {
 }
 
 func TestProcessExecutionReportWithFill(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus:  eb,
+		msgBus:  eb,
 		accountID: 123,
 	}
 
@@ -561,9 +562,9 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 }
 
 func TestProcessUserDataStreamEvent(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := &BinanceSpotExecutionClient{
-		eventBus:  eb,
+		msgBus:  eb,
 		accountID: 123,
 	}
 
@@ -724,7 +725,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	t.Logf("Found account: ID=%d, Name=%s, APIType=%s", targetAccount.ID, targetAccount.Name, targetAccount.APIType)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog (copy the account, not pointer)
@@ -835,7 +836,7 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 	t.Logf("Found account: ID=%d, Name=%s", targetAccount.ID, targetAccount.Name)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog (copy the account, not pointer)
