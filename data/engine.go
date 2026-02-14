@@ -2,13 +2,13 @@ package data
 
 import (
 	"context"
-	"sync"
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/data/ob"
+	"github.com/BullionBear/seq/data/snapshot"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
@@ -16,9 +16,6 @@ import (
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
-
-// Ensure Engine implements the Actor interface
-var _ actor.Actor = (*Engine)(nil)
 
 // DataSubscription holds parsed subscription config for a single symbol
 type DataSubscription struct {
@@ -29,100 +26,37 @@ type DataSubscription struct {
 }
 
 // Engine manages market data processing including orderbook management.
-// It owns the OrderBook actor and DataRouter, and handles the snapshot
-// workflow automatically so strategies don't need to manage it.
+// It owns the OrderBook and SnapshotCoordinator actors, and registers them
+// with the EventBus. The engine itself is NOT an actor.
 type Engine struct {
-	actor.ActorBase
-	catalog   *catalog.Catalog
-	eventBus  *evbus.EventBus
-	orderBook *ob.OrderBook
-	router    *adapter.DataRouter
+	catalog              *catalog.Catalog
+	eventBus             *evbus.EventBus
+	orderBook            *ob.OrderBook
+	snapshotCoordinator  *snapshot.Coordinator
+	router               *adapter.DataRouter
 
 	// Data subscriptions from config
 	dataSubs []DataSubscription
-
-	// Snapshot request tracking
-	mu               sync.RWMutex
-	pendingSnapshots map[int]bool // symbolID -> snapshot requested but not received
 }
 
 // NewEngine creates a new data engine.
 func NewEngine(cat *catalog.Catalog, eventBus *evbus.EventBus) *Engine {
+	orderBook := ob.NewOrderBook()
+	router := adapter.NewDataRouter(cat, eventBus)
 	return &Engine{
-		ActorBase: actor.NewActorBase("data-engine", []event.Topic{
-			event.TopicEventDepthUpdate,
-			event.TopicEventReqDepthSnapshot,
-		}),
-		catalog:          cat,
-		eventBus:         eventBus,
-		orderBook:        ob.NewOrderBook(),
-		router:           adapter.NewDataRouter(cat, eventBus),
-		pendingSnapshots: make(map[int]bool),
+		catalog:             cat,
+		eventBus:            eventBus,
+		orderBook:           orderBook,
+		snapshotCoordinator: snapshot.NewCoordinator(orderBook, router),
+		router:              router,
 	}
 }
 
-// Init initializes the data engine.
-// It registers the OrderBook as an actor with the EventBus.
+// Init registers the engine's actors with the EventBus.
 func (e *Engine) Init() {
-	// Register the orderbook actor with the EventBus
 	actor.Register(e.eventBus, e.orderBook)
+	actor.Register(e.eventBus, e.snapshotCoordinator)
 	log().Info().Msg("DataEngine initialized")
-}
-
-// Handle processes depth-related events.
-// It automatically requests snapshots when orderbook is in WaitForSnapshot state.
-func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	switch ev.Ref.Topic {
-	case event.TopicEventDepthUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeDepthUpdate(buf)
-		e.onDepthUpdate(update)
-	case event.TopicEventReqDepthSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
-		e.onReqDepthSnapshot(snapshot)
-	}
-}
-
-// onDepthUpdate handles depth update events.
-// It checks if the orderbook needs a snapshot and auto-requests one.
-func (e *Engine) onDepthUpdate(update event.DepthUpdate) {
-	symbolID := update.SymbolID
-
-	// Check if orderbook is waiting for snapshot
-	state, exists := e.orderBook.GetBookState(symbolID)
-	if !exists {
-		return
-	}
-
-	// If waiting for snapshot and not already requested, request one
-	if state == ob.StateWaitForSnapshot {
-		e.mu.Lock()
-		if !e.pendingSnapshots[symbolID] {
-			e.pendingSnapshots[symbolID] = true
-			e.mu.Unlock()
-
-			log().Debug().Int("symbolID", symbolID).Msg("DataEngine: Auto-requesting depth snapshot")
-			if err := e.router.ReqDepthSnapshot(symbolID); err != nil {
-				log().Error().Err(err).Int("symbolID", symbolID).Msg("DataEngine: Failed to request depth snapshot")
-				e.mu.Lock()
-				e.pendingSnapshots[symbolID] = false
-				e.mu.Unlock()
-			}
-		} else {
-			e.mu.Unlock()
-		}
-	}
-}
-
-// onReqDepthSnapshot handles the response to a depth snapshot request.
-// It clears the pending snapshot flag for the symbol.
-func (e *Engine) onReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
-	symbolID := snapshot.SymbolID
-	e.mu.Lock()
-	delete(e.pendingSnapshots, symbolID)
-	e.mu.Unlock()
-	log().Debug().Int("symbolID", symbolID).Msg("DataEngine: Depth snapshot received, cleared pending flag")
 }
 
 // ============================================================================

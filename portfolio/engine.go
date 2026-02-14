@@ -15,9 +15,6 @@ import (
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// Ensure Engine implements the Actor interface
-var _ actor.Actor = (*Engine)(nil)
-
 // Balance represents the balance for a specific token
 type Balance struct {
 	TokenID   int
@@ -33,10 +30,12 @@ type AccountBalance struct {
 	UpdatedAt uint64
 }
 
-// Engine manages portfolio state including balances for each account
+// Engine manages portfolio state including balances for each account.
+// It is NOT an actor — it owns a BalanceActor that handles EventBus events.
 type Engine struct {
 	engine.EngineBase
-	eventBus *evbus.EventBus
+	eventBus    *evbus.EventBus
+	balanceActor *BalanceActor
 
 	// Execution router for subscribing and requesting balance snapshots
 	execRouter *adapter.ExecutionRouter
@@ -55,13 +54,15 @@ type Engine struct {
 
 // NewEngine creates a new portfolio engine
 func NewEngine(eventBus *evbus.EventBus) *Engine {
-	return &Engine{
+	e := &Engine{
 		EngineBase:       engine.NewEngineBase(common.EnginePortfolio),
 		eventBus:         eventBus,
 		accountIDs:       make([]int, 0),
 		balances:         make(map[int]*AccountBalance),
 		pendingSnapshots: make(map[int]bool),
 	}
+	e.balanceActor = NewBalanceActor(e)
+	return e
 }
 
 // SetExecutionRouter sets the execution router for subscribing and requesting balance snapshots
@@ -70,61 +71,13 @@ func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
 }
 
 // ============================================================================
-// Actor Interface Implementation
-// ============================================================================
-
-// Name returns the unique identifier for this actor
-func (e *Engine) Name() string {
-	return "PortfolioEngine"
-}
-
-// SubscribedTypes returns the event types this engine wants to receive
-func (e *Engine) SubscribedTypes() []event.Topic {
-	return []event.Topic{
-		event.TopicEventBalanceUpdate,
-		event.TopicEventReqBalanceSnapshot,
-		event.TopicEventFill,
-	}
-}
-
-// Handle processes events from the event bus
-func (e *Engine) Handle(ev evbus.Event, bus *evbus.EventBus) {
-	switch ev.Ref.Topic {
-	case event.TopicEventBalanceUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeBalanceUpdate(buf)
-		e.OnBalanceUpdate(update)
-	case event.TopicEventReqBalanceSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
-		e.OnReqBalanceSnapshot(snapshot)
-	case event.TopicEventFill:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
-		e.OnFill(fill)
-	}
-}
-
-// ============================================================================
-// Actor Interface Implementation (for EventBus registration)
-// ============================================================================
-
-// OnInit is called by the actor system. Engine initialization is done via Init().
-func (e *Engine) OnInit() {}
-
-// OnStart is called by the actor system. Engine startup is done via Start().
-func (e *Engine) OnStart() {}
-
-// OnStop is called by the actor system. Engine shutdown is done via Stop().
-func (e *Engine) OnStop() {}
-
-// ============================================================================
 // Engine Interface Implementation
 // ============================================================================
 
-// Init initializes the engine.
-// It subscribes to balance updates for all configured accounts.
+// Init registers the BalanceActor with the EventBus and subscribes to
+// balance updates for all configured accounts.
 func (e *Engine) Init() {
+	actor.Register(e.eventBus, e.balanceActor)
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
 		return

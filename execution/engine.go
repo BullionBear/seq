@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -31,10 +32,12 @@ type OpenOrder struct {
 	UpdatedAt     uint64
 }
 
-// Engine manages order execution and maintains open order state
+// Engine manages order execution and maintains open order state.
+// It is NOT an actor — it owns an EMS actor that handles EventBus events.
 type Engine struct {
 	router   *adapter.ExecutionRouter
 	eventBus *evbus.EventBus
+	ems      *EMS
 
 	// Configured account IDs for execution
 	accountIDs []int
@@ -50,16 +53,19 @@ type Engine struct {
 
 // NewEngine creates a new execution engine
 func NewEngine(router *adapter.ExecutionRouter, eventBus *evbus.EventBus) *Engine {
-	return &Engine{
+	e := &Engine{
 		router:            router,
 		eventBus:          eventBus,
 		openOrders:        make(map[int]map[int]*OpenOrder),
 		nextClientOrderID: make(map[int]int),
 	}
+	e.ems = NewEMS(e)
+	return e
 }
 
-// Init initializes the execution engine
+// Init registers the EMS actor with the EventBus.
 func (e *Engine) Init() {
+	actor.Register(e.eventBus, e.ems)
 	log().Debug().Msg("ExecutionEngine initialized")
 }
 
