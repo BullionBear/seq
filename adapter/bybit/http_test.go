@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/bytedance/sonic"
 )
 
@@ -20,7 +20,7 @@ import (
 
 func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	// Setup
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{} // Mock catalog not needed for unmarshal
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -48,10 +48,10 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
   "time": 1716863719382
 }`)
 
-	var depth event.ReqDepthSnapshot
-	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+	var depth event.RespDepthSnapshot
+	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err != nil {
-		t.Fatalf("unmarshalReqDepthSnapshot failed: %v", err)
+		t.Fatalf("unmarshalRespDepthSnapshot failed: %v", err)
 	}
 
 	if depth.DepthID != 230704 {
@@ -89,7 +89,7 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 }
 
 func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -102,8 +102,8 @@ func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
   "time": 1716863719382
 }`)
 
-	var depth event.ReqDepthSnapshot
-	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+	var depth event.RespDepthSnapshot
+	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err == nil {
 		t.Fatal("Expected error for non-zero retCode")
 	}
@@ -115,7 +115,7 @@ func TestUnmarshalReqDepthSnapshot_APIError(t *testing.T) {
 }
 
 func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 
@@ -150,8 +150,8 @@ func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		var depth event.ReqDepthSnapshot
-		err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+		var depth event.RespDepthSnapshot
+		err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)
 		}
@@ -255,7 +255,7 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 	defer server.Close()
 
 	// Setup Dependencies
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
@@ -285,8 +285,8 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 	}
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -323,7 +323,7 @@ func TestReqDepthSnapshot_LinearCategory(t *testing.T) {
 	}))
 	defer server.Close()
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -358,7 +358,7 @@ func setPrivateField(obj interface{}, fieldName string, value interface{}) {
 // DataClient tests
 
 func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -384,7 +384,7 @@ func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
 }
 
 func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -431,8 +431,8 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	client.processMessage(msg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -444,7 +444,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	snapshot := evbus.DeserializeDepthSnapshot(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	snapshot := msgbus.DeserializeDepthSnapshot(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if snapshot.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", snapshot.SymbolID)
 	}
@@ -466,7 +466,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 }
 
 func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -513,8 +513,8 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	client.processMessage(msg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -526,7 +526,7 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	update := evbus.DeserializeDepthUpdate(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	update := msgbus.DeserializeDepthUpdate(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if update.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", update.SymbolID)
 	}
@@ -631,7 +631,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -651,15 +651,15 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	t.Log("Requested balance snapshot successfully")
 
 	// Check if event was published
-	var receivedEvent evbus.Event
-	eb.Register("test", nil, func(ev evbus.Event) {
+	var receivedEvent msgbus.Event
+	eb.Register("test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 
 	if eb.Dispatch() {
-		if receivedEvent.Ref.Topic == event.TopicEventReqBalanceSnapshot {
+		if receivedEvent.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 			buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-			snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
+			snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
 			t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 				snapshot.AccountID, len(snapshot.Balances))
 			for i, b := range snapshot.Balances {
@@ -676,7 +676,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 
 // TestUnit_SignHMAC tests the HMAC signature generation
 func TestUnit_SignHMAC(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBybitHTTPClient(cat, eb)
 

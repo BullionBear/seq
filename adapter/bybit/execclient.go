@@ -15,7 +15,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
 )
@@ -35,7 +35,7 @@ const (
 // Topics: order, execution, wallet, position
 type BybitPrivateStreamClient struct {
 	catalog   *catalog.Catalog
-	eventBus  *evbus.EventBus
+	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
 
@@ -62,7 +62,7 @@ type BybitPrivateStreamClient struct {
 }
 
 // NewBybitPrivateStreamClient creates a new Bybit private stream client
-func NewBybitPrivateStreamClient(catalog *catalog.Catalog, eventBus *evbus.EventBus, accountID int) (*BybitPrivateStreamClient, error) {
+func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitPrivateStreamClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func NewBybitPrivateStreamClient(catalog *catalog.Catalog, eventBus *evbus.Event
 
 	return &BybitPrivateStreamClient{
 		catalog:       catalog,
-		eventBus:      eventBus,
+		msgBus:        msgBus,
 		accountID:     accountID,
 		account:       *account,
 		pendingTopics: make(map[string]bool),
@@ -509,10 +509,10 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 		FilledAt:      uint64(execTime) * 1_000_000,
 	}
 
-	size := evbus.FillSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeFill(buf, &fill)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.FillSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeFill(buf, &fill)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -591,10 +591,10 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
 
-	size := evbus.BalanceUpdateSize(&balanceUpdate)
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeBalanceUpdate(buf, &balanceUpdate)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.BalanceUpdateSize(&balanceUpdate)
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventBalanceUpdate,
 		Index:  offset,
 		Length: size,
@@ -613,10 +613,10 @@ func (c *BybitPrivateStreamClient) publishOrderAccepted(clientOrderID, orderID i
 		OrderID:       orderID,
 		CreatedAt:     createdAt,
 	}
-	size := evbus.OrderAcceptedSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderAccepted(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderAcceptedSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderAccepted(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderAccepted,
 		Index:  offset,
 		Length: size,
@@ -631,10 +631,10 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderPartiallyFilledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderPartiallyFilled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderPartiallyFilledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderPartiallyFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventPartialFill,
 		Index:  offset,
 		Length: size,
@@ -649,10 +649,10 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderFilledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderFilled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderFilledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -666,10 +666,10 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 		OrderID:       orderID,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderCanceledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderCanceled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderCanceledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderCanceled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderCanceled,
 		Index:  offset,
 		Length: size,
@@ -684,10 +684,10 @@ func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID i
 		ErrorCode:     0,
 		Msg:           reason,
 	}
-	size := evbus.OrderRejectedSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderRejected(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderRejectedSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderRejected(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderRejected,
 		Index:  offset,
 		Length: size,
@@ -701,10 +701,10 @@ func (c *BybitPrivateStreamClient) publishOrderUnknownStatus(clientOrderID, orde
 		OrderID:       orderID,
 		Msg:           status,
 	}
-	size := evbus.OrderUnknownStatusSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderUnknownStatus(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderUnknownStatusSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderUnknownStatus(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderUnknownStatus,
 		Index:  offset,
 		Length: size,
@@ -756,7 +756,7 @@ func (h *wsPrivateStreamHandler) OnMessage(socket *gws.Conn, message *gws.Messag
 // Methods: order.create, order.amend, order.cancel
 type BybitOrderEntryClient struct {
 	catalog   *catalog.Catalog
-	eventBus  *evbus.EventBus
+	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
 
@@ -782,7 +782,7 @@ type BybitOrderEntryClient struct {
 }
 
 // NewBybitOrderEntryClient creates a new Bybit order entry client
-func NewBybitOrderEntryClient(catalog *catalog.Catalog, eventBus *evbus.EventBus, accountID int) (*BybitOrderEntryClient, error) {
+func NewBybitOrderEntryClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitOrderEntryClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -790,7 +790,7 @@ func NewBybitOrderEntryClient(catalog *catalog.Catalog, eventBus *evbus.EventBus
 
 	return &BybitOrderEntryClient{
 		catalog:   catalog,
-		eventBus:  eventBus,
+		msgBus:    msgBus,
 		accountID: accountID,
 		account:   *account,
 	}, nil
@@ -1300,18 +1300,18 @@ type BybitExecutionClient struct {
 
 // NewBybitExecutionClient creates a new Bybit execution client that wraps
 // both the private stream and order entry clients
-func NewBybitExecutionClient(catalog *catalog.Catalog, eventBus *evbus.EventBus, accountID int) (*BybitExecutionClient, error) {
-	privateStream, err := NewBybitPrivateStreamClient(catalog, eventBus, accountID)
+func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitExecutionClient, error) {
+	privateStream, err := NewBybitPrivateStreamClient(catalog, msgBus, accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	orderEntry, err := NewBybitOrderEntryClient(catalog, eventBus, accountID)
+	orderEntry, err := NewBybitOrderEntryClient(catalog, msgBus, accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	httpClient := NewBybitHTTPClient(catalog, eventBus)
+	httpClient := NewBybitHTTPClient(catalog, msgBus)
 
 	return &BybitExecutionClient{
 		privateStream: privateStream,

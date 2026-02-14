@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
 	"github.com/rs/zerolog"
@@ -35,8 +35,8 @@ const (
 // Key difference from Binance: Bybit requires separate WebSocket connections
 // for each channel type (spot, linear, inverse, option)
 type BybitDataClient struct {
-	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
 
 	// HTTP client for REST API requests (depth snapshots, etc.)
 	httpClient *BybitHTTPClient
@@ -76,11 +76,11 @@ type wsConnection struct {
 }
 
 // NewBybitDataClient creates a new Bybit data client
-func NewBybitDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) *BybitDataClient {
-	httpClient := NewBybitHTTPClient(catalog, eventBus)
+func NewBybitDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *BybitDataClient {
+	httpClient := NewBybitHTTPClient(catalog, msgBus)
 	return &BybitDataClient{
 		catalog:       catalog,
-		eventBus:      eventBus,
+		msgBus:        msgBus,
 		httpClient:    &httpClient,
 		conns:         make(map[Category]*wsConnection, 4),
 		depthSubs:     make(map[int]*DepthSubscriptionOptions, 64),
@@ -549,12 +549,12 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 	}
 
 	// Calculate size and allocate buffer
-	size := evbus.DepthSnapshotSize(&snapshot)
-	offset, buf := c.eventBus.Allocate(size)
+	size := msgbus.DepthSnapshotSize(&snapshot)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Serialize and publish
-	evbus.SerializeDepthSnapshot(buf, &snapshot)
-	c.eventBus.Publish(evbus.EventRef{
+	msgbus.SerializeDepthSnapshot(buf, &snapshot)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventDepthSnapshot,
 		Index:    offset,
 		Length:   size,
@@ -580,12 +580,12 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 	}
 
 	// Calculate size and allocate buffer
-	size := evbus.DepthUpdateSize(&depthUpdate)
-	offset, buf := c.eventBus.Allocate(size)
+	size := msgbus.DepthUpdateSize(&depthUpdate)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Serialize and publish
-	evbus.SerializeDepthUpdate(buf, &depthUpdate)
-	c.eventBus.Publish(evbus.EventRef{
+	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventDepthUpdate,
 		Index:    offset,
 		Length:   size,
@@ -634,10 +634,10 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	}
 
 	// Publish to event bus
-	size := evbus.TickSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeTick(buf, &tick)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.TickSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeTick(buf, &tick)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic: event.TopicEventTick,
 		Index:    offset,
 		Length:   size,

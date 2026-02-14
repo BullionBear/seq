@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
 	"github.com/rs/zerolog"
@@ -37,8 +37,8 @@ const (
 // It provides a unified interface for both real-time streaming data (WebSocket)
 // and on-demand requests (HTTP REST API)
 type BinanceSpotDataClient struct {
-	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
 
 	// HTTP client for REST API requests (depth snapshots, etc.)
 	httpClient *BinanceHTTPClient
@@ -70,11 +70,11 @@ type BinanceSpotDataClient struct {
 
 // NewBinanceSpotDataClient creates a new Binance spot data client
 // It initializes both the WebSocket client for real-time data and the HTTP client for REST API requests
-func NewBinanceSpotDataClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) *BinanceSpotDataClient {
-	httpClient := NewBinanceHTTPClient(catalog, eventBus)
+func NewBinanceSpotDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *BinanceSpotDataClient {
+	httpClient := NewBinanceHTTPClient(catalog, msgBus)
 	return &BinanceSpotDataClient{
 		catalog:        catalog,
-		eventBus:       eventBus,
+		msgBus:         msgBus,
 		httpClient:     &httpClient,
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:      make(map[int]*TradeSubscriptionOptions, 64),
@@ -464,10 +464,10 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.Asks = c.parsePriceLevels(data, "a")
 
 	// Publish to event bus using new generic API
-	size := evbus.DepthUpdateSize(&depthUpdate)
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeDepthUpdate(buf, &depthUpdate)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.DepthUpdateSize(&depthUpdate)
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthUpdate,
 		Index:  offset,
 		Length: size,
@@ -513,10 +513,10 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	}
 
 	// Publish to event bus using new generic API
-	size := evbus.TickSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeTick(buf, &tick)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.TickSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeTick(buf, &tick)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
 		Length: size,

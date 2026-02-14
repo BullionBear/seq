@@ -11,7 +11,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,7 +85,7 @@ func TestIntegration_BybitPrivateStream(t *testing.T) {
 		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -196,7 +196,7 @@ func TestIntegration_BybitOrderEntry(t *testing.T) {
 		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -284,7 +284,7 @@ func TestIntegration_BybitExecutionClient(t *testing.T) {
 		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -397,7 +397,7 @@ func TestIntegration_BybitWalletUpdate(t *testing.T) {
 	t.Logf("Found account: ID=%d, Name=%s", targetAccount.ID, targetAccount.Name)
 
 	// Create event bus and catalog
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject account into catalog
@@ -443,10 +443,10 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventBalanceUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					update := evbus.DeserializeBalanceUpdate(buf)
+					update := msgbus.DeserializeBalanceUpdate(buf)
 					t.Logf("Received balance update: AccountID=%d, Balances=%d",
 						update.AccountID, len(update.Balances))
 					for i, b := range update.Balances {

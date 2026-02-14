@@ -13,7 +13,7 @@ import (
 
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 
 	"github.com/valyala/fasthttp"
 )
@@ -23,17 +23,17 @@ func unsafeString(b []byte) string {
 }
 
 type BybitHTTPClient struct {
-	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
-	client   fasthttp.Client
-	buffer   bytes.Buffer
-	baseURL  string
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
+	client  fasthttp.Client
+	buffer  bytes.Buffer
+	baseURL string
 }
 
-func NewBybitHTTPClient(catalog *catalog.Catalog, eventBus *evbus.EventBus) BybitHTTPClient {
+func NewBybitHTTPClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) BybitHTTPClient {
 	return BybitHTTPClient{
-		catalog:  catalog,
-		eventBus: eventBus,
+		catalog: catalog,
+		msgBus:  msgBus,
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
 		},
@@ -114,16 +114,16 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 
 	// Phase 2: Allocate arena buffer for DepthSnapshot
 	// Layout: [SymbolID(8)][DepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)][Asks...][Bids...]
-	size := uint64(evbus.SizeOfDepthSnapshotHeader) +
-		uint64(askCount)*uint64(evbus.SizeOfPriceLevel) +
-		uint64(bidCount)*uint64(evbus.SizeOfPriceLevel)
+	size := uint64(msgbus.SizeOfDepthSnapshotHeader) +
+		uint64(askCount)*uint64(msgbus.SizeOfPriceLevel) +
+		uint64(bidCount)*uint64(msgbus.SizeOfPriceLevel)
 
-	offset, buf := c.eventBus.Allocate(size)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
-	asksStart := evbus.SizeOfDepthSnapshotHeader
-	bidsStart := asksStart + askCount*evbus.SizeOfPriceLevel
+	asksStart := msgbus.SizeOfDepthSnapshotHeader
+	bidsStart := asksStart + askCount*msgbus.SizeOfPriceLevel
 
 	var asks []event.PriceLevel
 	var bids []event.PriceLevel
@@ -148,10 +148,10 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Write header into buffer
 	// Convert Bybit timestamp (milliseconds) to nanoseconds
 	timestampNano := timestamp * 1000000
-	evbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestampNano, uint32(askCount), uint32(bidCount))
+	msgbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestampNano, uint32(askCount), uint32(bidCount))
 
 	// Publish to event bus
-	c.eventBus.Publish(evbus.EventRef{
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthSnapshot,
 		Index:  offset,
 		Length: size,
@@ -418,8 +418,8 @@ func (c *BybitHTTPClient) parsePriceLevelsInto(data []byte, key string, levels [
 	return nil
 }
 
-// unmarshalReqDepthSnapshot parses JSON into ReqDepthSnapshot (allocates slices - use for testing)
-func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapshot *event.ReqDepthSnapshot) error {
+// unmarshalRespDepthSnapshot parses JSON into RespDepthSnapshot (allocates slices - use for testing)
+func (c *BybitHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSnapshot *event.RespDepthSnapshot) error {
 	// Check Bybit API response code first
 	if err := c.checkRetCode(data); err != nil {
 		return err
@@ -430,10 +430,10 @@ func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapsho
 	if err != nil {
 		return err
 	}
-	reqDepthSnapshot.DepthID = depthID
-	reqDepthSnapshot.Timestamp = timestamp * 1000000 // convert ms to ns
-	reqDepthSnapshot.AskLength = askCount
-	reqDepthSnapshot.BidLength = bidCount
+	respDepthSnapshot.DepthID = depthID
+	respDepthSnapshot.Timestamp = timestamp * 1000000 // convert ms to ns
+	respDepthSnapshot.AskLength = askCount
+	respDepthSnapshot.BidLength = bidCount
 
 	// Find "result" object for parsing price levels
 	const resultKey = "\"result\""
@@ -445,14 +445,14 @@ func (c *BybitHTTPClient) unmarshalReqDepthSnapshot(data []byte, reqDepthSnapsho
 
 	// Allocate slices (non-zero-allocation path, for testing)
 	if askCount > 0 {
-		reqDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"a\"", reqDepthSnapshot.Asks); err != nil {
+		respDepthSnapshot.Asks = make([]event.PriceLevel, askCount)
+		if err := c.parsePriceLevelsInto(resultData, "\"a\"", respDepthSnapshot.Asks); err != nil {
 			return err
 		}
 	}
 	if bidCount > 0 {
-		reqDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"b\"", reqDepthSnapshot.Bids); err != nil {
+		respDepthSnapshot.Bids = make([]event.PriceLevel, bidCount)
+		if err := c.parsePriceLevelsInto(resultData, "\"b\"", respDepthSnapshot.Bids); err != nil {
 			return err
 		}
 	}
@@ -595,8 +595,8 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 	}
 
 	// Calculate size and allocate buffer
-	size := uint64(evbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(evbus.SizeOfBalance)
-	offset, buf := c.eventBus.Allocate(size)
+	size := uint64(msgbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(msgbus.SizeOfBalance)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Write header directly to buffer
 	pos := 0
@@ -614,8 +614,8 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 	c.parseWalletBalancesInto(coinData, buf[pos:], balanceCount)
 
 	// Publish to event bus
-	c.eventBus.Publish(evbus.EventRef{
-		Topic:  event.TopicEventReqBalanceSnapshot,
+	c.msgBus.Publish(msgbus.EventRef{
+		Topic:  event.TopicEventRespBalanceSnapshot,
 		Index:  offset,
 		Length: size,
 	})
@@ -742,7 +742,7 @@ func (c *BybitHTTPClient) parseWalletBalancesInto(data []byte, buf []byte, expec
 						balancePtr.Available = balance.Available
 						balancePtr.Locked = balance.Locked
 						balancePtr.Total = balance.Total
-						pos += evbus.SizeOfBalance
+						pos += msgbus.SizeOfBalance
 						parsed++
 					}
 				}

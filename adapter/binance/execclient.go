@@ -19,7 +19,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/buger/jsonparser"
 	"github.com/lxzan/gws"
 )
@@ -43,7 +43,7 @@ const (
 // publishes events for subscribed types. Unsubscribed event types are logged as unhandled.
 type BinanceSpotExecutionClient struct {
 	catalog   *catalog.Catalog
-	eventBus  *evbus.EventBus
+	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
 
@@ -78,7 +78,7 @@ type BinanceSpotExecutionClient struct {
 }
 
 // NewBinanceSpotExecutionClient creates a new Binance spot execution client
-func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, eventBus *evbus.EventBus, accountID int) (*BinanceSpotExecutionClient, error) {
+func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BinanceSpotExecutionClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, eventBus *evbus.Eve
 
 	return &BinanceSpotExecutionClient{
 		catalog:    catalog,
-		eventBus:   eventBus,
+		msgBus:     msgBus,
 		accountID:  accountID,
 		account:    *account,
 		privateKey: privateKey,
@@ -856,10 +856,10 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 		UpdatedAt: uint64(updateTime) * 1_000_000, // Convert ms to ns
 	}
 
-	size := evbus.BalanceUpdateSize(&balanceUpdate)
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeBalanceUpdate(buf, &balanceUpdate)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.BalanceUpdateSize(&balanceUpdate)
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventBalanceUpdate,
 		Index:  offset,
 		Length: size,
@@ -1002,10 +1002,10 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 		FilledAt:      uint64(transactTime) * 1_000_000,
 	}
 
-	size := evbus.FillSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeFill(buf, &fill)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.FillSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeFill(buf, &fill)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -1026,10 +1026,10 @@ func (c *BinanceSpotExecutionClient) publishOrderAccepted(clientOrderID, orderID
 		OrderID:       orderID,
 		CreatedAt:     createdAt,
 	}
-	size := evbus.OrderAcceptedSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderAccepted(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderAcceptedSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderAccepted(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderAccepted,
 		Index:  offset,
 		Length: size,
@@ -1044,10 +1044,10 @@ func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, 
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderPartiallyFilledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderPartiallyFilled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderPartiallyFilledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderPartiallyFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventPartialFill,
 		Index:  offset,
 		Length: size,
@@ -1062,10 +1062,10 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderFilledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderFilled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderFilledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderFilled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
 		Length: size,
@@ -1079,10 +1079,10 @@ func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID
 		OrderID:       orderID,
 		UpdatedAt:     updatedAt,
 	}
-	size := evbus.OrderCanceledSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderCanceled(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderCanceledSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderCanceled(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderCanceled,
 		Index:  offset,
 		Length: size,
@@ -1097,10 +1097,10 @@ func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID
 		ErrorCode:     0,
 		Msg:           reason,
 	}
-	size := evbus.OrderRejectedSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderRejected(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderRejectedSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderRejected(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderRejected,
 		Index:  offset,
 		Length: size,
@@ -1114,10 +1114,10 @@ func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, or
 		OrderID:       orderID,
 		Msg:           status,
 	}
-	size := evbus.OrderUnknownStatusSize()
-	offset, buf := c.eventBus.Allocate(size)
-	evbus.SerializeOrderUnknownStatus(buf, &e)
-	c.eventBus.Publish(evbus.EventRef{
+	size := msgbus.OrderUnknownStatusSize()
+	offset, buf := c.msgBus.Allocate(size)
+	msgbus.SerializeOrderUnknownStatus(buf, &e)
+	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderUnknownStatus,
 		Index:  offset,
 		Length: size,
@@ -1197,10 +1197,10 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		}
 
 		// Publish fill event
-		size := evbus.FillSize()
-		fillOffset, buf := c.eventBus.Allocate(size)
-		evbus.SerializeFill(buf, &fill)
-		c.eventBus.Publish(evbus.EventRef{
+		size := msgbus.FillSize()
+		fillOffset, buf := c.msgBus.Allocate(size)
+		msgbus.SerializeFill(buf, &fill)
+		c.msgBus.Publish(msgbus.EventRef{
 			Topic:  event.TopicEventFill,
 			Index:  fillOffset,
 			Length: size,
@@ -1248,8 +1248,8 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 
 	// Calculate size and allocate directly from event bus
 	// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balance1][Balance2]...[BalanceN]
-	size := uint64(evbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(evbus.SizeOfBalance)
-	offset, buf := c.eventBus.Allocate(size)
+	size := uint64(msgbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(msgbus.SizeOfBalance)
+	offset, buf := c.msgBus.Allocate(size)
 
 	// Write header directly to buffer
 	pos := 0
@@ -1281,12 +1281,12 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 			balance.Available = free
 			balance.Locked = locked
 			balance.Total = total
-			pos += evbus.SizeOfBalance
+			pos += msgbus.SizeOfBalance
 		}
 	}, "balances")
 
-	c.eventBus.Publish(evbus.EventRef{
-		Topic:  event.TopicEventReqBalanceSnapshot,
+	c.msgBus.Publish(msgbus.EventRef{
+		Topic:  event.TopicEventRespBalanceSnapshot,
 		Index:  offset,
 		Length: size,
 	})

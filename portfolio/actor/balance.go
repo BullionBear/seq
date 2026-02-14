@@ -6,8 +6,8 @@ import (
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 
@@ -17,7 +17,7 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 // It receives event callbacks and lifecycle notifications from BalanceActor.
 type BalanceEngineHandler interface {
 	OnBalanceUpdate(ev event.BalanceUpdate)
-	OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot)
+	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
 	OnFill(ev event.Fill)
 	NotifyReady()
 }
@@ -45,7 +45,7 @@ func NewBalanceActor(handler BalanceEngineHandler) *BalanceActor {
 	return &BalanceActor{
 		ActorBase: coreactor.NewActorBase("portfolio-balance", []event.Topic{
 			event.TopicEventBalanceUpdate,
-			event.TopicEventReqBalanceSnapshot,
+			event.TopicEventRespBalanceSnapshot,
 			event.TopicEventFill,
 		}),
 		handler: handler,
@@ -87,20 +87,20 @@ func (b *BalanceActor) OnStart() {
 }
 
 // Handle routes events to the engine's update methods.
-func (b *BalanceActor) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeBalanceUpdate(buf)
+		update := msgbus.DeserializeBalanceUpdate(buf)
 		b.handler.OnBalanceUpdate(update)
-	case event.TopicEventReqBalanceSnapshot:
+	case event.TopicEventRespBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqBalanceSnapshot(buf)
-		b.handler.OnReqBalanceSnapshot(snapshot)
+		snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
+		fill := msgbus.DeserializeFill(buf)
 		b.handler.OnFill(fill)
 	}
 }

@@ -3,7 +3,7 @@ package strategy
 import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Engine manages strategy lifecycle.
@@ -28,7 +28,7 @@ func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache CacheService) *Eng
 
 // Init initializes the engine and the strategy actor.
 // It creates StrategyCommon and injects it into the strategy.
-func (e *Engine) Init(config *StrategyConfig, eventBus *evbus.EventBus) {
+func (e *Engine) Init(config *StrategyConfig, msgBus *msgbus.MsgBus) {
 	e.config = config
 
 	// Create StrategyCommon which wraps the cache
@@ -48,8 +48,8 @@ func (e *Engine) Init(config *StrategyConfig, eventBus *evbus.EventBus) {
 		s.SetConfig(config)
 	}
 
-	// Register the strategy actor with the EventBus
-	actor.Register(eventBus, e.strategyActor)
+	// Register the strategy actor with the MsgBus
+	actor.Register(msgBus, e.strategyActor)
 
 	// Call OnInit on the strategy actor
 	e.strategyActor.OnInit()

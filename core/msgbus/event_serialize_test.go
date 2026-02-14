@@ -1,4 +1,4 @@
-package evbus
+package msgbus
 
 import (
 	"testing"
@@ -13,18 +13,18 @@ import (
 func TestReqBalanceSnapshotSize(t *testing.T) {
 	tests := []struct {
 		name     string
-		snapshot event.ReqBalanceSnapshot
+		snapshot event.RespBalanceSnapshot
 	}{
 		{
 			name: "empty balances",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 1,
 				Balances:  nil,
 			},
 		},
 		{
 			name: "single balance",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 1,
 				Balances: []event.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -33,7 +33,7 @@ func TestReqBalanceSnapshotSize(t *testing.T) {
 		},
 		{
 			name: "multiple balances",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 123,
 				Balances: []event.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -46,7 +46,7 @@ func TestReqBalanceSnapshotSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			size := ReqBalanceSnapshotSize(&tt.snapshot)
+			size := RespBalanceSnapshotSize(&tt.snapshot)
 			expectedSize := uint64(SizeOfReqBalanceSnapshotHeader) + uint64(len(tt.snapshot.Balances))*uint64(SizeOfBalance)
 			if size != expectedSize {
 				t.Errorf("ReqBalanceSnapshotSize() = %d, want %d", size, expectedSize)
@@ -58,18 +58,18 @@ func TestReqBalanceSnapshotSize(t *testing.T) {
 func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 	tests := []struct {
 		name     string
-		snapshot event.ReqBalanceSnapshot
+		snapshot event.RespBalanceSnapshot
 	}{
 		{
 			name: "empty balances",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 1,
 				Balances:  []event.Balance{},
 			},
 		},
 		{
 			name: "single balance",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 42,
 				Balances: []event.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -78,7 +78,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 		},
 		{
 			name: "multiple balances",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 123,
 				Balances: []event.Balance{
 					{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -89,7 +89,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 		},
 		{
 			name: "large account ID",
-			snapshot: event.ReqBalanceSnapshot{
+			snapshot: event.RespBalanceSnapshot{
 				AccountID: 999999999,
 				Balances: []event.Balance{
 					{TokenID: 1000, Available: 0.00000001, Locked: 0.0, Total: 0.00000001},
@@ -101,17 +101,17 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Calculate size and allocate buffer
-			size := ReqBalanceSnapshotSize(&tt.snapshot)
+			size := RespBalanceSnapshotSize(&tt.snapshot)
 			buf := make([]byte, size)
 
 			// Serialize
-			written := SerializeReqBalanceSnapshot(buf, &tt.snapshot)
+			written := SerializeRespBalanceSnapshot(buf, &tt.snapshot)
 			if uint64(written) != size {
-				t.Errorf("SerializeReqBalanceSnapshot wrote %d bytes, expected %d", written, size)
+				t.Errorf("SerializeRespBalanceSnapshot wrote %d bytes, expected %d", written, size)
 			}
 
 			// Deserialize
-			result := DeserializeReqBalanceSnapshot(buf)
+			result := DeserializeRespBalanceSnapshot(buf)
 
 			// Verify AccountID
 			if result.AccountID != tt.snapshot.AccountID {
@@ -146,7 +146,7 @@ func TestSerializeDeserializeReqBalanceSnapshot(t *testing.T) {
 }
 
 func BenchmarkSerializeReqBalanceSnapshot(b *testing.B) {
-	snapshot := event.ReqBalanceSnapshot{
+	snapshot := event.RespBalanceSnapshot{
 		AccountID: 123,
 		Balances: []event.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -155,19 +155,19 @@ func BenchmarkSerializeReqBalanceSnapshot(b *testing.B) {
 		},
 	}
 
-	size := ReqBalanceSnapshotSize(&snapshot)
+	size := RespBalanceSnapshotSize(&snapshot)
 	buf := make([]byte, size)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		SerializeReqBalanceSnapshot(buf, &snapshot)
+		SerializeRespBalanceSnapshot(buf, &snapshot)
 	}
 }
 
-func BenchmarkDeserializeReqBalanceSnapshot(b *testing.B) {
-	snapshot := event.ReqBalanceSnapshot{
+func BenchmarkDeserializeRespBalanceSnapshot(b *testing.B) {
+	snapshot := event.RespBalanceSnapshot{
 		AccountID: 123,
 		Balances: []event.Balance{
 			{TokenID: 1, Available: 1.5, Locked: 0.5, Total: 2.0},
@@ -176,15 +176,15 @@ func BenchmarkDeserializeReqBalanceSnapshot(b *testing.B) {
 		},
 	}
 
-	size := ReqBalanceSnapshotSize(&snapshot)
+	size := RespBalanceSnapshotSize(&snapshot)
 	buf := make([]byte, size)
-	SerializeReqBalanceSnapshot(buf, &snapshot)
+	SerializeRespBalanceSnapshot(buf, &snapshot)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_ = DeserializeReqBalanceSnapshot(buf)
+		_ = DeserializeRespBalanceSnapshot(buf)
 	}
 }
 

@@ -11,13 +11,13 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/bytedance/sonic"
 )
 
 func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 	// Setup
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{} // Mock catalog not needed for unmarshal
 	client := NewBinanceHTTPClient(cat, eb)
 
@@ -41,10 +41,10 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
   ]
 }`)
 
-	var depth event.ReqDepthSnapshot
-	err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+	var depth event.RespDepthSnapshot
+	err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 	if err != nil {
-		t.Fatalf("unmarshalReqDepthSnapshot failed: %v", err)
+		t.Fatalf("unmarshalRespDepthSnapshot failed: %v", err)
 	}
 
 	if depth.DepthID != 1027024 {
@@ -70,7 +70,7 @@ func TestUnmarshalReqDepthSnapshot(t *testing.T) {
 }
 
 func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 	client := NewBinanceHTTPClient(cat, eb)
 
@@ -95,8 +95,8 @@ func BenchmarkUnmarshalReqDepthSnapshot(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		var depth event.ReqDepthSnapshot
-		err := client.unmarshalReqDepthSnapshot(jsonBody, &depth)
+		var depth event.RespDepthSnapshot
+		err := client.unmarshalRespDepthSnapshot(jsonBody, &depth)
 		if err != nil {
 			b.Fatalf("Error: %v", err)
 		}
@@ -171,7 +171,7 @@ func TestReqCreateOrder(t *testing.T) {
 	defer server.Close()
 
 	// Setup Dependecies
-	eb := *evbus.NewEventBus()
+	eb := *msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
@@ -231,7 +231,7 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	eb := *evbus.NewEventBus()
+	eb := *msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)

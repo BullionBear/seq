@@ -3,7 +3,7 @@ package actor
 import (
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // EMSEngineHandler is implemented by the execution engine.
@@ -42,22 +42,22 @@ func NewEMS(engine EMSEngineHandler) *EMS {
 }
 
 // Handle routes order and fill events to the engine's update methods.
-func (e *EMS) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (e *EMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventOrderAccepted:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderAccepted(evbus.DeserializeOrderAccepted(buf))
+		e.engine.OnOrderAccepted(msgbus.DeserializeOrderAccepted(buf))
 	case event.TopicEventPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderPartiallyFilled(evbus.DeserializeOrderPartiallyFilled(buf))
+		e.engine.OnOrderPartiallyFilled(msgbus.DeserializeOrderPartiallyFilled(buf))
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnFill(evbus.DeserializeFill(buf))
+		e.engine.OnFill(msgbus.DeserializeFill(buf))
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderCanceled(evbus.DeserializeOrderCanceled(buf))
+		e.engine.OnOrderCanceled(msgbus.DeserializeOrderCanceled(buf))
 	case event.TopicEventOrderRejected:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderRejected(evbus.DeserializeOrderRejected(buf))
+		e.engine.OnOrderRejected(msgbus.DeserializeOrderRejected(buf))
 	}
 }

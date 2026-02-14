@@ -14,7 +14,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // ============================================================================
@@ -75,7 +75,7 @@ func BenchmarkParseFloat64Quoted(b *testing.B) {
 // ============================================================================
 
 func TestBuildStreamURL(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	client := NewBinanceSpotDataClient(nil, eb)
 
 	tests := []struct {
@@ -115,7 +115,7 @@ func TestBuildStreamURL(t *testing.T) {
 // ============================================================================
 
 func TestProcessDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
@@ -149,8 +149,8 @@ func TestProcessDepthUpdate(t *testing.T) {
 	client.processDepthUpdate(1, depthMsg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -163,7 +163,7 @@ func TestProcessDepthUpdate(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	depthUpdate := evbus.DeserializeDepthUpdate(buf)
+	depthUpdate := msgbus.DeserializeDepthUpdate(buf)
 
 	if depthUpdate.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", depthUpdate.SymbolID)
@@ -195,7 +195,7 @@ func TestProcessDepthUpdate(t *testing.T) {
 }
 
 func TestProcessTrade(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
@@ -224,8 +224,8 @@ func TestProcessTrade(t *testing.T) {
 	client.processTrade(1, tradeMsg)
 
 	// Verify event was published
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -238,7 +238,7 @@ func TestProcessTrade(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	tick := evbus.DeserializeTick(buf)
+	tick := msgbus.DeserializeTick(buf)
 
 	if tick.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", tick.SymbolID)
@@ -271,7 +271,7 @@ func TestProcessTrade(t *testing.T) {
 
 	client.processTrade(1, buyTradeMsg)
 
-	ok = eb.Poll(func(e evbus.Event) {
+	ok = eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -280,7 +280,7 @@ func TestProcessTrade(t *testing.T) {
 	}
 
 	buf = eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	tick = evbus.DeserializeTick(buf)
+	tick = msgbus.DeserializeTick(buf)
 
 	if tick.Side != common.SideBuy {
 		t.Errorf("Expected SideBuy (m=false), got %v", tick.Side)
@@ -288,7 +288,7 @@ func TestProcessTrade(t *testing.T) {
 }
 
 func TestProcessMessage_CombinedStream(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -316,8 +316,8 @@ func TestProcessMessage_CombinedStream(t *testing.T) {
 
 	client.processMessage(combinedMsg)
 
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -331,7 +331,7 @@ func TestProcessMessage_CombinedStream(t *testing.T) {
 }
 
 func TestProcessMessage_SingleStream(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -356,8 +356,8 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 
 	client.processMessage(singleMsg)
 
-	var receivedEvent evbus.Event
-	ok := eb.Poll(func(e evbus.Event) {
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
 		receivedEvent = e
 	})
 
@@ -375,7 +375,7 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 // ============================================================================
 
 func BenchmarkProcessDepthUpdate(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -413,12 +413,12 @@ func BenchmarkProcessDepthUpdate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		client.processDepthUpdate(1, depthMsg)
 		// Drain the event bus
-		eb.Poll(func(e evbus.Event) {})
+		eb.Poll(func(e msgbus.Event) {})
 	}
 }
 
 func BenchmarkProcessTrade(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -445,12 +445,12 @@ func BenchmarkProcessTrade(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		client.processTrade(1, tradeMsg)
 		// Drain the event bus
-		eb.Poll(func(e evbus.Event) {})
+		eb.Poll(func(e msgbus.Event) {})
 	}
 }
 
 func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -466,7 +466,7 @@ func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		client.processMessage(combinedMsg)
-		eb.Poll(func(e evbus.Event) {})
+		eb.Poll(func(e msgbus.Event) {})
 	}
 }
 
@@ -475,7 +475,7 @@ func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
 // ============================================================================
 
 func TestSubscribeDepthUpdate(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -502,7 +502,7 @@ func TestSubscribeDepthUpdate(t *testing.T) {
 }
 
 func TestSubscribeTrade(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -523,7 +523,7 @@ func TestSubscribeTrade(t *testing.T) {
 }
 
 func TestBuildStreamList(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -575,7 +575,7 @@ func TestBuildStreamList(t *testing.T) {
 // ============================================================================
 
 func TestConcurrentSubscriptions(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -609,7 +609,7 @@ func TestConcurrentSubscriptions(t *testing.T) {
 }
 
 func TestConcurrentMessageProcessing(t *testing.T) {
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -634,7 +634,7 @@ func TestConcurrentMessageProcessing(t *testing.T) {
 	// Count events (some may have been dropped due to buffer limits)
 	count := 0
 	for {
-		ok := eb.Poll(func(e evbus.Event) {
+		ok := eb.Poll(func(e msgbus.Event) {
 			count++
 		})
 		if !ok {
@@ -659,7 +659,7 @@ func TestIntegration_RealConnection(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -693,10 +693,10 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventTick {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					tick := evbus.DeserializeTick(buf)
+					tick := msgbus.DeserializeTick(buf)
 					t.Logf("Received trade: Price=%.2f, Qty=%.4f, Side=%v",
 						tick.Price, tick.Qty, tick.Side)
 					receivedCount++
@@ -724,7 +724,7 @@ func TestIntegration_DepthUpdates(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -757,10 +757,10 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventDepthUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					depth := evbus.DeserializeDepthUpdate(buf)
+					depth := msgbus.DeserializeDepthUpdate(buf)
 					t.Logf("Received depth update: DepthID=%d, Bids=%d, Asks=%d",
 						depth.DepthID, len(depth.Bids), len(depth.Asks))
 					receivedCount++
@@ -788,7 +788,7 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	eb := evbus.NewEventBus()
+	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
 	symbols := make(map[int]cpanel.Symbol)
@@ -826,11 +826,11 @@ loop:
 		case <-timeout:
 			break loop
 		default:
-			ok := eb.Poll(func(e evbus.Event) {
+			ok := eb.Poll(func(e msgbus.Event) {
 				switch e.Ref.Topic {
 				case event.TopicEventTick:
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					tick := evbus.DeserializeTick(buf)
+					tick := msgbus.DeserializeTick(buf)
 					if tick.SymbolID == 1 {
 						btcTrades++
 					} else if tick.SymbolID == 2 {

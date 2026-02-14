@@ -12,7 +12,7 @@ const (
 	TopicEventFinished
 	// Market Data
 	TopicEventDepthSnapshot
-	TopicEventReqDepthSnapshot
+	TopicEventRespDepthSnapshot
 	TopicEventDepthUpdate
 	TopicEventTick
 	// Execution Data
@@ -24,10 +24,6 @@ const (
 	TopicEventOrderCanceled
 	TopicEventOrderRejected
 	// Reconciliation Data
-	TopicEventReqBalanceSnapshot
+	TopicEventRespBalanceSnapshot
 	TopicEventBalanceUpdate
-	// Command
-	TopicCommandOrderSubmit
-	TopicCommandOrderCancel
-	TopicCommandCancelAll
 )

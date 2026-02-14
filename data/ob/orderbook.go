@@ -8,7 +8,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 
@@ -353,16 +353,16 @@ func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
 }
 
 // Handle processes depth-related events to update the order book state.
-func (ob *OrderBook) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (ob *OrderBook) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	log().Debug().Msgf("Orderbook Actor: Handle called with topic: %d", ev.Ref.Topic)
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeDepthSnapshot(buf)
+		snapshot := msgbus.DeserializeDepthSnapshot(buf)
 		ob.onDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeDepthUpdate(buf)
+		update := msgbus.DeserializeDepthUpdate(buf)
 		ob.onDepthUpdate(update)
 	}
 }

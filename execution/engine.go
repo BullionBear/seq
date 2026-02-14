@@ -5,12 +5,13 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/actor"
-	eactor "github.com/BullionBear/seq/execution/actor"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/evbus"
+	eactor "github.com/BullionBear/seq/execution/actor"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 
@@ -36,9 +37,9 @@ type OpenOrder struct {
 // Engine manages order execution and maintains open order state.
 // It is NOT an actor — it owns an EMS actor that handles EventBus events.
 type Engine struct {
-	router   *adapter.ExecutionRouter
-	eventBus *evbus.EventBus
-	ems      *eactor.EMS
+	router *adapter.ExecutionRouter
+	msgBus *msgbus.MsgBus
+	ems    *eactor.EMS
 
 	// Configured account IDs for execution
 	accountIDs []int
@@ -53,10 +54,10 @@ type Engine struct {
 }
 
 // NewEngine creates a new execution engine
-func NewEngine(router *adapter.ExecutionRouter, eventBus *evbus.EventBus) *Engine {
+func NewEngine(router *adapter.ExecutionRouter, msgBus *msgbus.MsgBus) *Engine {
 	e := &Engine{
 		router:            router,
-		eventBus:          eventBus,
+		msgBus:            msgBus,
 		openOrders:        make(map[int]map[int]*OpenOrder),
 		nextClientOrderID: make(map[int]int),
 	}
@@ -64,9 +65,14 @@ func NewEngine(router *adapter.ExecutionRouter, eventBus *evbus.EventBus) *Engin
 	return e
 }
 
-// Init registers the EMS actor with the EventBus.
+// Init registers the EMS actor and command handlers with the MsgBus.
 func (e *Engine) Init() {
-	actor.Register(e.eventBus, e.ems)
+	actor.Register(e.msgBus, e.ems)
+
+	// Register command handlers (point-to-point)
+	e.msgBus.RegisterCommand(command.CommandTypeOrderSubmit, e.handleOrderSubmitCmd)
+	e.msgBus.RegisterCommand(command.CommandTypeOrderCancel, e.handleOrderCancelCmd)
+	e.msgBus.RegisterCommand(command.CommandTypeCancelAll, e.handleCancelAllCmd)
 	log().Debug().Msg("ExecutionEngine initialized")
 }
 
@@ -407,6 +413,49 @@ func (e *Engine) findOrderByClientOrderID(clientOrderID int) *OpenOrder {
 		}
 	}
 	return nil
+}
+
+// ============================================================================
+// Command Handlers
+// ============================================================================
+
+// handleOrderSubmitCmd processes an OrderSubmitCommand from the command channel.
+func (e *Engine) handleOrderSubmitCmd(cmd msgbus.Command) {
+	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+	submitCmd := msgbus.DeserializeOrderSubmitCommand(buf)
+	_, err := e.SubmitOrder(submitCmd.AccountID, submitCmd.SymbolID, submitCmd.Side, submitCmd.OrderType, submitCmd.TimeInForce, submitCmd.Price, submitCmd.Quantity)
+	if err != nil {
+		log().Error().Err(err).
+			Int("accountID", submitCmd.AccountID).
+			Int("symbolID", submitCmd.SymbolID).
+			Msg("ExecutionEngine: Failed to submit order from command")
+	}
+}
+
+// handleOrderCancelCmd processes an OrderCancelCommand from the command channel.
+func (e *Engine) handleOrderCancelCmd(cmd msgbus.Command) {
+	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+	cancelCmd := msgbus.DeserializeOrderCancelCommand(buf)
+	err := e.CancelOrder(cancelCmd.AccountID, cancelCmd.ClientOrderID)
+	if err != nil {
+		log().Error().Err(err).
+			Int("accountID", cancelCmd.AccountID).
+			Int("clientOrderID", cancelCmd.ClientOrderID).
+			Msg("ExecutionEngine: Failed to cancel order from command")
+	}
+}
+
+// handleCancelAllCmd processes a CancelAllCommand from the command channel.
+func (e *Engine) handleCancelAllCmd(cmd msgbus.Command) {
+	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+	cancelAllCmd := msgbus.DeserializeCancelAllCommand(buf)
+	err := e.CancelAllOrders(cancelAllCmd.AccountID, cancelAllCmd.SymbolID)
+	if err != nil {
+		log().Error().Err(err).
+			Int("accountID", cancelAllCmd.AccountID).
+			Int("symbolID", cancelAllCmd.SymbolID).
+			Msg("ExecutionEngine: Failed to cancel all orders from command")
+	}
 }
 
 // ============================================================================

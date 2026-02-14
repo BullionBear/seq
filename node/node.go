@@ -9,12 +9,13 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
+	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/internal/adapter"
-	"github.com/BullionBear/seq/internal/adapter/binance"
-	"github.com/BullionBear/seq/internal/adapter/bybit"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/bybit"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/BullionBear/seq/risk"
 	"github.com/BullionBear/seq/strategy"
@@ -26,8 +27,8 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 // Node orchestrates all engines and the event loop.
 // It owns the EventBus and provides a Cache for strategies to access data.
 type Node struct {
-	eventBus *evbus.EventBus
-	catalog  *catalog.Catalog
+	msgBus  *msgbus.MsgBus
+	catalog *catalog.Catalog
 
 	// Engines
 	dataEngine      *data.Engine
@@ -42,41 +43,41 @@ type Node struct {
 	strategyEngine *strategy.Engine
 
 	// Cache for strategy access
-	cache *Cache
+	cache *cache.Cache
 }
 
 // NewNode creates a new Node with the given catalog.
 func NewNode(cat *catalog.Catalog) *Node {
-	eventBus := evbus.NewEventBus()
+	bus := msgbus.NewMsgBus()
 
 	// Create execution router
 	executionRouter := adapter.NewExecutionRouter()
 
 	// Create engines
-	dataEngine := data.NewEngine(cat, eventBus)
+	dataEngine := data.NewEngine(cat, bus)
 	riskEngine := risk.NewEngine()
-	portfolioEngine := portfolio.NewEngine(eventBus)
-	executionEngine := execution.NewEngine(executionRouter, eventBus)
+	portfolioEngine := portfolio.NewEngine(bus)
+	executionEngine := execution.NewEngine(executionRouter, bus)
 
 	// Create cache with all engines
-	cache := NewCache(dataEngine, executionEngine, portfolioEngine)
+	c := cache.NewCache(dataEngine, executionEngine, portfolioEngine)
 
 	return &Node{
-		eventBus:        eventBus,
+		msgBus:          bus,
 		catalog:         cat,
 		dataEngine:      dataEngine,
 		riskEngine:      riskEngine,
 		portfolioEngine: portfolioEngine,
 		executionEngine: executionEngine,
 		executionRouter: executionRouter,
-		cache:           cache,
+		cache:           c,
 	}
 }
 
 // Init initializes the node and all engines.
 func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) {
 	// Create state notifier for engines to broadcast state events
-	notifier := evbus.NewStateNotifier(n.eventBus)
+	notifier := msgbus.NewStateNotifier(n.msgBus)
 
 	// Initialize data engine (registers OrderBook and SnapshotCoordinator actors)
 	n.dataEngine.Init()
@@ -102,7 +103,7 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 
 	// Create strategy engine and initialize it
 	n.strategyEngine = strategy.NewEngine(strategyActor, n.catalog, n.cache)
-	n.strategyEngine.Init(config, n.eventBus)
+	n.strategyEngine.Init(config, n.msgBus)
 
 	log().Info().Msg("Node initialized")
 }
@@ -157,13 +158,13 @@ func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
 func (n *Node) createExecutionClient(account *cpanel.Account) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE":
-		client, err := binance.NewBinanceSpotExecutionClient(n.catalog, n.eventBus, account.ID)
+		client, err := binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID)
 		if err != nil {
 			return nil, err
 		}
 		return client, nil
 	case "BYBIT":
-		client, err := bybit.NewBybitExecutionClient(n.catalog, n.eventBus, account.ID)
+		client, err := bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -216,11 +217,11 @@ func (n *Node) Run(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
-				hasWork := n.eventBus.Dispatch()
-				if hasWork {
-					// Update minSequence and release arena memory
-					n.eventBus.Release()
-					n.eventBus.ReleaseArenas()
+			hasWork := n.msgBus.Dispatch()
+			if hasWork {
+				// Update minSequence and release arena memory
+				n.msgBus.Release()
+				n.msgBus.ReleaseArenas()
 				} else {
 					runtime.Gosched()
 				}
@@ -240,13 +241,13 @@ func (n *Node) stop() {
 	log().Info().Msg("Node stopped")
 }
 
-// EventBus returns the node's EventBus for external access.
-func (n *Node) EventBus() *evbus.EventBus {
-	return n.eventBus
+// MsgBus returns the node's MsgBus for external access.
+func (n *Node) MsgBus() *msgbus.MsgBus {
+	return n.msgBus
 }
 
 // Cache returns the node's Cache for strategy access.
-func (n *Node) Cache() *Cache {
+func (n *Node) Cache() *cache.Cache {
 	return n.cache
 }
 

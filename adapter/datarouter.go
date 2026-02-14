@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/internal/adapter/binance"
-	"github.com/BullionBear/seq/internal/adapter/bybit"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/bybit"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // DepthOptions contains generic depth subscription options
@@ -24,19 +24,19 @@ type TradeOptions struct {
 }
 
 type DataRouter struct {
-	catalog  *catalog.Catalog
-	eventBus *evbus.EventBus
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
 
 	binanceSpotDataClient *binance.BinanceSpotDataClient
 	bybitDataClient       *bybit.BybitDataClient
 }
 
-func NewDataRouter(catalog *catalog.Catalog, eventBus *evbus.EventBus) *DataRouter {
+func NewDataRouter(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *DataRouter {
 	return &DataRouter{
 		catalog:               catalog,
-		eventBus:              eventBus,
-		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, eventBus),
-		bybitDataClient:       bybit.NewBybitDataClient(catalog, eventBus),
+		msgBus:                msgBus,
+		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, msgBus),
+		bybitDataClient:       bybit.NewBybitDataClient(catalog, msgBus),
 	}
 }
 

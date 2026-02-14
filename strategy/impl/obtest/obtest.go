@@ -9,7 +9,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -86,7 +86,7 @@ func (o *OBTest) OnStop() {
 
 // Handle overrides StrategyBase.Handle to dispatch events to OBTest's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
-func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	// Log ALL incoming events at the top level for debugging
 	log().Debug().
 		Int("topic", int(ev.Ref.Topic)).
@@ -96,24 +96,24 @@ func (o *OBTest) Handle(ev evbus.Event, bus *evbus.EventBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeDepthSnapshot(buf)
+		snapshot := msgbus.DeserializeDepthSnapshot(buf)
 		o.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := evbus.DeserializeDepthUpdate(buf)
+		update := msgbus.DeserializeDepthUpdate(buf)
 		o.OnDepthUpdate(update)
 	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := evbus.DeserializeTick(buf)
+		tick := msgbus.DeserializeTick(buf)
 		o.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := evbus.DeserializeFill(buf)
+		fill := msgbus.DeserializeFill(buf)
 		o.OnFill(fill)
-	case event.TopicEventReqDepthSnapshot:
+	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := evbus.DeserializeReqDepthSnapshot(buf)
-		o.OnReqDepthSnapshot(snapshot)
+		snapshot := msgbus.DeserializeRespDepthSnapshot(buf)
+		o.OnRespDepthSnapshot(snapshot)
 	default:
 		log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")
 	}
@@ -230,14 +230,14 @@ func (o *OBTest) OnDepthUpdate(update event.DepthUpdate) {
 }
 
 // OnReqDepthSnapshot processes the response to a depth snapshot request.
-func (o *OBTest) OnReqDepthSnapshot(snapshot event.ReqDepthSnapshot) {
+func (o *OBTest) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 	symbolID := snapshot.SymbolID
 	log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asksCount", len(snapshot.Asks)).
 		Int("bidsCount", len(snapshot.Bids)).
-		Msg("OBTest: ReqDepthSnapshot received")
+		Msg("OBTest: RespDepthSnapshot received")
 }
 
 // printSummary prints a brief summary of the orderbook state.

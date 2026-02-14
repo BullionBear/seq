@@ -2,7 +2,7 @@ package actor
 
 import (
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/internal/evbus"
+	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // ActorBase provides a default implementation for the Actor interface.
@@ -32,7 +32,7 @@ func (a *ActorBase) SubscribedTypes() []event.Topic {
 }
 
 // Handle is a no-op default. Concrete actors should override this.
-func (a *ActorBase) Handle(ev evbus.Event, bus *evbus.EventBus) {
+func (a *ActorBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	// Default no-op - concrete actors should override
 }
 

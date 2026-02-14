@@ -1,4 +1,4 @@
-package node
+package cache
 
 import (
 	"github.com/BullionBear/seq/core/model/common"
