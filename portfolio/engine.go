@@ -10,6 +10,7 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
+	pactor "github.com/BullionBear/seq/portfolio/actor"
 	"github.com/rs/zerolog"
 )
 
@@ -34,8 +35,8 @@ type AccountBalance struct {
 // It is NOT an actor — it owns a BalanceActor that handles EventBus events.
 type Engine struct {
 	engine.EngineBase
-	eventBus    *evbus.EventBus
-	balanceActor *BalanceActor
+	eventBus     *evbus.EventBus
+	balanceActor *pactor.BalanceActor
 
 	// Execution router for subscribing and requesting balance snapshots
 	execRouter *adapter.ExecutionRouter
@@ -46,22 +47,17 @@ type Engine struct {
 	// Balances indexed by accountID -> tokenID -> Balance
 	balances map[int]*AccountBalance
 	mu       sync.RWMutex
-
-	// Pending snapshots tracking for NotifyReady
-	pendingSnapshots map[int]bool // accountID -> snapshot received
-	snapshotMu       sync.RWMutex
 }
 
 // NewEngine creates a new portfolio engine
 func NewEngine(eventBus *evbus.EventBus) *Engine {
 	e := &Engine{
-		EngineBase:       engine.NewEngineBase(common.EnginePortfolio),
-		eventBus:         eventBus,
-		accountIDs:       make([]int, 0),
-		balances:         make(map[int]*AccountBalance),
-		pendingSnapshots: make(map[int]bool),
+		EngineBase: engine.NewEngineBase(common.EnginePortfolio),
+		eventBus:   eventBus,
+		accountIDs: make([]int, 0),
+		balances:   make(map[int]*AccountBalance),
 	}
-	e.balanceActor = NewBalanceActor(e)
+	e.balanceActor = pactor.NewBalanceActor(e)
 	return e
 }
 
@@ -74,9 +70,10 @@ func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
 // Engine Interface Implementation
 // ============================================================================
 
-// Init registers the BalanceActor with the EventBus and subscribes to
-// balance updates for all configured accounts.
+// Init configures the BalanceActor, registers it with the EventBus, and subscribes
+// to ongoing balance updates for all configured accounts.
 func (e *Engine) Init() {
+	e.balanceActor.Configure(e.execRouter, e.accountIDs)
 	actor.Register(e.eventBus, e.balanceActor)
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
@@ -95,41 +92,11 @@ func (e *Engine) Init() {
 	log().Info().Msg("PortfolioEngine initialized")
 }
 
-// Start starts the engine.
-// It requests balance snapshots for all configured accounts.
+// Start triggers the BalanceActor to request initial balance snapshots.
+// The actor calls NotifyReady once all snapshots are received.
 func (e *Engine) Start() {
-	if e.execRouter == nil {
-		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance snapshot request")
-		// If no accounts, notify ready immediately
-		e.NotifyReady()
-		return
-	}
-
-	// Initialize pending snapshots for all accounts
-	e.snapshotMu.Lock()
-	e.pendingSnapshots = make(map[int]bool)
-	for _, acctID := range e.accountIDs {
-		e.pendingSnapshots[acctID] = false // not yet received
-	}
-	e.snapshotMu.Unlock()
-
-	// If no accounts configured, notify ready immediately
-	if len(e.accountIDs) == 0 {
-		log().Info().Msg("PortfolioEngine: No accounts configured, ready immediately")
-		e.NotifyReady()
-		return
-	}
-
-	// Request balance snapshots for all configured accounts
-	for _, acctID := range e.accountIDs {
-		if err := e.execRouter.ReqBalanceSnapshot(acctID); err != nil {
-			log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to request balance snapshot")
-		} else {
-			log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Requested balance snapshot")
-		}
-	}
-
-	log().Info().Msg("PortfolioEngine started, waiting for balance snapshots")
+	e.balanceActor.OnStart()
+	log().Info().Msg("PortfolioEngine started")
 }
 
 // Stop stops the engine.
@@ -315,9 +282,9 @@ func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
 		Msg("Balance updated")
 }
 
-// OnReqBalanceSnapshot handles ReqBalanceSnapshot events from the event bus
+// OnReqBalanceSnapshot handles ReqBalanceSnapshot events from the event bus.
+// Balance state is updated here; the BalanceActor tracks completion and calls NotifyReady.
 func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
-	// Update balances
 	e.mu.Lock()
 	e.ensureAccountExistsLocked(ev.AccountID)
 
@@ -334,13 +301,11 @@ func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
 	}
 	e.mu.Unlock()
 
-	// Log balance initialization
 	log().Info().
 		Int("accountID", ev.AccountID).
 		Int("balanceCount", len(ev.Balances)).
 		Msg("PortfolioEngine: Balance snapshot received and initialized")
 
-	// Log each token balance
 	for _, b := range ev.Balances {
 		if b.Total > 0 {
 			log().Debug().
@@ -352,37 +317,10 @@ func (e *Engine) OnReqBalanceSnapshot(ev event.ReqBalanceSnapshot) {
 				Msg("PortfolioEngine: Token balance initialized")
 		}
 	}
-
-	// Mark this account's snapshot as received and check if all are done
-	e.snapshotMu.Lock()
-	e.pendingSnapshots[ev.AccountID] = true
-	allReceived := e.checkAllSnapshotsReceivedLocked()
-	e.snapshotMu.Unlock()
-
-	// If all snapshots received, notify ready
-	if allReceived {
-		log().Info().Msg("PortfolioEngine: All balance snapshots received, notifying ready")
-		e.NotifyReady()
-	}
-}
-
-// checkAllSnapshotsReceivedLocked checks if all pending snapshots have been received.
-// Must be called with snapshotMu held.
-func (e *Engine) checkAllSnapshotsReceivedLocked() bool {
-	for _, received := range e.pendingSnapshots {
-		if !received {
-			return false
-		}
-	}
-	return len(e.pendingSnapshots) > 0
 }
 
 // OnFill handles Fill events to update balances based on fills
-// This provides real-time balance updates based on trade executions
 func (e *Engine) OnFill(ev event.Fill) {
-	// Note: Fill events can be used to adjust balances in real-time
-	// However, the primary source of truth is BalanceUpdate events
-	// This is kept for informational purposes
 	log().Debug().
 		Int("clientOrderID", ev.ClientOrderID).
 		Int("fillID", ev.FillID).

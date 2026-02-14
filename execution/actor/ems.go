@@ -1,26 +1,36 @@
-package execution
+package actor
 
 import (
-	"github.com/BullionBear/seq/core/actor"
+	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/internal/evbus"
 )
 
+// EMSEngineHandler is implemented by the execution engine.
+// It receives order and fill event callbacks from EMS.
+type EMSEngineHandler interface {
+	OnOrderAccepted(ev event.OrderAccepted)
+	OnOrderPartiallyFilled(ev event.OrderPartiallyFilled)
+	OnFill(ev event.Fill)
+	OnOrderCanceled(ev event.OrderCanceled)
+	OnOrderRejected(ev event.OrderRejected)
+}
+
 // Ensure EMS implements the Actor interface
-var _ actor.Actor = (*EMS)(nil)
+var _ coreactor.Actor = (*EMS)(nil)
 
 // EMS (Execution Management System) is an actor owned by the execution Engine.
 // It subscribes to order and fill events from the EventBus and routes them to
 // the engine's update methods, which maintain open order state.
 type EMS struct {
-	actor.ActorBase
-	engine *Engine
+	coreactor.ActorBase
+	engine EMSEngineHandler
 }
 
-// NewEMS creates a new EMS actor for the given engine.
-func NewEMS(engine *Engine) *EMS {
+// NewEMS creates a new EMS actor for the given engine handler.
+func NewEMS(engine EMSEngineHandler) *EMS {
 	return &EMS{
-		ActorBase: actor.NewActorBase("ems", []event.Topic{
+		ActorBase: coreactor.NewActorBase("ems", []event.Topic{
 			event.TopicEventOrderAccepted,
 			event.TopicEventPartialFill,
 			event.TopicEventFill,

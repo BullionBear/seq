@@ -1,9 +1,9 @@
-package snapshot
+package actor
 
 import (
 	"sync"
 
-	"github.com/BullionBear/seq/core/actor"
+	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/data/ob"
@@ -15,7 +15,7 @@ import (
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure Coordinator implements the Actor interface
-var _ actor.Actor = (*Coordinator)(nil)
+var _ coreactor.Actor = (*Coordinator)(nil)
 
 // Coordinator is an actor owned by DataEngine.
 // It watches depth updates and auto-requests HTTP snapshots when an
@@ -23,7 +23,7 @@ var _ actor.Actor = (*Coordinator)(nil)
 // It clears the in-flight flag when the snapshot arrives so future
 // resets (gap detection) can trigger a fresh request.
 type Coordinator struct {
-	actor.ActorBase
+	coreactor.ActorBase
 	ob     *ob.OrderBook
 	router *adapter.DataRouter
 
@@ -34,7 +34,7 @@ type Coordinator struct {
 // NewCoordinator creates a new snapshot Coordinator actor.
 func NewCoordinator(ob *ob.OrderBook, router *adapter.DataRouter) *Coordinator {
 	return &Coordinator{
-		ActorBase: actor.NewActorBase("snapshot-coordinator", []event.Topic{
+		ActorBase: coreactor.NewActorBase("snapshot-coordinator", []event.Topic{
 			event.TopicEventDepthUpdate,
 			event.TopicEventDepthSnapshot,
 		}),

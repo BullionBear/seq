@@ -7,8 +7,8 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
+	dactor "github.com/BullionBear/seq/data/actor"
 	"github.com/BullionBear/seq/data/ob"
-	"github.com/BullionBear/seq/data/snapshot"
 	"github.com/BullionBear/seq/internal/adapter"
 	"github.com/BullionBear/seq/internal/evbus"
 	"github.com/BullionBear/seq/strategy"
@@ -32,7 +32,7 @@ type Engine struct {
 	catalog              *catalog.Catalog
 	eventBus             *evbus.EventBus
 	orderBook            *ob.OrderBook
-	snapshotCoordinator  *snapshot.Coordinator
+	snapshotCoordinator  *dactor.Coordinator
 	router               *adapter.DataRouter
 
 	// Data subscriptions from config
@@ -47,7 +47,7 @@ func NewEngine(cat *catalog.Catalog, eventBus *evbus.EventBus) *Engine {
 		catalog:             cat,
 		eventBus:            eventBus,
 		orderBook:           orderBook,
-		snapshotCoordinator: snapshot.NewCoordinator(orderBook, router),
+		snapshotCoordinator: dactor.NewCoordinator(orderBook, router),
 		router:              router,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/actor"
+	eactor "github.com/BullionBear/seq/execution/actor"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -37,7 +38,7 @@ type OpenOrder struct {
 type Engine struct {
 	router   *adapter.ExecutionRouter
 	eventBus *evbus.EventBus
-	ems      *EMS
+	ems      *eactor.EMS
 
 	// Configured account IDs for execution
 	accountIDs []int
@@ -59,7 +60,7 @@ func NewEngine(router *adapter.ExecutionRouter, eventBus *evbus.EventBus) *Engin
 		openOrders:        make(map[int]map[int]*OpenOrder),
 		nextClientOrderID: make(map[int]int),
 	}
-	e.ems = NewEMS(e)
+	e.ems = eactor.NewEMS(e)
 	return e
 }
 
@@ -71,6 +72,7 @@ func (e *Engine) Init() {
 
 // Start starts the execution engine
 func (e *Engine) Start() {
+	e.ems.OnStart()
 	log().Debug().Msg("ExecutionEngine started")
 }
 
