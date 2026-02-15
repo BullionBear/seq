@@ -2,7 +2,6 @@ package orderbook
 
 import (
 	"math"
-	"sync"
 
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
@@ -331,7 +330,6 @@ func (sb *SymbolBook) processBufferedUpdates(c *cache.Cache) {
 // writes state to Cache, and requests snapshots via MsgBus commands.
 type Actor struct {
 	coreactor.ActorBase
-	mu    sync.Mutex
 	books map[int]*SymbolBook // symbolID -> SymbolBook
 	cache *cache.Cache
 }
@@ -352,9 +350,6 @@ func NewActor(c *cache.Cache) *Actor {
 // RegisterSymbol registers a symbol with its precision info.
 // Creates a new SymbolBook in WaitForSnapshot state.
 func (a *Actor) RegisterSymbol(symbolID, pricePrecision, sizePrecision int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if _, exists := a.books[symbolID]; exists {
 		log().Warn().Int("symbolID", symbolID).Msg("OrderBook Actor: Symbol already registered")
 		return
@@ -370,8 +365,6 @@ func (a *Actor) RegisterSymbol(symbolID, pricePrecision, sizePrecision int) {
 
 // Handle dispatches events to the appropriate handler.
 func (a *Actor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
@@ -436,8 +429,6 @@ func (a *Actor) OnStart() {
 
 // OnStop is called once when the actor is stopped.
 func (a *Actor) OnStop() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	for _, book := range a.books {
 		book.reset()
 		book.syncToCache(a.cache)
