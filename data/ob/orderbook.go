@@ -31,9 +31,11 @@ var _ OrderBookService = (*OrderBook)(nil)
 
 // SymbolOrderBook maintains the orderbook state for a single symbol.
 type SymbolOrderBook struct {
-	SymbolID       int
-	PricePrecision int     // from catalog, e.g., 2 means 0.01 tick
-	TickMultiplier float64 // = 10^PricePrecision, cached for conversion
+	SymbolID        int
+	PricePrecision  int     // from catalog, e.g., 2 means 0.01 tick
+	SizePrecision   int     // from catalog, e.g., 5 means 0.00001 quantity tick
+	TickMultiplier  float64 // = 10^PricePrecision, cached for conversion
+	SizeMultiplier  float64 // = 10^SizePrecision, cached for quantity tick conversion
 
 	// State machine
 	State   common.BookState
@@ -53,12 +55,14 @@ type SymbolOrderBook struct {
 	LastUpdated uint64
 }
 
-// NewSymbolOrderBook creates a new SymbolOrderBook with the given price precision.
-func NewSymbolOrderBook(symbolID int, pricePrecision int) *SymbolOrderBook {
+// NewSymbolOrderBook creates a new SymbolOrderBook with the given price and size precision.
+func NewSymbolOrderBook(symbolID int, pricePrecision, sizePrecision int) *SymbolOrderBook {
 	return &SymbolOrderBook{
 		SymbolID:       symbolID,
 		PricePrecision: pricePrecision,
+		SizePrecision:  sizePrecision,
 		TickMultiplier: math.Pow(10, float64(pricePrecision)),
+		SizeMultiplier: math.Pow(10, float64(sizePrecision)),
 		State:          common.BookStateWaitForSnapshot,
 		DepthID:        0,
 		Bids:           NewOrderedPriceMap(true),  // descending
@@ -80,7 +84,8 @@ func (sob *SymbolOrderBook) TickToPrice(tick int64) float64 {
 	return float64(tick) / sob.TickMultiplier
 }
 
-// convertEventLevels converts event.PriceLevel slice to internal PriceLevel slice
+// convertEventLevels converts event.PriceLevel slice to internal PriceLevel slice.
+// Uses PriceTick from event when available (populated by exchange adapters).
 func (sob *SymbolOrderBook) convertEventLevels(eventLevels []common.PriceLevel, arena *mem.SliceArena[PriceLevel]) []PriceLevel {
 	if len(eventLevels) == 0 {
 		return nil
@@ -88,7 +93,8 @@ func (sob *SymbolOrderBook) convertEventLevels(eventLevels []common.PriceLevel, 
 
 	levels := arena.Allocate(len(eventLevels))
 	for i, el := range eventLevels {
-		levels[i].PriceTick = sob.PriceToTick(el.Price)
+		// Use PriceTick from event (populated by adapters from catalog precision)
+		levels[i].PriceTick = int64(el.PriceTick)
 		levels[i].Quantity = el.Quantity
 	}
 	return levels
@@ -247,16 +253,14 @@ func (sob *SymbolOrderBook) processBufferedUpdates() {
 
 // applyUpdate applies a depth update directly (for Ready state)
 func (sob *SymbolOrderBook) applyUpdate(update event.DepthUpdate) {
-	// Apply bid updates
+	// Apply bid updates (use PriceTick from event, populated by adapters)
 	for _, level := range update.Bids {
-		priceTick := sob.PriceToTick(level.Price)
-		sob.Bids.Set(priceTick, level.Quantity)
+		sob.Bids.Set(int64(level.PriceTick), level.Quantity)
 	}
 
 	// Apply ask updates
 	for _, level := range update.Asks {
-		priceTick := sob.PriceToTick(level.Price)
-		sob.Asks.Set(priceTick, level.Quantity)
+		sob.Asks.Set(int64(level.PriceTick), level.Quantity)
 	}
 
 	// Store the FINAL update ID (u) so next update's PreviousDepthID (U-1) can match
@@ -335,9 +339,9 @@ func NewOrderBook() *OrderBook {
 	}
 }
 
-// RegisterSymbol registers a symbol with its price precision.
+// RegisterSymbol registers a symbol with its price and size precision.
 // This creates a new SymbolOrderBook in WaitForSnapshot state.
-func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
+func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision, sizePrecision int) {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
@@ -346,10 +350,11 @@ func (ob *OrderBook) RegisterSymbol(symbolID int, pricePrecision int) {
 		return
 	}
 
-	ob.books[symbolID] = NewSymbolOrderBook(symbolID, pricePrecision)
+	ob.books[symbolID] = NewSymbolOrderBook(symbolID, pricePrecision, sizePrecision)
 	log().Info().
 		Int("symbolID", symbolID).
 		Int("pricePrecision", pricePrecision).
+		Int("sizePrecision", sizePrecision).
 		Msg("OrderBook: Registered symbol")
 }
 
@@ -468,20 +473,24 @@ func (ob *OrderBook) GetDepth(symbolID int, levels int) (bids, asks []common.Pri
 	bidLevels := book.GetTopBids(levels)
 	askLevels := book.GetTopAsks(levels)
 
-	// Convert to event.PriceLevel
+	// Convert to event.PriceLevel with PriceTick and QuantityTick
 	bids = make([]common.PriceLevel, len(bidLevels))
 	for i, level := range bidLevels {
 		bids[i] = common.PriceLevel{
-			Price:    book.TickToPrice(level.PriceTick),
-			Quantity: level.Quantity,
+			Price:        book.TickToPrice(level.PriceTick),
+			Quantity:      level.Quantity,
+			PriceTick:     int(level.PriceTick),
+			QuantityTick: common.QuantityToTick(level.Quantity, book.SizePrecision),
 		}
 	}
 
 	asks = make([]common.PriceLevel, len(askLevels))
 	for i, level := range askLevels {
 		asks[i] = common.PriceLevel{
-			Price:    book.TickToPrice(level.PriceTick),
-			Quantity: level.Quantity,
+			Price:        book.TickToPrice(level.PriceTick),
+			Quantity:      level.Quantity,
+			PriceTick:     int(level.PriceTick),
+			QuantityTick: common.QuantityToTick(level.Quantity, book.SizePrecision),
 		}
 	}
 

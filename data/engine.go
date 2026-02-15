@@ -122,7 +122,7 @@ func (e *Engine) SubscribeDepthUpdate(symbolID int) {
 	}
 
 	// Register symbol with orderbook
-	e.orderBook.RegisterSymbol(symbolID, symbol.PricePrecision)
+	e.orderBook.RegisterSymbol(symbolID, symbol.PricePrecision, symbol.SizePrecision)
 
 	// Subscribe to depth updates via router with default options
 	if err := e.router.SubscribeDepthUpdate(symbolID, nil); err != nil {
@@ -156,7 +156,7 @@ func (e *Engine) Connect(ctx context.Context) {
 		// Subscribe to depth if configured
 		if sub.Depth != nil {
 			// Register symbol with orderbook
-			e.orderBook.RegisterSymbol(sub.SymbolID, symbol.PricePrecision)
+			e.orderBook.RegisterSymbol(sub.SymbolID, symbol.PricePrecision, symbol.SizePrecision)
 
 			// Subscribe via router with options
 			if err := e.router.SubscribeDepthUpdate(sub.SymbolID, sub.Depth); err != nil {
