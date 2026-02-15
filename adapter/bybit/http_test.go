@@ -444,7 +444,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	snapshot := msgbus.DeserializeDepthSnapshot(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	snapshot := event.NewDepthSnapshotFromBytes(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if snapshot.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", snapshot.SymbolID)
 	}
@@ -526,7 +526,7 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	}
 
 	// Deserialize and verify
-	update := msgbus.DeserializeDepthUpdate(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
+	update := event.NewDepthUpdateFromBytes(eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length))
 	if update.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", update.SymbolID)
 	}
@@ -659,7 +659,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	if eb.Dispatch() {
 		if receivedEvent.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 			buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-			snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+			snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 			t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 				snapshot.AccountID, len(snapshot.Balances))
 			for i, b := range snapshot.Balances {

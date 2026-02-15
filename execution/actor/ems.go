@@ -46,18 +46,18 @@ func (e *EMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventOrderAccepted:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderAccepted(msgbus.DeserializeOrderAccepted(buf))
+		e.engine.OnOrderAccepted(event.NewOrderAcceptedFromBytes(buf))
 	case event.TopicEventPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderPartiallyFilled(msgbus.DeserializeOrderPartiallyFilled(buf))
+		e.engine.OnOrderPartiallyFilled(event.NewOrderPartiallyFilledFromBytes(buf))
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnFill(msgbus.DeserializeFill(buf))
+		e.engine.OnFill(event.NewFillFromBytes(buf))
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderCanceled(msgbus.DeserializeOrderCanceled(buf))
+		e.engine.OnOrderCanceled(event.NewOrderCanceledFromBytes(buf))
 	case event.TopicEventOrderRejected:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		e.engine.OnOrderRejected(msgbus.DeserializeOrderRejected(buf))
+		e.engine.OnOrderRejected(event.NewOrderRejectedFromBytes(buf))
 	}
 }

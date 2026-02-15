@@ -21,7 +21,7 @@ var _ actor.Actor = (*StrategyBase)(nil)
 //	    switch ev.Ref.Topic {
 //	    case event.TopicEventDepthUpdate:
 //	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-//	        x.OnDepthUpdate(msgbus.DeserializeDepthUpdate(buf))
+//	        x.OnDepthUpdate(event.NewDepthUpdateFromBytes(buf))
 //	    // ... etc
 //	    }
 //	}
@@ -86,19 +86,19 @@ func (s *StrategyBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeDepthSnapshot(buf)
+		snapshot := event.NewDepthSnapshotFromBytes(buf)
 		s.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := msgbus.DeserializeDepthUpdate(buf)
+		update := event.NewDepthUpdateFromBytes(buf)
 		s.OnDepthUpdate(update)
 	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := msgbus.DeserializeTick(buf)
+		tick := event.NewTickFromBytes(buf)
 		s.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := msgbus.DeserializeFill(buf)
+		fill := event.NewFillFromBytes(buf)
 		s.OnFill(fill)
 		// TODO: Add TopicEventBalanceUpdate when EventBus supports it
 	}

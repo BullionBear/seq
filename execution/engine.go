@@ -422,7 +422,7 @@ func (e *Engine) findOrderByClientOrderID(clientOrderID int) *OpenOrder {
 // handleOrderSubmitCmd processes an OrderSubmitCommand from the command channel.
 func (e *Engine) handleOrderSubmitCmd(cmd msgbus.Command) {
 	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-	submitCmd := msgbus.DeserializeOrderSubmitCommand(buf)
+	submitCmd := command.NewSubmitOrderFromBytes(buf)
 	_, err := e.SubmitOrder(submitCmd.AccountID, submitCmd.SymbolID, submitCmd.Side, submitCmd.OrderType, submitCmd.TimeInForce, submitCmd.Price, submitCmd.Quantity)
 	if err != nil {
 		log().Error().Err(err).
@@ -435,7 +435,7 @@ func (e *Engine) handleOrderSubmitCmd(cmd msgbus.Command) {
 // handleOrderCancelCmd processes an OrderCancelCommand from the command channel.
 func (e *Engine) handleOrderCancelCmd(cmd msgbus.Command) {
 	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-	cancelCmd := msgbus.DeserializeOrderCancelCommand(buf)
+	cancelCmd := command.NewCancelOrderFromBytes(buf)
 	err := e.CancelOrder(cancelCmd.AccountID, cancelCmd.ClientOrderID)
 	if err != nil {
 		log().Error().Err(err).
@@ -448,7 +448,7 @@ func (e *Engine) handleOrderCancelCmd(cmd msgbus.Command) {
 // handleCancelAllCmd processes a CancelAllCommand from the command channel.
 func (e *Engine) handleCancelAllCmd(cmd msgbus.Command) {
 	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-	cancelAllCmd := msgbus.DeserializeCancelAllCommand(buf)
+	cancelAllCmd := command.NewCancelAllFromBytes(buf)
 	err := e.CancelAllOrders(cancelAllCmd.AccountID, cancelAllCmd.SymbolID)
 	if err != nil {
 		log().Error().Err(err).

@@ -509,9 +509,9 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 		FilledAt:      uint64(execTime) * 1_000_000,
 	}
 
-	size := msgbus.FillSize()
+	size := uint64(fill.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeFill(buf, &fill)
+	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
@@ -591,9 +591,9 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
 
-	size := msgbus.BalanceUpdateSize(&balanceUpdate)
+	size := uint64(balanceUpdate.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	balanceUpdate.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventBalanceUpdate,
 		Index:  offset,
@@ -613,9 +613,9 @@ func (c *BybitPrivateStreamClient) publishOrderAccepted(clientOrderID, orderID i
 		OrderID:       orderID,
 		CreatedAt:     createdAt,
 	}
-	size := msgbus.OrderAcceptedSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderAccepted(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderAccepted,
 		Index:  offset,
@@ -631,9 +631,9 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderPartiallyFilledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderPartiallyFilled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventPartialFill,
 		Index:  offset,
@@ -649,9 +649,9 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderFilledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderFilled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
@@ -666,9 +666,9 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 		OrderID:       orderID,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderCanceledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderCanceled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderCanceled,
 		Index:  offset,
@@ -684,9 +684,9 @@ func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID i
 		ErrorCode:     0,
 		Msg:           reason,
 	}
-	size := msgbus.OrderRejectedSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderRejected(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderRejected,
 		Index:  offset,
@@ -701,9 +701,9 @@ func (c *BybitPrivateStreamClient) publishOrderUnknownStatus(clientOrderID, orde
 		OrderID:       orderID,
 		Msg:           status,
 	}
-	size := msgbus.OrderUnknownStatusSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderUnknownStatus(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderUnknownStatus,
 		Index:  offset,
