@@ -5,14 +5,20 @@ import (
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/command"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
-	dactor "github.com/BullionBear/seq/data/actor"
-	"github.com/BullionBear/seq/data/ob"
+	"github.com/BullionBear/seq/data/actor/orderbook"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
+
+// Ensure Engine implements the EngineService interface
+var _ engine.Engine = (*Engine)(nil)
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
@@ -25,37 +31,59 @@ type DataSubscription struct {
 }
 
 // Engine manages market data processing including orderbook management.
-// It owns the OrderBook and SnapshotCoordinator actors, and registers them
-// with the EventBus. The engine itself is NOT an actor.
+// It owns the OrderBook actor and registers it with the EventBus.
+// The engine itself is NOT an actor.
 type Engine struct {
-	catalog             *catalog.Catalog
-	msgBus              *msgbus.MsgBus
-	orderBook           *ob.OrderBook
-	snapshotCoordinator *dactor.Coordinator
-	router              *adapter.DataRouter
+	engine.EngineBase
+	catalog   *catalog.Catalog
+	msgBus    *msgbus.MsgBus
+	orderBook *orderbook.Actor
+	router    *adapter.DataRouter
 
 	// Data subscriptions from config
 	dataSubs []DataSubscription
 }
 
 // NewEngine creates a new data engine.
-func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus) *Engine {
-	orderBook := ob.NewOrderBook()
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	router := adapter.NewDataRouter(cat, msgBus)
 	return &Engine{
-		catalog:             cat,
-		msgBus:              msgBus,
-		orderBook:           orderBook,
-		snapshotCoordinator: dactor.NewCoordinator(orderBook, router),
-		router:              router,
+		EngineBase: engine.NewEngineBase(common.EngineData),
+		catalog:    cat,
+		msgBus:     msgBus,
+		orderBook:  orderbook.NewActor(c),
+		router:     router,
 	}
 }
 
 // Init registers the engine's actors with the MsgBus.
 func (e *Engine) Init() {
 	actor.Register(e.msgBus, e.orderBook)
-	actor.Register(e.msgBus, e.snapshotCoordinator)
 	log().Info().Msg("DataEngine initialized")
+}
+
+func (e *Engine) Start() {
+	e.Connect(context.Background())
+	e.orderBook.OnStart()
+	log().Info().Msg("DataEngine started")
+	e.NotifyReady()
+}
+
+func (e *Engine) Stop() {
+	e.Disconnect()
+	e.orderBook.OnStop()
+	log().Info().Msg("DataEngine stopped")
+	e.NotifyStop()
+}
+
+func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
+	bus.RegisterCommand(command.CommandTypeReqDepthSnapshot, e.execReqDepthSnapshot)
+}
+
+func (e *Engine) execReqDepthSnapshot(cmd msgbus.Command) {
+	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+	req := command.NewReqDepthSnapshotFromBytes(buf)
+	e.router.ReqDepthSnapshot(req.SymbolID)
 }
 
 // ============================================================================
@@ -121,7 +149,7 @@ func (e *Engine) SubscribeDepthUpdate(symbolID int) {
 		return
 	}
 
-	// Register symbol with orderbook
+	// Register symbol with orderbook actor
 	e.orderBook.RegisterSymbol(symbolID, symbol.PricePrecision, symbol.SizePrecision)
 
 	// Subscribe to depth updates via router with default options
@@ -155,7 +183,7 @@ func (e *Engine) Connect(ctx context.Context) {
 
 		// Subscribe to depth if configured
 		if sub.Depth != nil {
-			// Register symbol with orderbook
+			// Register symbol with orderbook actor
 			e.orderBook.RegisterSymbol(sub.SymbolID, symbol.PricePrecision, symbol.SizePrecision)
 
 			// Subscribe via router with options

@@ -11,4 +11,7 @@ const (
 
 	// Account Commands
 	CommandTypeQryBalanceSnapshot
+
+	// Data Commands
+	CommandTypeReqDepthSnapshot
 )

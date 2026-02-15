@@ -51,7 +51,7 @@ func (e *EngineBase) Type() common.EngineType {
 // Process a command by dispatching to typed callbacks.
 // Override the specific typed callbacks (ProcessOrderSubmitCmd, ProcessOrderCancelCmd, etc.)
 // in your engine implementation.
-func (e *EngineBase) Process(cmd msgbus.Command, bus *msgbus.MsgBus) {
+func (e *EngineBase) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	// Default no-op - concrete engines should override
 }
 

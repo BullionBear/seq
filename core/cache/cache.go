@@ -4,12 +4,14 @@ import (
 	"github.com/alphadose/haxmap"
 
 	"github.com/BullionBear/seq/core/model/common"
+	"github.com/tidwall/btree"
 )
 
-// bookData holds the orderbook state for a single symbol.
-type bookData struct {
-	bids  []common.PriceLevel
-	asks  []common.PriceLevel
+// OrderBook holds the orderbook state for a single symbol.
+// Uses PriceTick as btree key; QuantityTick==0 indicates a deleted level.
+type OrderBook struct {
+	bids  btree.Map[int, common.PriceLevel] // key = PriceTick
+	asks  btree.Map[int, common.PriceLevel] // key = PriceTick
 	state common.BookState
 }
 
@@ -17,8 +19,8 @@ type bookData struct {
 // Engines write data into the cache; strategies read from it.
 // Cache has no dependency on any engine package.
 type Cache struct {
-	// Orderbook data: symbolID -> bookData
-	books *haxmap.Map[int, *bookData]
+	// Orderbook data: symbolID -> OrderBook
+	books *haxmap.Map[int, *OrderBook]
 
 	// Open orders: acctID -> (clientOrderID -> Order)
 	openOrders *haxmap.Map[int, *haxmap.Map[int, *common.Order]]
@@ -30,7 +32,7 @@ type Cache struct {
 // NewCache creates a new empty Cache.
 func NewCache() *Cache {
 	return &Cache{
-		books:      haxmap.New[int, *bookData](),
+		books:      haxmap.New[int, *OrderBook](),
 		openOrders: haxmap.New[int, *haxmap.Map[int, *common.Order]](),
 		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
 	}
@@ -43,19 +45,29 @@ func NewCache() *Cache {
 // GetBestBid returns the best bid price and quantity for the given symbol.
 func (c *Cache) GetBestBid(symbolID int) (price, qty float64, ok bool) {
 	book, exists := c.books.Get(symbolID)
-	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 {
+	if !exists || book.state != common.BookStateReady || book.bids.Len() == 0 {
 		return 0, 0, false
 	}
-	return book.bids[0].Price, book.bids[0].Quantity, true
+	var best common.PriceLevel
+	book.bids.Reverse(func(key int, value common.PriceLevel) bool {
+		best = value
+		return false // stop after first (highest bid)
+	})
+	return best.Price, best.Quantity, true
 }
 
 // GetBestAsk returns the best ask price and quantity for the given symbol.
 func (c *Cache) GetBestAsk(symbolID int) (price, qty float64, ok bool) {
 	book, exists := c.books.Get(symbolID)
-	if !exists || book.state != common.BookStateReady || len(book.asks) == 0 {
+	if !exists || book.state != common.BookStateReady || book.asks.Len() == 0 {
 		return 0, 0, false
 	}
-	return book.asks[0].Price, book.asks[0].Quantity, true
+	var best common.PriceLevel
+	book.asks.Scan(func(key int, value common.PriceLevel) bool {
+		best = value
+		return false // stop after first (lowest ask)
+	})
+	return best.Price, best.Quantity, true
 }
 
 // GetDepth returns the top N levels of bids and asks for the given symbol.
@@ -65,39 +77,40 @@ func (c *Cache) GetDepth(symbolID int, levels int) (bids, asks []common.PriceLev
 		return nil, nil
 	}
 
-	bidN := levels
-	if bidN > len(book.bids) {
-		bidN = len(book.bids)
-	}
-	askN := levels
-	if askN > len(book.asks) {
-		askN = len(book.asks)
-	}
-
-	bidsCopy := make([]common.PriceLevel, bidN)
-	copy(bidsCopy, book.bids[:bidN])
-	asksCopy := make([]common.PriceLevel, askN)
-	copy(asksCopy, book.asks[:askN])
-
+	var bidsCopy, asksCopy []common.PriceLevel
+	book.bids.Reverse(func(key int, value common.PriceLevel) bool {
+		if len(bidsCopy) < levels {
+			bidsCopy = append(bidsCopy, value)
+		}
+		return len(bidsCopy) < levels
+	})
+	book.asks.Scan(func(key int, value common.PriceLevel) bool {
+		if len(asksCopy) < levels {
+			asksCopy = append(asksCopy, value)
+		}
+		return len(asksCopy) < levels
+	})
 	return bidsCopy, asksCopy
 }
 
 // GetMidPrice returns the mid price for the given symbol.
 func (c *Cache) GetMidPrice(symbolID int) (price float64, ok bool) {
-	book, exists := c.books.Get(symbolID)
-	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 || len(book.asks) == 0 {
+	bidPrice, _, bidOk := c.GetBestBid(symbolID)
+	askPrice, _, askOk := c.GetBestAsk(symbolID)
+	if !bidOk || !askOk {
 		return 0, false
 	}
-	return (book.bids[0].Price + book.asks[0].Price) / 2, true
+	return (bidPrice + askPrice) / 2, true
 }
 
 // GetSpread returns the bid-ask spread for the given symbol.
 func (c *Cache) GetSpread(symbolID int) (spread float64, ok bool) {
-	book, exists := c.books.Get(symbolID)
-	if !exists || book.state != common.BookStateReady || len(book.bids) == 0 || len(book.asks) == 0 {
+	bidPrice, _, bidOk := c.GetBestBid(symbolID)
+	askPrice, _, askOk := c.GetBestAsk(symbolID)
+	if !bidOk || !askOk {
 		return 0, false
 	}
-	return book.asks[0].Price - book.bids[0].Price, true
+	return askPrice - bidPrice, true
 }
 
 // IsSymbolReady returns true if the orderbook for a symbol is ready.
@@ -124,10 +137,47 @@ func (c *Cache) GetBookState(symbolID int) (common.BookState, bool) {
 
 // UpdateBook updates the orderbook depth for a symbol.
 // bids and asks should be sorted (best first).
+// QuantityTick==0 indicates the level should be deleted (removed from the book).
 func (c *Cache) UpdateBook(symbolID int, bids, asks []common.PriceLevel) {
 	book := c.ensureBook(symbolID)
-	book.bids = bids
-	book.asks = asks
+	// Clear and rebuild from incoming levels
+	book.bids = btree.Map[int, common.PriceLevel]{}
+	book.asks = btree.Map[int, common.PriceLevel]{}
+	for _, pl := range bids {
+		if pl.QuantityTick != 0 {
+			book.bids.Set(pl.PriceTick, pl)
+		} else {
+			book.bids.Delete(pl.PriceTick)
+		}
+	}
+	for _, pl := range asks {
+		if pl.QuantityTick != 0 {
+			book.asks.Set(pl.PriceTick, pl)
+		} else {
+			book.asks.Delete(pl.PriceTick)
+		}
+	}
+}
+
+// ApplyBookUpdate applies incremental depth updates to the orderbook for a symbol.
+// Unlike UpdateBook, this does NOT clear the existing book; it applies deltas.
+// QuantityTick==0 indicates the level should be deleted (removed from the book).
+func (c *Cache) ApplyBookUpdate(symbolID int, bids, asks []common.PriceLevel) {
+	book := c.ensureBook(symbolID)
+	for _, pl := range bids {
+		if pl.QuantityTick != 0 {
+			book.bids.Set(pl.PriceTick, pl)
+		} else {
+			book.bids.Delete(pl.PriceTick)
+		}
+	}
+	for _, pl := range asks {
+		if pl.QuantityTick != 0 {
+			book.asks.Set(pl.PriceTick, pl)
+		} else {
+			book.asks.Delete(pl.PriceTick)
+		}
+	}
 }
 
 // SetBookState sets the synchronization state of the orderbook for a symbol.
@@ -301,9 +351,9 @@ func (c *Cache) SetAccountBalances(acctID int, balances []common.Balance) {
 // Internal Helpers
 // ============================================================================
 
-func (c *Cache) ensureBook(symbolID int) *bookData {
-	book, _ := c.books.GetOrCompute(symbolID, func() *bookData {
-		return &bookData{
+func (c *Cache) ensureBook(symbolID int) *OrderBook {
+	book, _ := c.books.GetOrCompute(symbolID, func() *OrderBook {
+		return &OrderBook{
 			state: common.BookStateWaitForSnapshot,
 		}
 	})
