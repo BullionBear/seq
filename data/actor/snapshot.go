@@ -50,11 +50,11 @@ func (c *Coordinator) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := msgbus.DeserializeDepthUpdate(buf)
+		update := event.NewDepthUpdateFromBytes(buf)
 		c.onDepthUpdate(update)
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeDepthSnapshot(buf)
+		snapshot := event.NewDepthSnapshotFromBytes(buf)
 		c.onDepthSnapshot(snapshot)
 	}
 }

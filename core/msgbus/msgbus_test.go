@@ -9,10 +9,10 @@ import (
 )
 
 // ============================================================================
-// Tests for Command Serialization
+// Tests for Command Encode/Decode
 // ============================================================================
 
-func TestSerializeDeserializeOrderSubmitCommand(t *testing.T) {
+func TestEncodeDecodeSubmitOrder(t *testing.T) {
 	cmd := command.SubmitOrder{
 		AccountID:   1,
 		SymbolID:    42,
@@ -23,15 +23,14 @@ func TestSerializeDeserializeOrderSubmitCommand(t *testing.T) {
 		Quantity:    1.5,
 	}
 
-	size := OrderSubmitCommandSize()
+	size := cmd.GetBufferLength()
 	buf := make([]byte, size)
 
-	written := SerializeOrderSubmitCommand(buf, &cmd)
-	if uint64(written) != size {
-		t.Errorf("SerializeOrderSubmitCommand wrote %d bytes, expected %d", written, size)
+	if err := cmd.Encode(buf); err != nil {
+		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := DeserializeOrderSubmitCommand(buf)
+	result := command.NewSubmitOrderFromBytes(buf)
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -56,21 +55,20 @@ func TestSerializeDeserializeOrderSubmitCommand(t *testing.T) {
 	}
 }
 
-func TestSerializeDeserializeOrderCancelCommand(t *testing.T) {
+func TestEncodeDecodeCancelOrder(t *testing.T) {
 	cmd := command.CancelOrder{
 		AccountID:     1,
 		ClientOrderID: 42,
 	}
 
-	size := OrderCancelCommandSize()
+	size := cmd.GetBufferLength()
 	buf := make([]byte, size)
 
-	written := SerializeOrderCancelCommand(buf, &cmd)
-	if uint64(written) != size {
-		t.Errorf("SerializeOrderCancelCommand wrote %d bytes, expected %d", written, size)
+	if err := cmd.Encode(buf); err != nil {
+		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := DeserializeOrderCancelCommand(buf)
+	result := command.NewCancelOrderFromBytes(buf)
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -80,21 +78,20 @@ func TestSerializeDeserializeOrderCancelCommand(t *testing.T) {
 	}
 }
 
-func TestSerializeDeserializeCancelAllCommand(t *testing.T) {
+func TestEncodeDecodeCancelAll(t *testing.T) {
 	cmd := command.CancelAll{
 		AccountID: 1,
 		SymbolID:  42,
 	}
 
-	size := CancelAllCommandSize()
+	size := cmd.GetBufferLength()
 	buf := make([]byte, size)
 
-	written := SerializeCancelAllCommand(buf, &cmd)
-	if uint64(written) != size {
-		t.Errorf("SerializeCancelAllCommand wrote %d bytes, expected %d", written, size)
+	if err := cmd.Encode(buf); err != nil {
+		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := DeserializeCancelAllCommand(buf)
+	result := command.NewCancelAllFromBytes(buf)
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -144,9 +141,9 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 		Price:     50000.0,
 		Quantity:  1.5,
 	}
-	size := OrderSubmitCommandSize()
+	size := uint64(cmd.GetBufferLength())
 	offset, buf := bus.AllocateCmd(size)
-	SerializeOrderSubmitCommand(buf, &cmd)
+	cmd.Encode(buf)
 	bus.Send(CommandRef{
 		CommandType: command.CommandTypeOrderSubmit,
 		Index:       offset,
@@ -167,7 +164,7 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 
 	// Verify command payload
 	cmdBuf := bus.ReadCmdBuffer(handledCmd.Ref.Index, handledCmd.Ref.Length)
-	result := DeserializeOrderSubmitCommand(cmdBuf)
+	result := command.NewSubmitOrderFromBytes(cmdBuf)
 	if result.AccountID != 1 {
 		t.Errorf("Expected AccountID 1, got %d", result.AccountID)
 	}
@@ -193,9 +190,10 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	})
 
 	// Publish an event first
-	size := TickSize()
+	tick := event.Tick{SymbolID: 1, Price: 50000.0}
+	size := uint64(tick.GetBufferLength())
 	offset, buf := bus.Allocate(size)
-	SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 50000.0})
+	tick.Encode(buf)
 	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
@@ -203,12 +201,13 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	})
 
 	// Then send a command
-	cmdSize := OrderSubmitCommandSize()
-	cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
-	SerializeOrderSubmitCommand(cmdBuf, &command.SubmitOrder{
+	submitCmd := command.SubmitOrder{
 		AccountID: 1,
 		SymbolID:  42,
-	})
+	}
+	cmdSize := uint64(submitCmd.GetBufferLength())
+	cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
+	submitCmd.Encode(cmdBuf)
 	bus.Send(CommandRef{
 		CommandType: command.CommandTypeOrderSubmit,
 		Index:       cmdOffset,
@@ -246,9 +245,10 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	})
 
 	// Publish an event
-	size := TickSize()
+	tick := event.Tick{SymbolID: 1}
+	size := uint64(tick.GetBufferLength())
 	offset, buf := bus.Allocate(size)
-	SerializeTick(buf, &event.Tick{SymbolID: 1})
+	tick.Encode(buf)
 	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
@@ -257,9 +257,10 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 
 	// Send 3 commands
 	for i := 0; i < 3; i++ {
-		cmdSize := OrderSubmitCommandSize()
+		submitCmd := command.SubmitOrder{AccountID: i}
+		cmdSize := uint64(submitCmd.GetBufferLength())
 		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
-		SerializeOrderSubmitCommand(cmdBuf, &command.SubmitOrder{AccountID: i})
+		submitCmd.Encode(cmdBuf)
 		bus.Send(CommandRef{
 			CommandType: command.CommandTypeOrderSubmit,
 			Index:       cmdOffset,
@@ -309,9 +310,10 @@ func TestMsgBus_EventDispatchDelegation(t *testing.T) {
 		receivedTopic = ev.Ref.Topic
 	})
 
-	size := TickSize()
+	tick := event.Tick{SymbolID: 1, Price: 100.0}
+	size := uint64(tick.GetBufferLength())
 	offset, buf := bus.Allocate(size)
-	SerializeTick(buf, &event.Tick{SymbolID: 1, Price: 100.0})
+	tick.Encode(buf)
 	bus.Publish(EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,
@@ -340,13 +342,13 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 		Price:     50000.0,
 		Quantity:  1.5,
 	}
-	cmdSize := OrderSubmitCommandSize()
+	cmdSize := uint64(cmd.GetBufferLength())
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
-		SerializeOrderSubmitCommand(cmdBuf, &cmd)
+		cmd.Encode(cmdBuf)
 		bus.Send(CommandRef{
 			CommandType: command.CommandTypeOrderSubmit,
 			Index:       cmdOffset,
@@ -361,13 +363,13 @@ func BenchmarkMsgBus_DispatchEvent(b *testing.B) {
 	bus.Register("bench", nil, func(ev Event) {})
 
 	tick := event.Tick{SymbolID: 1, Price: 50000.0}
-	tickSize := TickSize()
+	tickSize := uint64(tick.GetBufferLength())
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		offset, buf := bus.Allocate(tickSize)
-		SerializeTick(buf, &tick)
+		tick.Encode(buf)
 		bus.Publish(EventRef{
 			Topic:  event.TopicEventTick,
 			Index:  offset,

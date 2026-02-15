@@ -550,11 +550,11 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 	}
 
 	// Calculate size and allocate buffer
-	size := msgbus.DepthSnapshotSize(&snapshot)
+	size := uint64(snapshot.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
 
-	// Serialize and publish
-	msgbus.SerializeDepthSnapshot(buf, &snapshot)
+	// Encode and publish
+	snapshot.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthSnapshot,
 		Index:  offset,
@@ -581,11 +581,11 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 	}
 
 	// Calculate size and allocate buffer
-	size := msgbus.DepthUpdateSize(&depthUpdate)
+	size := uint64(depthUpdate.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
 
-	// Serialize and publish
-	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	// Encode and publish
+	depthUpdate.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthUpdate,
 		Index:  offset,
@@ -635,9 +635,9 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	}
 
 	// Publish to event bus
-	size := msgbus.TickSize()
+	size := uint64(tick.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeTick(buf, &tick)
+	tick.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,

@@ -464,9 +464,9 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.Asks = c.parsePriceLevels(data, "a")
 
 	// Publish to event bus using new generic API
-	size := msgbus.DepthUpdateSize(&depthUpdate)
+	size := uint64(depthUpdate.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeDepthUpdate(buf, &depthUpdate)
+	depthUpdate.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventDepthUpdate,
 		Index:  offset,
@@ -513,9 +513,9 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	}
 
 	// Publish to event bus using new generic API
-	size := msgbus.TickSize()
+	size := uint64(tick.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeTick(buf, &tick)
+	tick.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventTick,
 		Index:  offset,

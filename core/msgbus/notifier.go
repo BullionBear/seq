@@ -28,12 +28,10 @@ func NewStateNotifier(publisher EventPublisher) *StateNotifier {
 
 // NotifyReady publishes a ReadyEvent indicating an engine is ready.
 func (n *StateNotifier) NotifyReady(source common.EngineType, timestamp uint64) {
-	size := ReadyEventSize()
+	e := event.ReadyEvent{Source: source, Timestamp: timestamp}
+	size := uint64(e.GetBufferLength())
 	offset, buf := n.publisher.Allocate(size)
-	SerializeReadyEvent(buf, &event.ReadyEvent{
-		Source:    source,
-		Timestamp: timestamp,
-	})
+	e.Encode(buf)
 	n.publisher.Publish(EventRef{
 		Topic:  event.TopicEventReady,
 		Index:  offset,
@@ -43,12 +41,10 @@ func (n *StateNotifier) NotifyReady(source common.EngineType, timestamp uint64) 
 
 // NotifyStop publishes a StopEvent indicating an engine is stopping.
 func (n *StateNotifier) NotifyStop(source common.EngineType, timestamp uint64) {
-	size := StopEventSize()
+	e := event.StopEvent{Source: source, Timestamp: timestamp}
+	size := uint64(e.GetBufferLength())
 	offset, buf := n.publisher.Allocate(size)
-	SerializeStopEvent(buf, &event.StopEvent{
-		Source:    source,
-		Timestamp: timestamp,
-	})
+	e.Encode(buf)
 	n.publisher.Publish(EventRef{
 		Topic:  event.TopicEventStop,
 		Index:  offset,
@@ -58,12 +54,10 @@ func (n *StateNotifier) NotifyStop(source common.EngineType, timestamp uint64) {
 
 // NotifyFinished publishes a FinishedEvent indicating an engine has finished.
 func (n *StateNotifier) NotifyFinished(source common.EngineType, timestamp uint64) {
-	size := FinishedEventSize()
+	e := event.FinishedEvent{Source: source, Timestamp: timestamp}
+	size := uint64(e.GetBufferLength())
 	offset, buf := n.publisher.Allocate(size)
-	SerializeFinishedEvent(buf, &event.FinishedEvent{
-		Source:    source,
-		Timestamp: timestamp,
-	})
+	e.Encode(buf)
 	n.publisher.Publish(EventRef{
 		Topic:  event.TopicEventFinished,
 		Index:  offset,
@@ -73,13 +67,10 @@ func (n *StateNotifier) NotifyFinished(source common.EngineType, timestamp uint6
 
 // NotifyAbnormal publishes an AbnormalEvent indicating an engine encountered an error.
 func (n *StateNotifier) NotifyAbnormal(source common.EngineType, errorCode int, timestamp uint64) {
-	size := AbnormalEventSize()
+	e := event.AbnormalEvent{Source: source, ErrorCode: errorCode, Timestamp: timestamp}
+	size := uint64(e.GetBufferLength())
 	offset, buf := n.publisher.Allocate(size)
-	SerializeAbnormalEvent(buf, &event.AbnormalEvent{
-		Source:    source,
-		ErrorCode: errorCode,
-		Timestamp: timestamp,
-	})
+	e.Encode(buf)
 	n.publisher.Publish(EventRef{
 		Topic:  event.TopicEventAbnormal,
 		Index:  offset,

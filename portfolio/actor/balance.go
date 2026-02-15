@@ -91,16 +91,16 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := msgbus.DeserializeBalanceUpdate(buf)
+		update := event.NewBalanceUpdateFromBytes(buf)
 		b.handler.OnBalanceUpdate(update)
 	case event.TopicEventRespBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+		snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := msgbus.DeserializeFill(buf)
+		fill := event.NewFillFromBytes(buf)
 		b.handler.OnFill(fill)
 	}
 }

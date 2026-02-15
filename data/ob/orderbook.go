@@ -359,11 +359,11 @@ func (ob *OrderBook) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeDepthSnapshot(buf)
+		snapshot := event.NewDepthSnapshotFromBytes(buf)
 		ob.onDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := msgbus.DeserializeDepthUpdate(buf)
+		update := event.NewDepthUpdateFromBytes(buf)
 		ob.onDepthUpdate(update)
 	}
 }

@@ -96,23 +96,23 @@ func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeDepthSnapshot(buf)
+		snapshot := event.NewDepthSnapshotFromBytes(buf)
 		o.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := msgbus.DeserializeDepthUpdate(buf)
+		update := event.NewDepthUpdateFromBytes(buf)
 		o.OnDepthUpdate(update)
 	case event.TopicEventTick:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := msgbus.DeserializeTick(buf)
+		tick := event.NewTickFromBytes(buf)
 		o.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := msgbus.DeserializeFill(buf)
+		fill := event.NewFillFromBytes(buf)
 		o.OnFill(fill)
 	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := msgbus.DeserializeRespDepthSnapshot(buf)
+		snapshot := event.NewRespDepthSnapshotFromBytes(buf)
 		o.OnRespDepthSnapshot(snapshot)
 	default:
 		log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")

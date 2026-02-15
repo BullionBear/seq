@@ -97,16 +97,16 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 
 	// Phase 2: Allocate arena buffer for DepthSnapshot
 	// Layout: [SymbolID(8)][DepthID(8)][Timestamp(8)][AsksLen(4)][BidsLen(4)][Asks...][Bids...]
-	size := uint64(msgbus.SizeOfDepthSnapshotHeader) +
-		uint64(askCount)*uint64(msgbus.SizeOfPriceLevel) +
-		uint64(bidCount)*uint64(msgbus.SizeOfPriceLevel)
+	size := uint64(event.DepthSnapshotHeaderSize) +
+		uint64(askCount)*uint64(event.PriceLevelSize) +
+		uint64(bidCount)*uint64(event.PriceLevelSize)
 
 	offset, buf := c.msgBus.Allocate(size)
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
-	asksStart := msgbus.SizeOfDepthSnapshotHeader
-	bidsStart := asksStart + askCount*msgbus.SizeOfPriceLevel
+	asksStart := event.DepthSnapshotHeaderSize
+	bidsStart := asksStart + askCount*event.PriceLevelSize
 
 	var asks []common.PriceLevel
 	var bids []common.PriceLevel
@@ -127,9 +127,16 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		return err
 	}
 
-	// Write header into buffer
+	// Encode snapshot into buffer (header + self-copy of price levels already in buffer)
 	timestamp := uint64(time.Now().UnixNano())
-	msgbus.WriteDepthSnapshotHeader(buf, symbolId, depthID, timestamp, uint32(askCount), uint32(bidCount))
+	snapshot := event.DepthSnapshot{
+		SymbolID:  symbolId,
+		DepthID:   depthID,
+		Timestamp: timestamp,
+		Asks:      asks,
+		Bids:      bids,
+	}
+	snapshot.Encode(buf)
 
 	// Publish to event bus
 	c.msgBus.Publish(msgbus.EventRef{

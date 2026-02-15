@@ -856,9 +856,9 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 		UpdatedAt: uint64(updateTime) * 1_000_000, // Convert ms to ns
 	}
 
-	size := msgbus.BalanceUpdateSize(&balanceUpdate)
+	size := uint64(balanceUpdate.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeBalanceUpdate(buf, &balanceUpdate)
+	balanceUpdate.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventBalanceUpdate,
 		Index:  offset,
@@ -1002,9 +1002,9 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 		FilledAt:      uint64(transactTime) * 1_000_000,
 	}
 
-	size := msgbus.FillSize()
+	size := uint64(fill.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeFill(buf, &fill)
+	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
@@ -1026,9 +1026,9 @@ func (c *BinanceSpotExecutionClient) publishOrderAccepted(clientOrderID, orderID
 		OrderID:       orderID,
 		CreatedAt:     createdAt,
 	}
-	size := msgbus.OrderAcceptedSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderAccepted(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderAccepted,
 		Index:  offset,
@@ -1044,9 +1044,9 @@ func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, 
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderPartiallyFilledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderPartiallyFilled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventPartialFill,
 		Index:  offset,
@@ -1062,9 +1062,9 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderFilledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderFilled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventFill,
 		Index:  offset,
@@ -1079,9 +1079,9 @@ func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID
 		OrderID:       orderID,
 		UpdatedAt:     updatedAt,
 	}
-	size := msgbus.OrderCanceledSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderCanceled(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderCanceled,
 		Index:  offset,
@@ -1097,9 +1097,9 @@ func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID
 		ErrorCode:     0,
 		Msg:           reason,
 	}
-	size := msgbus.OrderRejectedSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderRejected(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderRejected,
 		Index:  offset,
@@ -1114,9 +1114,9 @@ func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, or
 		OrderID:       orderID,
 		Msg:           status,
 	}
-	size := msgbus.OrderUnknownStatusSize()
+	size := uint64(e.GetBufferLength())
 	offset, buf := c.msgBus.Allocate(size)
-	msgbus.SerializeOrderUnknownStatus(buf, &e)
+	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
 		Topic:  event.TopicEventOrderUnknownStatus,
 		Index:  offset,
@@ -1197,9 +1197,9 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		}
 
 		// Publish fill event
-		size := msgbus.FillSize()
+		size := uint64(fill.GetBufferLength())
 		fillOffset, buf := c.msgBus.Allocate(size)
-		msgbus.SerializeFill(buf, &fill)
+		fill.Encode(buf)
 		c.msgBus.Publish(msgbus.EventRef{
 			Topic:  event.TopicEventFill,
 			Index:  fillOffset,
@@ -1248,7 +1248,7 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 
 	// Calculate size and allocate directly from event bus
 	// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balance1][Balance2]...[BalanceN]
-	size := uint64(msgbus.SizeOfReqBalanceSnapshotHeader) + uint64(balanceCount)*uint64(msgbus.SizeOfBalance)
+	size := uint64(event.RespBalanceSnapshotHeaderSize) + uint64(balanceCount)*uint64(event.BalanceSize)
 	offset, buf := c.msgBus.Allocate(size)
 
 	// Write header directly to buffer
@@ -1281,7 +1281,7 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 			balance.Available = free
 			balance.Locked = locked
 			balance.Total = total
-			pos += msgbus.SizeOfBalance
+			pos += event.BalanceSize
 		}
 	}, "balances")
 

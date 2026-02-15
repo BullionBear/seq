@@ -224,7 +224,7 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+	snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 
 	if snapshot.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", snapshot.AccountID)
@@ -290,7 +290,7 @@ func TestProcessOrderResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := msgbus.DeserializeOrderAccepted(buf)
+	orderAccepted := event.NewOrderAcceptedFromBytes(buf)
 
 	if orderAccepted.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderAccepted.OrderID)
@@ -336,7 +336,7 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderCanceled := msgbus.DeserializeOrderCanceled(buf)
+	orderCanceled := event.NewOrderCanceledFromBytes(buf)
 
 	if orderCanceled.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderCanceled.OrderID)
@@ -383,7 +383,7 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	balanceUpdate := msgbus.DeserializeBalanceUpdate(buf)
+	balanceUpdate := event.NewBalanceUpdateFromBytes(buf)
 
 	if balanceUpdate.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", balanceUpdate.AccountID)
@@ -456,7 +456,7 @@ func TestProcessExecutionReport(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := msgbus.DeserializeOrderAccepted(buf)
+	orderAccepted := event.NewOrderAcceptedFromBytes(buf)
 
 	if orderAccepted.OrderID != 4293153 {
 		t.Errorf("Expected OrderID 4293153, got %d", orderAccepted.OrderID)
@@ -525,7 +525,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify OrderPartiallyFilled
 	orderBuf := eb.ReadBuffer(partialFillEvent.Ref.Index, partialFillEvent.Ref.Length)
-	orderPartiallyFilled := msgbus.DeserializeOrderPartiallyFilled(orderBuf)
+	orderPartiallyFilled := event.NewOrderPartiallyFilledFromBytes(orderBuf)
 
 	if orderPartiallyFilled.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", orderPartiallyFilled.OrderID)
@@ -537,7 +537,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify Fill
 	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
-	fill := msgbus.DeserializeFill(fillBuf)
+	fill := event.NewFillFromBytes(fillBuf)
 
 	if fill.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)
@@ -771,7 +771,7 @@ loop:
 			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					snapshot := msgbus.DeserializeRespBalanceSnapshot(buf)
+					snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 					t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 						snapshot.AccountID, len(snapshot.Balances))
 					for i, b := range snapshot.Balances {

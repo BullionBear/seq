@@ -446,7 +446,7 @@ loop:
 			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventBalanceUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					update := msgbus.DeserializeBalanceUpdate(buf)
+					update := event.NewBalanceUpdateFromBytes(buf)
 					t.Logf("Received balance update: AccountID=%d, Balances=%d",
 						update.AccountID, len(update.Balances))
 					for i, b := range update.Balances {
