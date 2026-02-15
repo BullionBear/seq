@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"math"
 	"os"
 	"reflect"
 	"testing"
@@ -17,6 +18,10 @@ import (
 	"github.com/BullionBear/seq/core/msgbus"
 	"gopkg.in/yaml.v3"
 )
+
+func floatApproxEqual(a, b, epsilon float64) bool {
+	return math.Abs(a-b) < epsilon
+}
 
 // ============================================================================
 // Unit Tests for Ed25519 Signing
@@ -415,6 +420,8 @@ func TestProcessExecutionReport(t *testing.T) {
 		msgBus:    eb,
 		accountID: 123,
 	}
+	client.subOrderUpdate.Store(true)
+	client.subFill.Store(true)
 
 	// Mock executionReport event for a new order
 	eventData := []byte(`{
@@ -473,6 +480,8 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		msgBus:    eb,
 		accountID: 123,
 	}
+	client.subOrderUpdate.Store(true)
+	client.subFill.Store(true)
 
 	// Mock executionReport event with a partial fill
 	eventData := []byte(`{
@@ -551,12 +560,12 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		t.Errorf("Expected FilledQty 0.5, got %f", fill.FilledQty)
 	}
 
-	if fill.FilledPrice != 0.10264410 {
-		t.Errorf("Expected FilledPrice 0.10264410, got %f", fill.FilledPrice)
+	if !floatApproxEqual(fill.FilledPrice, 0.10264410, 1e-8) {
+		t.Errorf("Expected FilledPrice ~0.10264410, got %.10f", fill.FilledPrice)
 	}
 
-	if fill.FeeQty != 0.00001 {
-		t.Errorf("Expected FeeQty 0.00001, got %f", fill.FeeQty)
+	if !floatApproxEqual(fill.FeeQty, 0.00001, 1e-8) {
+		t.Errorf("Expected FeeQty ~0.00001, got %.10f", fill.FeeQty)
 	}
 }
 
@@ -566,6 +575,9 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 		msgBus:    eb,
 		accountID: 123,
 	}
+	client.subOrderUpdate.Store(true)
+	client.subFill.Store(true)
+	client.subBalance.Store(true)
 
 	tests := []struct {
 		name          string
