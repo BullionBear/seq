@@ -1,10 +1,6 @@
 package xarb
 
 import (
-	"fmt"
-	"strings"
-	"time"
-
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
@@ -29,6 +25,10 @@ type XArb struct {
 	// Account IDs for trading
 	quotingAccount cpanel.Account
 	hedgingAccount cpanel.Account
+
+	// Count
+	quotingCount int
+	hedgingCount int
 }
 
 // NewXArb creates a new XArb strategy.
@@ -40,6 +40,9 @@ func NewXArb() *XArb {
 
 		quotingAccount: cpanel.Account{},
 		hedgingAccount: cpanel.Account{},
+
+		quotingCount: 0,
+		hedgingCount: 0,
 	}
 }
 
@@ -141,15 +144,30 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 }
 
-// OnDepthSnapshot processes depth snapshots.
-func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
-	log().Info().Msgf("Depth snapshot: %d %d %d %d", snapshot.SymbolID, snapshot.DepthID, len(snapshot.Bids), len(snapshot.Asks))
-}
-
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	// symbolID := update.SymbolID
+	symbolID := update.SymbolID
+
+	bookReady := x.IsSymbolReady(symbolID)
+	if !bookReady {
+		log().Warn().Int("symbolID", symbolID).Msg("Orderbook not ready")
+		return
+	}
+	switch symbolID {
+	case x.quotingSymbol.ID:
+		x.quotingCount++
+	case x.hedgingSymbol.ID:
+		x.hedgingCount++
+	}
+	log().Info().Int("quotingCount", x.quotingCount).Int("hedgingCount", x.hedgingCount).Msg("Depth update received")
+
+	if symbolID == x.quotingSymbol.ID && x.quotingCount%10 == 0 {
+		x.printTop5(x.quotingSymbol.ID)
+	}
+	if symbolID == x.hedgingSymbol.ID && x.hedgingCount%10 == 0 {
+		x.printTop5(x.hedgingSymbol.ID)
+	}
 
 	// Check orderbook state
 	// bookState, exists := x.GetBookState(symbolID)
@@ -180,55 +198,24 @@ func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 		Msg("RespDepthSnapshot received")
 }
 
-// printTop5 prints the top 5 bid and ask levels for a symbol.
-func (x *XArb) printTop5(symbolID int) {
-	bids, asks := x.GetDepth(symbolID, 5)
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n=== Orderbook [Symbol %d] ===\n", symbolID))
-	sb.WriteString(fmt.Sprintf("%-12s | %-15s || %-15s | %-12s\n", "Bid Qty", "Bid Price", "Ask Price", "Ask Qty"))
-	sb.WriteString(strings.Repeat("-", 60) + "\n")
-
-	maxLen := len(bids)
-	if len(asks) > maxLen {
-		maxLen = len(asks)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		var bidQty, bidPrice, askPrice, askQty string
-
-		if i < len(bids) {
-			bidQty = fmt.Sprintf("%.4f", bids[i].Quantity)
-			bidPrice = fmt.Sprintf("%.4f", bids[i].Price)
-		} else {
-			bidQty = ""
-			bidPrice = ""
-		}
-
-		if i < len(asks) {
-			askPrice = fmt.Sprintf("%.4f", asks[i].Price)
-			askQty = fmt.Sprintf("%.4f", asks[i].Quantity)
-		} else {
-			askPrice = ""
-			askQty = ""
-		}
-
-		sb.WriteString(fmt.Sprintf("%-12s | %-15s || %-15s | %-12s\n", bidQty, bidPrice, askPrice, askQty))
-	}
-
-	sb.WriteString(fmt.Sprintf("Timestamp: %s\n", time.Now().Format(time.RFC3339Nano)))
-	// log().Info().Msg(sb.String())
-}
-
-// OnTick processes tick events.
-func (x *XArb) OnTick(tick event.Tick) {}
-
 // OnFill processes fill events.
 func (x *XArb) OnFill(fill event.Fill) {}
 
 // ============================================================================
 // Portfolio Access Methods
 // ============================================================================
+
+// printTop5 prints the top 5 bid and ask levels for a symbol.
+func (x *XArb) printTop5(symbolID int) {
+	bids, asks := x.GetDepth(symbolID, 5)
+	log().Info().Int("symbolID", symbolID).Int("bids", len(bids)).Int("asks", len(asks)).Msg("Top 5 levels")
+	for i := 0; i < len(bids); i++ {
+		log().Info().Int("symbolID", symbolID).Int("bidIndex", i).Float64("bidPrice", bids[i].Price).Float64("bidQty", bids[i].Quantity).Msg("Bid")
+	}
+	for i := 0; i < len(asks); i++ {
+		log().Info().Int("symbolID", symbolID).Int("askIndex", i).Float64("askPrice", asks[i].Price).Float64("askQty", asks[i].Quantity).Msg("Ask")
+	}
+}
 
 // GetQuotingAccountID returns the account ID for quoting
 func (x *XArb) GetQuotingAccountID() int {
