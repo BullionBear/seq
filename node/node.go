@@ -53,14 +53,14 @@ func NewNode(cat *catalog.Catalog) *Node {
 	// Create execution router
 	executionRouter := adapter.NewExecutionRouter()
 
+	// Create cache (self-contained, no engine dependencies)
+	c := cache.NewCache()
+
 	// Create engines
-	dataEngine := data.NewEngine(cat, bus)
+	dataEngine := data.NewEngine(cat, bus, c)
 	riskEngine := risk.NewEngine()
 	portfolioEngine := portfolio.NewEngine(bus)
 	executionEngine := execution.NewEngine(executionRouter, bus)
-
-	// Create cache (self-contained, no engine dependencies)
-	c := cache.NewCache()
 
 	return &Node{
 		msgBus:          bus,
@@ -79,7 +79,7 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	// Create state notifier for engines to broadcast state events
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
-	// Initialize data engine (registers OrderBook and SnapshotCoordinator actors)
+	// Initialize data engine (registers OrderBook actor)
 	n.dataEngine.Init()
 
 	// Configure portfolio engine with execution router and notifier

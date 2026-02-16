@@ -135,13 +135,13 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		bids = unsafe.Slice((*common.PriceLevel)(unsafe.Pointer(&buf[bidsStart])), bidCount)
 	}
 
-	// Parse price levels directly into arena
+	// Parse price levels directly into arena with precision for PriceTick/QuantityTick
 	// Bybit uses "a" for asks and "b" for bids
-	err = c.parsePriceLevelsInto(jsonData, "\"a\"", asks)
+	err = c.parsePriceLevelsInto(jsonData, "\"a\"", asks, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
 		return err
 	}
-	err = c.parsePriceLevelsInto(jsonData, "\"b\"", bids)
+	err = c.parsePriceLevelsInto(jsonData, "\"b\"", bids, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
 		return err
 	}
@@ -352,9 +352,10 @@ func (c *BybitHTTPClient) countArrayElements(data []byte, key string) int {
 	return count
 }
 
-// parsePriceLevelsInto parses price levels directly into a pre-allocated slice (zero-allocation)
+// parsePriceLevelsInto parses price levels directly into a pre-allocated slice (zero-allocation).
 // Bybit format: ["price", "size"] e.g., ["65557.7", "16.606555"]
-func (c *BybitHTTPClient) parsePriceLevelsInto(data []byte, key string, levels []common.PriceLevel) error {
+// Uses pricePrecision and sizePrecision to compute PriceTick and QuantityTick.
+func (c *BybitHTTPClient) parsePriceLevelsInto(data []byte, key string, levels []common.PriceLevel, pricePrecision, sizePrecision int) error {
 	if len(levels) == 0 {
 		return nil
 	}
@@ -415,6 +416,8 @@ func (c *BybitHTTPClient) parsePriceLevelsInto(data []byte, key string, levels [
 		// Write directly into the pre-allocated slice (which is in arena)
 		levels[itemIdx].Price = price
 		levels[itemIdx].Quantity = qty
+		levels[itemIdx].PriceTick = common.PriceToTick(price, pricePrecision)
+		levels[itemIdx].QuantityTick = common.QuantityToTick(qty, sizePrecision)
 
 		// Move past current subarray closure ]
 		for curr < len(data) && data[curr] != ']' {
@@ -452,15 +455,16 @@ func (c *BybitHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSnaps
 	resultData := data[resultIdx:]
 
 	// Allocate slices (non-zero-allocation path, for testing)
+	// Use default precisions 2,5 for testing when symbol not available
 	if askCount > 0 {
 		respDepthSnapshot.Asks = make([]common.PriceLevel, askCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"a\"", respDepthSnapshot.Asks); err != nil {
+		if err := c.parsePriceLevelsInto(resultData, "\"a\"", respDepthSnapshot.Asks, 2, 5); err != nil {
 			return err
 		}
 	}
 	if bidCount > 0 {
 		respDepthSnapshot.Bids = make([]common.PriceLevel, bidCount)
-		if err := c.parsePriceLevelsInto(resultData, "\"b\"", respDepthSnapshot.Bids); err != nil {
+		if err := c.parsePriceLevelsInto(resultData, "\"b\"", respDepthSnapshot.Bids, 2, 5); err != nil {
 			return err
 		}
 	}

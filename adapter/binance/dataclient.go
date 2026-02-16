@@ -457,11 +457,16 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.CurrentDepthID = int(finalUpdateID)
 	depthUpdate.NextDepthID = int(finalUpdateID) + 1
 
-	// Parse bids
-	depthUpdate.Bids = c.parsePriceLevels(data, "b")
+	// Get symbol precision for tick computation
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+		return
+	}
 
-	// Parse asks
-	depthUpdate.Asks = c.parsePriceLevels(data, "a")
+	// Parse bids and asks with precision for PriceTick/QuantityTick
+	depthUpdate.Bids = c.parsePriceLevels(data, "b", symbol.PricePrecision, symbol.SizePrecision)
+	depthUpdate.Asks = c.parsePriceLevels(data, "a", symbol.PricePrecision, symbol.SizePrecision)
 
 	// Publish to event bus using new generic API
 	size := uint64(depthUpdate.GetBufferLength())
@@ -523,8 +528,9 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	})
 }
 
-// parsePriceLevels parses an array of [price, qty] arrays from JSON
-func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []common.PriceLevel {
+// parsePriceLevels parses an array of [price, qty] arrays from JSON.
+// Uses pricePrecision and sizePrecision to compute PriceTick and QuantityTick.
+func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string, pricePrecision, sizePrecision int) []common.PriceLevel {
 	// First pass: count elements
 	count := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
@@ -559,6 +565,8 @@ func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string) []comm
 			}
 			elemIdx++
 		})
+		levels[idx].PriceTick = common.PriceToTick(levels[idx].Price, pricePrecision)
+		levels[idx].QuantityTick = common.QuantityToTick(levels[idx].Quantity, sizePrecision)
 		idx++
 	}, key)
 

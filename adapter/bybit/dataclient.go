@@ -536,9 +536,16 @@ func (c *BybitDataClient) processOrderbook(topic, msgType string, data []byte) {
 
 // processDepthSnapshot handles snapshot messages
 func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp uint64, dataObj []byte) {
-	// Parse bids and asks
-	bids := c.parsePriceLevels(dataObj, "b")
-	asks := c.parsePriceLevels(dataObj, "a")
+	// Get symbol precision for tick computation
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth snapshot")
+		return
+	}
+
+	// Parse bids and asks with precision for PriceTick/QuantityTick
+	bids := c.parsePriceLevels(dataObj, "b", symbol.PricePrecision, symbol.SizePrecision)
+	asks := c.parsePriceLevels(dataObj, "a", symbol.PricePrecision, symbol.SizePrecision)
 
 	// Create DepthSnapshot struct
 	snapshot := event.DepthSnapshot{
@@ -564,9 +571,16 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 
 // processDepthUpdate handles delta messages
 func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp uint64, dataObj []byte) {
-	// Parse bids and asks
-	bids := c.parsePriceLevels(dataObj, "b")
-	asks := c.parsePriceLevels(dataObj, "a")
+	// Get symbol precision for tick computation
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+		return
+	}
+
+	// Parse bids and asks with precision for PriceTick/QuantityTick
+	bids := c.parsePriceLevels(dataObj, "b", symbol.PricePrecision, symbol.SizePrecision)
+	asks := c.parsePriceLevels(dataObj, "a", symbol.PricePrecision, symbol.SizePrecision)
 
 	// Create DepthUpdate struct
 	depthUpdate := event.DepthUpdate{
@@ -645,8 +659,9 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	})
 }
 
-// parsePriceLevels parses an array of [price, qty] arrays from JSON
-func (c *BybitDataClient) parsePriceLevels(data []byte, key string) []common.PriceLevel {
+// parsePriceLevels parses an array of [price, qty] arrays from JSON.
+// Uses pricePrecision and sizePrecision to compute PriceTick and QuantityTick.
+func (c *BybitDataClient) parsePriceLevels(data []byte, key string, pricePrecision, sizePrecision int) []common.PriceLevel {
 	// First pass: count elements
 	count := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
@@ -681,6 +696,8 @@ func (c *BybitDataClient) parsePriceLevels(data []byte, key string) []common.Pri
 			}
 			elemIdx++
 		})
+		levels[idx].PriceTick = common.PriceToTick(levels[idx].Price, pricePrecision)
+		levels[idx].QuantityTick = common.QuantityToTick(levels[idx].Quantity, sizePrecision)
 		idx++
 	}, key)
 

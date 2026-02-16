@@ -190,7 +190,7 @@ func (m *MsgBus) Dispatch() bool {
 		processor, exists := m.cmdProcessors[cmd.Ref.CommandType]
 		if !exists {
 			log().Warn().
-				Int("cmdType", int(cmd.Ref.CommandType)).
+				Str("cmdType", cmd.Ref.CommandType.String()).
 				Uint64("commandID", cmd.CommandID).
 				Msg("MsgBus: no processor registered for command type")
 			continue
