@@ -49,6 +49,9 @@ type MsgBus struct {
 	rbCommand     *mem.SPSCRingBuffer[Command]
 	cmdArena      *mem.SimpleByteArena
 	cmdProcessors map[command.CommandType]CommandProcessor
+
+	// Optional binary logger for persisting commands to .dat files
+	msgLogger *MsgLogger
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -71,6 +74,13 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 		cmdArena:      mem.NewSimpleByteArena(DefaultCommandArenaCapacity),
 		cmdProcessors: make(map[command.CommandType]CommandProcessor),
 	}
+}
+
+// SetMsgLogger sets the binary message logger for persisting events and commands to disk.
+// It also forwards the logger to the EventBus for event logging.
+func (m *MsgBus) SetMsgLogger(l *MsgLogger) {
+	m.msgLogger = l
+	m.eventBus.SetMsgLogger(l)
 }
 
 // =============================================================================
@@ -187,6 +197,10 @@ func (m *MsgBus) Dispatch() bool {
 			break
 		}
 		hasWork = true
+		if m.msgLogger != nil {
+			payload := m.cmdArena.ReadSlice(cmd.Ref.Index, cmd.Ref.Length)
+			m.msgLogger.LogCommand(cmd, payload)
+		}
 		processor, exists := m.cmdProcessors[cmd.Ref.CommandType]
 		if !exists {
 			log().Warn().

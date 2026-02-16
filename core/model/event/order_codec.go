@@ -2,15 +2,12 @@ package event
 
 import "unsafe"
 
-// Size constants for order event types
+// Size constants for order event types (fixed-size structs only)
 const (
 	sizeOfOrderAccepted        = int(unsafe.Sizeof(OrderAccepted{}))
 	sizeOfOrderPartiallyFilled = int(unsafe.Sizeof(OrderPartiallyFilled{}))
 	sizeOfOrderFilled          = int(unsafe.Sizeof(OrderFilled{}))
 	sizeOfOrderCanceled        = int(unsafe.Sizeof(OrderCanceled{}))
-	sizeOfOrderRejected        = int(unsafe.Sizeof(OrderRejected{}))
-	sizeOfOrderUnknownStatus   = int(unsafe.Sizeof(OrderUnknownStatus{}))
-	sizeOfOrderError           = int(unsafe.Sizeof(OrderError{}))
 	sizeOfFill                 = int(unsafe.Sizeof(Fill{}))
 )
 
@@ -88,63 +85,6 @@ func (o OrderCanceled) Encode(buf []byte) error {
 
 func NewOrderCanceledFromBytes(buf []byte) OrderCanceled {
 	return *(*OrderCanceled)(unsafe.Pointer(&buf[0]))
-}
-
-// ============================================================================
-// OrderRejected
-// ============================================================================
-
-func (o OrderRejected) GetBufferLength() int { return sizeOfOrderRejected }
-
-func (o OrderRejected) Encode(buf []byte) error {
-	if len(buf) < sizeOfOrderRejected {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfOrderRejected]byte)(unsafe.Pointer(&o))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
-	return *(*OrderRejected)(unsafe.Pointer(&buf[0]))
-}
-
-// ============================================================================
-// OrderUnknownStatus
-// ============================================================================
-
-func (o OrderUnknownStatus) GetBufferLength() int { return sizeOfOrderUnknownStatus }
-
-func (o OrderUnknownStatus) Encode(buf []byte) error {
-	if len(buf) < sizeOfOrderUnknownStatus {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfOrderUnknownStatus]byte)(unsafe.Pointer(&o))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewOrderUnknownStatusFromBytes(buf []byte) OrderUnknownStatus {
-	return *(*OrderUnknownStatus)(unsafe.Pointer(&buf[0]))
-}
-
-// ============================================================================
-// OrderError
-// ============================================================================
-
-func (o OrderError) GetBufferLength() int { return sizeOfOrderError }
-
-func (o OrderError) Encode(buf []byte) error {
-	if len(buf) < sizeOfOrderError {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfOrderError]byte)(unsafe.Pointer(&o))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewOrderErrorFromBytes(buf []byte) OrderError {
-	return *(*OrderError)(unsafe.Pointer(&buf[0]))
 }
 
 // ============================================================================

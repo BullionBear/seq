@@ -11,6 +11,7 @@ type StrategyConfig struct {
 	Catalog   ConfigCatalog   `yaml:"catalog"`
 	Data      []ConfigDataSub `yaml:"data"`      // Data subscriptions (flat list, per-symbol)
 	Execution ConfigExecution `yaml:"execution"` // Execution accounts
+	MsgLog    ConfigMsgLog    `yaml:"msglog"`    // Binary event/command logging
 	Strategy  map[string]any  `yaml:"strategy"`
 }
 
@@ -56,6 +57,12 @@ type ConfigLogger struct {
 	Path           string `yaml:"path"`             // Required when output is "file"
 	MaxByteSize    int    `yaml:"max_byte_size"`    // Max size in bytes before rotation (0 = no rotation)
 	MaxBackupFiles int    `yaml:"max_backup_files"` // Max number of backup files to keep (0 = keep all)
+}
+
+// ConfigMsgLog contains binary event/command .dat file logging configuration
+type ConfigMsgLog struct {
+	Enabled bool   `yaml:"enabled"` // Enable binary event/command logging
+	Dir     string `yaml:"dir"`     // Directory for .dat files
 }
 
 // ConfigEMS contains EMS (Event Management System) configuration
