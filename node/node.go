@@ -59,8 +59,8 @@ func NewNode(cat *catalog.Catalog) *Node {
 	// Create engines
 	dataEngine := data.NewEngine(cat, bus, c)
 	riskEngine := risk.NewEngine(cat, bus, c)
-	portfolioEngine := portfolio.NewEngine(bus)
-	executionEngine := execution.NewEngine(executionRouter, bus)
+	portfolioEngine := portfolio.NewEngine(bus, c)
+	executionEngine := execution.NewEngine(executionRouter, bus, c)
 
 	return &Node{
 		msgBus:          bus,
@@ -150,7 +150,6 @@ func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
 	}
 
 	// Set configured accounts on execution engine and portfolio engine
-	n.executionEngine.SetAccounts(accountIDs)
 	n.portfolioEngine.SetAccounts(accountIDs)
 }
 

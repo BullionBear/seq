@@ -3,6 +3,7 @@ package common
 type Order struct {
 	AccountID     int
 	ClientOrderID int
+	OrderID       int
 	SymbolID      int
 	Side          Side
 	OrderType     OrderType

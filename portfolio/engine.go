@@ -3,12 +3,13 @@ package portfolio
 import (
 	"sync"
 
+	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
-	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/msgbus"
 	pactor "github.com/BullionBear/seq/portfolio/actor"
 	"github.com/rs/zerolog"
@@ -50,7 +51,7 @@ type Engine struct {
 }
 
 // NewEngine creates a new portfolio engine
-func NewEngine(msgBus *msgbus.MsgBus) *Engine {
+func NewEngine(msgBus *msgbus.MsgBus, cache *cache.Cache) *Engine {
 	e := &Engine{
 		EngineBase: engine.NewEngineBase(common.EnginePortfolio),
 		msgBus:     msgBus,
