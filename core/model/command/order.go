@@ -2,6 +2,20 @@ package command
 
 import "github.com/BullionBear/seq/core/model/common"
 
+type RiskCheck struct {
+	AccountID   int
+	SymbolID    int
+	Side        common.Side
+	OrderType   common.OrderType
+	TimeInForce common.TimeInForce
+	Price       float64
+	Quantity    float64
+}
+
+func (r RiskCheck) CommandType() CommandType {
+	return CommandTypeOrderRiskCheck
+}
+
 type SubmitOrder struct {
 	AccountID   int
 	SymbolID    int
