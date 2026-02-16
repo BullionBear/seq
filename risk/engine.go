@@ -44,7 +44,6 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 func (e *Engine) Init() {
 	log().Debug().Msg("RiskEngine initialized (stub)")
 	for _, cmdType := range e.handledCommandTypes() {
-		cmdType := cmdType
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
 	log().Debug().Msg("RiskEngine initialized")
