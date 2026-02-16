@@ -4,12 +4,32 @@ import "unsafe"
 
 // Size constants for order event types (fixed-size structs only)
 const (
+	sizeOfOrderNew             = int(unsafe.Sizeof(OrderNew{}))
 	sizeOfOrderAccepted        = int(unsafe.Sizeof(OrderAccepted{}))
 	sizeOfOrderPartiallyFilled = int(unsafe.Sizeof(OrderPartiallyFilled{}))
 	sizeOfOrderFilled          = int(unsafe.Sizeof(OrderFilled{}))
 	sizeOfOrderCanceled        = int(unsafe.Sizeof(OrderCanceled{}))
 	sizeOfFill                 = int(unsafe.Sizeof(Fill{}))
 )
+
+// ============================================================================
+// OrderNew
+// ============================================================================
+
+func (o OrderNew) GetBufferLength() int { return sizeOfOrderNew }
+
+func (o OrderNew) Encode(buf []byte) error {
+	if len(buf) < sizeOfOrderNew {
+		return ErrBufferTooSmall
+	}
+	data := (*[sizeOfOrderNew]byte)(unsafe.Pointer(&o))[:]
+	copy(buf, data)
+	return nil
+}
+
+func NewOrderNewFromBytes(buf []byte) OrderNew {
+	return *(*OrderNew)(unsafe.Pointer(&buf[0]))
+}
 
 // ============================================================================
 // OrderAccepted

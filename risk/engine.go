@@ -95,4 +95,9 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		Index:       offset,
 		Length:      size,
 	})
+	e.msgBus.Publish(msgbus.EventRef{
+		Topic:  event.TopicEventOrderNew,
+		Index:  offset,
+		Length: size,
+	})
 }

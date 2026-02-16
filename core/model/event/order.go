@@ -21,6 +21,16 @@ func (o OrderError) Topic() Topic {
 	return TopicEventOrderError
 }
 
+type OrderNew struct {
+	ClientOrderID int
+	OrderID       int
+	CreatedAt     uint64
+}
+
+func (o OrderNew) Topic() Topic {
+	return TopicEventOrderNew
+}
+
 type OrderAccepted struct {
 	ClientOrderID int
 	OrderID       int
