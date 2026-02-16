@@ -15,8 +15,8 @@ import (
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/node"
 	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/impl/obtest"
-	"github.com/BullionBear/seq/strategy/impl/xarb"
+	"github.com/BullionBear/seq/strategy/actor/obtest"
+	"github.com/BullionBear/seq/strategy/actor/xarb"
 )
 
 func main() {

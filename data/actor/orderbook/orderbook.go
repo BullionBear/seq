@@ -259,7 +259,7 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 		} else {
 			// Gap detected - reset
 			gap := update.PreviousDepthID - sb.depthID
-			log().Error().
+			log().Warn().
 				Int("symbolID", sb.symbolID).
 				Int("bookDepthID", sb.depthID).
 				Int("updatePrevDepthID", update.PreviousDepthID).
