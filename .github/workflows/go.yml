@@ -33,17 +33,17 @@ jobs:
       run: go test -benchmem -bench=. ./... 2>&1 | tee benchmark.txt || true
 
     - name: Run zero-allocation verification test
-      run: go test -v -run TestLogger_ZeroAllocation ./pkg/logger/
+      run: go test -v -run TestLogger_ZeroAllocation ./core/logger/
 
     - name: Run file allocation test
-      run: go test -v -run TestLogger_FileAllocation ./pkg/logger/
+      run: go test -v -run TestLogger_FileAllocation ./core/logger/
 
-    - name: Run escape analysis
-      run: |
-        echo "Running escape analysis..."
-        go build -gcflags="-m" ./... 2>&1 | tee escape-analysis.txt || true
-        echo "Escape analysis complete. Showing allocations to heap:"
-        grep -E "(escapes|moved to heap)" escape-analysis.txt || echo "No heap allocations detected (or using different output format)"
+    # - name: Run escape analysis
+    #   run: |
+    #     echo "Running escape analysis..."
+    #     go build -gcflags="-m" ./... 2>&1 | tee escape-analysis.txt || true
+    #     echo "Escape analysis complete. Showing allocations to heap:"
+    #     grep -E "(escapes|moved to heap)" escape-analysis.txt || echo "No heap allocations detected (or using different output format)"
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4

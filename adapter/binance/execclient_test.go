@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"math"
 	"os"
 	"reflect"
 	"testing"
@@ -439,6 +440,7 @@ func TestProcessExecutionReport(t *testing.T) {
 		"t": -1
 	}`)
 
+	client.SubscribeOrderUpdate()
 	client.processExecutionReport(eventData)
 
 	// Verify OrderAccepted event was published
@@ -497,6 +499,8 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		"t": 12345
 	}`)
 
+	client.SubscribeOrderUpdate()
+	client.SubscribeFill()
 	client.processExecutionReport(eventData)
 
 	// Should receive OrderPartiallyFilled first, then Fill
@@ -551,11 +555,11 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		t.Errorf("Expected FilledQty 0.5, got %f", fill.FilledQty)
 	}
 
-	if fill.FilledPrice != 0.10264410 {
+	if math.Abs(fill.FilledPrice-0.10264410) > 1e-10 {
 		t.Errorf("Expected FilledPrice 0.10264410, got %f", fill.FilledPrice)
 	}
 
-	if fill.FeeQty != 0.00001 {
+	if math.Abs(fill.FeeQty-0.00001) > 1e-10 {
 		t.Errorf("Expected FeeQty 0.00001, got %f", fill.FeeQty)
 	}
 }
@@ -566,6 +570,8 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 		msgBus:    eb,
 		accountID: 123,
 	}
+	client.SubscribeBalance()
+	client.SubscribeOrderUpdate()
 
 	tests := []struct {
 		name          string
