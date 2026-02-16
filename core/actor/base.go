@@ -37,7 +37,7 @@ func (a *ActorBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 }
 
 // OnInit is a no-op default lifecycle method.
-func (a *ActorBase) OnInit() {}
+func (a *ActorBase) OnInit(config map[string]any) {}
 
 // OnStart is a no-op default lifecycle method.
 func (a *ActorBase) OnStart() {}

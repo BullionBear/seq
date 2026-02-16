@@ -32,7 +32,7 @@ type Actor interface {
 
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.
-	OnInit()
+	OnInit(map[string]any)
 	// OnStart is called once when the actor is started.
 	OnStart()
 	// OnStop is called once when the actor is stopped.

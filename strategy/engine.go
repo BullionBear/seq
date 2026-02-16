@@ -32,16 +32,6 @@ func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache *cache.Cache) *Eng
 func (e *Engine) Init(config *StrategyConfig, msgBus *msgbus.MsgBus) {
 	e.config = config
 
-	// Create StrategyCommon which wraps the cache
-	common := NewStrategyCommon(e.cache, e.catalog)
-
-	// Inject StrategyCommon into the strategy actor if it supports SetCommon
-	if s, ok := e.strategyActor.(interface {
-		SetCommon(*StrategyCommon)
-	}); ok {
-		s.SetCommon(common)
-	}
-
 	// Inject config into the strategy actor if it supports SetConfig
 	if s, ok := e.strategyActor.(interface {
 		SetConfig(*StrategyConfig)
@@ -53,7 +43,7 @@ func (e *Engine) Init(config *StrategyConfig, msgBus *msgbus.MsgBus) {
 	actor.Register(msgBus, e.strategyActor)
 
 	// Call OnInit on the strategy actor
-	e.strategyActor.OnInit()
+	e.strategyActor.OnInit(config.Strategy)
 }
 
 // Start starts the strategy actor.

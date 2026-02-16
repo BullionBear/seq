@@ -418,7 +418,7 @@ func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
 }
 
 // OnInit is called once when the actor is initialized.
-func (a *Actor) OnInit() {
+func (a *Actor) OnInit(config map[string]any) {
 	log().Info().Msg("OrderBook Actor: initialized")
 }
 

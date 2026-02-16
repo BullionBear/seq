@@ -56,7 +56,7 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 }
 
-func (o *OMS) OnInit() {
+func (o *OMS) OnInit(config map[string]any) {
 	log().Info().Msg("OMS initialized")
 }
 

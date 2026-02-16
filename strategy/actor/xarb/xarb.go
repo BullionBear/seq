@@ -2,13 +2,14 @@ package xarb
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
-	"gopkg.in/yaml.v3"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
@@ -18,9 +19,9 @@ var _ actor.Actor = (*XArb)(nil)
 
 // XArb is a cross-exchange arbitrage strategy.
 type XArb struct {
-	*strategy.StrategyBase // Embed StrategyBase for Actor + StrategyCommon
-	quotingSymbol          cpanel.Symbol
-	hedgingSymbol          cpanel.Symbol
+	strategy.StrategyActorBase
+	quotingSymbol cpanel.Symbol
+	hedgingSymbol cpanel.Symbol
 
 	// Account IDs for trading
 	quotingAccount cpanel.Account
@@ -32,9 +33,23 @@ type XArb struct {
 }
 
 // NewXArb creates a new XArb strategy.
-func NewXArb() *XArb {
+func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus) *XArb {
 	return &XArb{
-		StrategyBase:  strategy.NewStrategyBase("xarb"),
+		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, msgbus, []event.Topic{
+			// Market data
+			event.TopicEventDepthSnapshot,
+			event.TopicEventDepthUpdate,
+			// Execution data
+			event.TopicEventPartialFill,
+			event.TopicEventFill,
+			// Reconciliation data
+			event.TopicEventOrderCanceled,
+			event.TopicEventOrderRejected,
+			event.TopicEventOrderError,
+			event.TopicEventOrderRiskInvalid,
+			event.TopicEventOrderNew,
+			event.TopicEventOrderAccepted,
+		}),
 		quotingSymbol: cpanel.Symbol{},
 		hedgingSymbol: cpanel.Symbol{},
 
@@ -47,23 +62,21 @@ func NewXArb() *XArb {
 }
 
 // OnInit initializes the strategy with configuration.
-func (x *XArb) OnInit() {
+func (x *XArb) OnInit(config map[string]any) {
 	// Get strategy-specific config from StrategyBase
-	strategyConfig := x.StrategyConfig()
-	if strategyConfig == nil {
-		log().Error().Msg("strategy config is nil")
+	var xarbConfig XArbConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:  &xarbConfig,
+		TagName: "yaml", // Use yaml tags for mapping
+	})
+	if err != nil {
+		log().Panic().Msg("failed to create decoder")
 		return
 	}
 
-	// Convert map[string]any to XArbConfig struct via YAML re-marshaling
-	var xarbConfig XArbConfig
-	yamlData, err := yaml.Marshal(strategyConfig)
+	err = decoder.Decode(config)
 	if err != nil {
-		log().Error().Err(err).Msg("failed to marshal strategy config")
-		return
-	}
-	if err := yaml.Unmarshal(yamlData, &xarbConfig); err != nil {
-		log().Error().Err(err).Msg("failed to unmarshal strategy config")
+		log().Panic().Msg("failed to decode config")
 		return
 	}
 
@@ -121,53 +134,48 @@ func (x *XArb) OnStop() {
 // This is necessary because Go doesn't have virtual method dispatch.
 func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
-	case event.TopicEventDepthSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewDepthSnapshotFromBytes(buf)
-		x.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := event.NewDepthUpdateFromBytes(buf)
 		x.OnDepthUpdate(update)
-	case event.TopicEventTick:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := event.NewTickFromBytes(buf)
-		x.OnTick(tick)
 	case event.TopicEventFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := event.NewFillFromBytes(buf)
 		x.OnFill(fill)
-	case event.TopicEventRespDepthSnapshot:
+	case event.TopicEventPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewRespDepthSnapshotFromBytes(buf)
-		x.OnRespDepthSnapshot(snapshot)
+		partialFill := event.NewOrderPartiallyFilledFromBytes(buf)
+		x.OnPartialFill(partialFill)
+	case event.TopicEventOrderCanceled:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderCanceled := event.NewOrderCanceledFromBytes(buf)
+		x.OnOrderCanceled(orderCanceled)
+	case event.TopicEventOrderRejected:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderRejected := event.NewOrderRejectedFromBytes(buf)
+		x.OnOrderRejected(orderRejected)
+	case event.TopicEventOrderError:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderError := event.NewOrderErrorFromBytes(buf)
+		x.OnOrderError(orderError)
+	case event.TopicEventOrderRiskInvalid:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderRiskInvalid := event.NewOrderRiskInvalidFromBytes(buf)
+		x.OnOrderRiskInvalid(orderRiskInvalid)
+	case event.TopicEventOrderNew:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderNew := event.NewOrderNewFromBytes(buf)
+		x.OnOrderNew(orderNew)
+	case event.TopicEventOrderAccepted:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderAccepted := event.NewOrderAcceptedFromBytes(buf)
+		x.OnOrderAccepted(orderAccepted)
 	}
 }
 
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	symbolID := update.SymbolID
-
-	bookReady := x.IsSymbolReady(symbolID)
-	if !bookReady {
-		log().Warn().Int("symbolID", symbolID).Msg("Orderbook not ready")
-		return
-	}
-	switch symbolID {
-	case x.quotingSymbol.ID:
-		x.quotingCount++
-	case x.hedgingSymbol.ID:
-		x.hedgingCount++
-	}
-	log().Info().Int("quotingCount", x.quotingCount).Int("hedgingCount", x.hedgingCount).Msg("Depth update received")
-
-	if symbolID == x.quotingSymbol.ID && x.quotingCount%10 == 0 {
-		x.printTop5(x.quotingSymbol.ID)
-	}
-	if symbolID == x.hedgingSymbol.ID && x.hedgingCount%10 == 0 {
-		x.printTop5(x.hedgingSymbol.ID)
-	}
 
 }
 
@@ -185,44 +193,16 @@ func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 // OnFill processes fill events.
 func (x *XArb) OnFill(fill event.Fill) {}
 
-// ============================================================================
-// Portfolio Access Methods
-// ============================================================================
+func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
 
-// printTop5 prints the top 5 bid and ask levels for a symbol.
-func (x *XArb) printTop5(symbolID int) {
-	bids, asks := x.GetDepth(symbolID, 5)
-	log().Info().Int("symbolID", symbolID).Int("bids", len(bids)).Int("asks", len(asks)).Msg("Top 5 levels")
-	for i := 0; i < len(bids); i++ {
-		log().Info().Int("symbolID", symbolID).Int("bidIndex", i).Float64("bidPrice", bids[i].Price).Float64("bidQty", bids[i].Quantity).Msg("Bid")
-	}
-	for i := 0; i < len(asks); i++ {
-		log().Info().Int("symbolID", symbolID).Int("askIndex", i).Float64("askPrice", asks[i].Price).Float64("askQty", asks[i].Quantity).Msg("Ask")
-	}
-}
+func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
 
-// GetQuotingAccountID returns the account ID for quoting
-func (x *XArb) GetQuotingAccountID() int {
-	return x.quotingAccount.ID
-}
+func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {}
 
-// GetHedgingAccountID returns the account ID for hedging
-func (x *XArb) GetHedgingAccountID() int {
-	return x.hedgingAccount.ID
-}
+func (x *XArb) OnOrderError(orderError event.OrderError) {}
 
-// GetQuotingBalance returns the available balance for a token in the quoting account
-func (x *XArb) GetQuotingBalance(tokenID int) float64 {
-	if x.quotingAccount.ID == 0 {
-		return 0
-	}
-	return x.GetAvailable(x.quotingAccount.ID, tokenID)
-}
+func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {}
 
-// GetHedgingBalance returns the available balance for a token in the hedging account
-func (x *XArb) GetHedgingBalance(tokenID int) float64 {
-	if x.hedgingAccount.ID == 0 {
-		return 0
-	}
-	return x.GetAvailable(x.hedgingAccount.ID, tokenID)
-}
+func (x *XArb) OnOrderNew(orderNew event.OrderNew) {}
+
+func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {}

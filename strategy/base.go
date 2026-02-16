@@ -2,142 +2,81 @@ package strategy
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/model/command"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 )
 
-// Ensure StrategyBase implements the Actor interface
-var _ actor.Actor = (*StrategyBase)(nil)
+var _ actor.Actor = (*StrategyActorBase)(nil)
 
-// StrategyBase provides the foundation for trading strategies.
-// It implements the Actor interface and embeds StrategyCommon for
-// convenience methods (GetBestBid, GetOpenOrder, etc.).
-//
-// IMPORTANT: Go doesn't have virtual method dispatch, so strategies that embed
-// StrategyBase MUST override the Handle() method to dispatch events to their
-// own typed callbacks. See XArb for an example:
-//
-//	func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
-//	    switch ev.Ref.Topic {
-//	    case event.TopicEventDepthUpdate:
-//	        buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-//	        x.OnDepthUpdate(event.NewDepthUpdateFromBytes(buf))
-//	    // ... etc
-//	    }
-//	}
-type StrategyBase struct {
-	*StrategyCommon // Provides service methods: GetBestBid, GetOpenOrder, etc.
-	name            string
-	config          *StrategyConfig
+type StrategyActorBase struct {
+	actor.ActorBase
+	catalog        *catalog.Catalog
+	msgbus         *msgbus.MsgBus
+	strategyConfig *StrategyConfig
 }
 
-// NewStrategyBase creates a new StrategyBase with the given name.
-// StrategyCommon is injected later via SetCommon by the Engine.
-func NewStrategyBase(name string) *StrategyBase {
-	return &StrategyBase{
-		name: name,
+func NewStrategyActorBase(name string, catalog *catalog.Catalog, msgbus *msgbus.MsgBus, topics []event.Topic) StrategyActorBase {
+	return StrategyActorBase{
+		ActorBase: actor.NewActorBase(name, topics),
+		catalog:   catalog,
+		msgbus:    msgbus,
 	}
 }
 
-// SetCommon is called by the Engine to inject StrategyCommon.
-// This provides access to service methods like GetBestBid, GetOpenOrder, etc.
-func (s *StrategyBase) SetCommon(common *StrategyCommon) {
-	s.StrategyCommon = common
+func (s *StrategyActorBase) GetCatalog() *catalog.Catalog {
+	return s.catalog
 }
 
-// SetConfig is called by the Engine to inject the strategy configuration.
-// This is called before OnInit.
-func (s *StrategyBase) SetConfig(config *StrategyConfig) {
-	s.config = config
-}
-
-// Config returns the strategy configuration.
-func (s *StrategyBase) Config() *StrategyConfig {
-	return s.config
-}
-
-// StrategyConfig returns the strategy-specific configuration map.
-func (s *StrategyBase) StrategyConfig() map[string]any {
-	if s.config == nil {
-		return nil
+func (s *StrategyActorBase) SubmitOrder(clientOrderID int, accountID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) {
+	submitCmd := command.SubmitOrder{
+		ClientOrderID: clientOrderID,
+		AccountID:     accountID,
+		SymbolID:      symbolID,
+		Side:          side,
+		OrderType:     orderType,
+		TimeInForce:   timeInForce,
+		Price:         price,
+		Quantity:      quantity,
 	}
-	return s.config.Strategy
+	size := uint64(submitCmd.GetBufferLength())
+	offset, buf := s.msgbus.AllocateCmd(size)
+	submitCmd.Encode(buf)
+	s.msgbus.Send(msgbus.CommandRef{
+		CommandType: command.CommandTypeOrderSubmit,
+		Index:       offset,
+		Length:      size,
+	})
 }
 
-// ============================================================================
-// Actor Interface Implementation
-// ============================================================================
-
-// Name returns the strategy's unique identifier.
-func (s *StrategyBase) Name() string {
-	return s.name
-}
-
-// SubscribedTypes returns nil to receive all event types.
-// Strategies typically want to see all events for their trading logic.
-func (s *StrategyBase) SubscribedTypes() []event.Topic {
-	return nil // receive all types
-}
-
-// Handle processes an event by dispatching to typed callbacks.
-// Override the specific typed callbacks (OnDepthUpdate, OnTick, etc.)
-// in your strategy implementation.
-func (s *StrategyBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
-	switch ev.Ref.Topic {
-	case event.TopicEventDepthSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewDepthSnapshotFromBytes(buf)
-		s.OnDepthSnapshot(snapshot)
-	case event.TopicEventDepthUpdate:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewDepthUpdateFromBytes(buf)
-		s.OnDepthUpdate(update)
-	case event.TopicEventTick:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		tick := event.NewTickFromBytes(buf)
-		s.OnTick(tick)
-	case event.TopicEventFill:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := event.NewFillFromBytes(buf)
-		s.OnFill(fill)
-		// TODO: Add TopicEventBalanceUpdate when EventBus supports it
+func (s *StrategyActorBase) CancelOrder(clientOrderID int, accountID int) {
+	cancelCmd := command.CancelOrder{
+		AccountID:     accountID,
+		ClientOrderID: clientOrderID,
 	}
+	size := uint64(cancelCmd.GetBufferLength())
+	offset, buf := s.msgbus.AllocateCmd(size)
+	cancelCmd.Encode(buf)
+	s.msgbus.Send(msgbus.CommandRef{
+		CommandType: command.CommandTypeOrderCancel,
+		Index:       offset,
+		Length:      size,
+	})
 }
 
-// ============================================================================
-// Lifecycle Methods (override in your strategy)
-// ============================================================================
-
-// OnInit is called once when the strategy is initialized.
-// Override this to set up subscriptions and initial state.
-func (s *StrategyBase) OnInit() {}
-
-// OnStart is called once when the strategy is started.
-// Override this to connect to data sources.
-func (s *StrategyBase) OnStart() {}
-
-// OnStop is called once when the strategy is stopped.
-// Override this to clean up resources.
-func (s *StrategyBase) OnStop() {}
-
-// ============================================================================
-// Typed Event Callbacks (override in your strategy)
-// ============================================================================
-
-// OnDepthSnapshot is called when a depth snapshot is received.
-func (s *StrategyBase) OnDepthSnapshot(snapshot event.DepthSnapshot) {}
-
-// OnDepthUpdate is called when a depth update is received.
-func (s *StrategyBase) OnDepthUpdate(update event.DepthUpdate) {}
-
-// OnTick is called when a tick is received.
-func (s *StrategyBase) OnTick(tick event.Tick) {}
-
-// OnOrderUnknownStatus is called when an order unknown status is received.
-func (s *StrategyBase) OnOrderUnknownStatus(status event.OrderUnknownStatus) {}
-
-// OnFill is called when a fill is received.
-func (s *StrategyBase) OnFill(fill event.Fill) {}
-
-// OnBalanceUpdate is called when a balance update is received.
-func (s *StrategyBase) OnBalanceUpdate(update event.BalanceUpdate) {}
+func (s *StrategyActorBase) CancelAllOrders(accountID int, symbolID int) {
+	cancelAllCmd := command.CancelAll{
+		AccountID: accountID,
+		SymbolID:  symbolID,
+	}
+	size := uint64(cancelAllCmd.GetBufferLength())
+	offset, buf := s.msgbus.AllocateCmd(size)
+	cancelAllCmd.Encode(buf)
+	s.msgbus.Send(msgbus.CommandRef{
+		CommandType: command.CommandTypeCancelAll,
+		Index:       offset,
+		Length:      size,
+	})
+}
