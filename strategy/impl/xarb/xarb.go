@@ -149,24 +149,24 @@ func (x *XArb) OnDepthSnapshot(snapshot event.DepthSnapshot) {
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	symbolID := update.SymbolID
+	// symbolID := update.SymbolID
 
 	// Check orderbook state
-	bookState, exists := x.GetBookState(symbolID)
-	if !exists {
-		log().Warn().Int("symbolID", symbolID).Msg("Orderbook not registered")
-		return
-	}
+	// bookState, exists := x.GetBookState(symbolID)
+	// if !exists {
+	// 	log().Warn().Int("symbolID", symbolID).Msg("Orderbook not registered")
+	// 	return
+	// }
 
 	// If ready, print top 5 levels
-	if x.IsSymbolReady(symbolID) {
-		x.printTop5(symbolID)
-	} else {
-		log().Debug().
-			Int("symbolID", symbolID).
-			Str("state", bookState.String()).
-			Msg("Depth update received, orderbook not ready")
-	}
+	// if x.IsSymbolReady(symbolID) {
+	// 	x.printTop5(symbolID)
+	// } else {
+	// 	log().Debug().
+	// 		Int("symbolID", symbolID).
+	// 		Str("state", bookState.String()).
+	// 		Msg("Depth update received, orderbook not ready")
+	// }
 }
 
 // OnRespDepthSnapshot processes the response to a depth snapshot request.

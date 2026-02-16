@@ -56,9 +56,20 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 	}
 }
 
-// Init registers the engine's actors with the MsgBus.
+// handledCommandTypes returns the command types this engine processes.
+func (e *Engine) handledCommandTypes() []command.CommandType {
+	return []command.CommandType{
+		command.CommandTypeReqDepthSnapshot,
+	}
+}
+
+// Init registers the engine's actors and command processors with the MsgBus.
 func (e *Engine) Init() {
 	actor.Register(e.msgBus, e.orderBook)
+	for _, cmdType := range e.handledCommandTypes() {
+		cmdType := cmdType
+		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
+	}
 	log().Info().Msg("DataEngine initialized")
 }
 
@@ -76,13 +87,17 @@ func (e *Engine) Stop() {
 	e.NotifyStop()
 }
 
+// Execute routes commands to the appropriate handler.
 func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
-	bus.RegisterCommand(command.CommandTypeReqDepthSnapshot, e.execReqDepthSnapshot)
+	switch cmd.Ref.CommandType {
+	case command.CommandTypeReqDepthSnapshot:
+		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+		req := command.NewReqDepthSnapshotFromBytes(buf)
+		e.execReqDepthSnapshot(req)
+	}
 }
 
-func (e *Engine) execReqDepthSnapshot(cmd msgbus.Command) {
-	buf := e.msgBus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-	req := command.NewReqDepthSnapshotFromBytes(buf)
+func (e *Engine) execReqDepthSnapshot(req command.ReqDepthSnapshot) {
 	e.router.ReqDepthSnapshot(req.SymbolID)
 }
 

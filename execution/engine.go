@@ -65,15 +65,35 @@ func NewEngine(router *adapter.ExecutionRouter, msgBus *msgbus.MsgBus) *Engine {
 	return e
 }
 
-// Init registers the EMS actor and command handlers with the MsgBus.
+// handledCommandTypes returns the command types this engine processes.
+func (e *Engine) handledCommandTypes() []command.CommandType {
+	return []command.CommandType{
+		command.CommandTypeOrderSubmit,
+		command.CommandTypeOrderCancel,
+		command.CommandTypeCancelAll,
+	}
+}
+
+// Init registers the EMS actor and command processors with the MsgBus.
 func (e *Engine) Init() {
 	actor.Register(e.msgBus, e.ems)
-
-	// Register command handlers (point-to-point)
-	e.msgBus.RegisterCommand(command.CommandTypeOrderSubmit, e.handleOrderSubmitCmd)
-	e.msgBus.RegisterCommand(command.CommandTypeOrderCancel, e.handleOrderCancelCmd)
-	e.msgBus.RegisterCommand(command.CommandTypeCancelAll, e.handleCancelAllCmd)
+	for _, cmdType := range e.handledCommandTypes() {
+		cmdType := cmdType
+		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
+	}
 	log().Debug().Msg("ExecutionEngine initialized")
+}
+
+// Execute routes commands to the appropriate handler.
+func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
+	switch cmd.Ref.CommandType {
+	case command.CommandTypeOrderSubmit:
+		e.handleOrderSubmitCmd(cmd)
+	case command.CommandTypeOrderCancel:
+		e.handleOrderCancelCmd(cmd)
+	case command.CommandTypeCancelAll:
+		e.handleCancelAllCmd(cmd)
+	}
 }
 
 // Start starts the execution engine
