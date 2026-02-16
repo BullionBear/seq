@@ -35,12 +35,11 @@ type Node struct {
 	riskEngine      *risk.Engine
 	portfolioEngine *portfolio.Engine
 	executionEngine *execution.Engine
+	// Strategy
+	strategyEngine *strategy.Engine
 
 	// Execution router for managing execution clients
 	executionRouter *adapter.ExecutionRouter
-
-	// Strategy
-	strategyEngine *strategy.Engine
 
 	// Cache for strategy access
 	cache *cache.Cache

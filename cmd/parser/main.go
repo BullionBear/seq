@@ -182,6 +182,8 @@ func decodeCommandPayload(cmdType command.CommandType, buf []byte) any {
 		return nil
 	}
 	switch cmdType {
+	case command.CommandTypeOrderRiskCheck:
+		return command.NewRiskCheckFromBytes(buf)
 	case command.CommandTypeOrderSubmit:
 		return command.NewSubmitOrderFromBytes(buf)
 	case command.CommandTypeOrderCancel:
