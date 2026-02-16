@@ -58,7 +58,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 
 	// Create engines
 	dataEngine := data.NewEngine(cat, bus, c)
-	riskEngine := risk.NewEngine()
+	riskEngine := risk.NewEngine(cat, bus, c)
 	portfolioEngine := portfolio.NewEngine(bus)
 	executionEngine := execution.NewEngine(executionRouter, bus)
 

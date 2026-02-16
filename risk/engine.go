@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
@@ -22,30 +23,46 @@ type Engine struct {
 	engine.EngineBase
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
+	cache   *cache.Cache
 }
 
 // NewEngine creates a new risk engine.
-func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus) *Engine {
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	return &Engine{
 		EngineBase: engine.NewEngineBase(common.EngineRisk),
 		catalog:    cat,
 		msgBus:     msgBus,
+		cache:      c,
 	}
 }
 
 // Init initializes the risk engine.
 func (e *Engine) Init() {
 	log().Debug().Msg("RiskEngine initialized (stub)")
+	for _, cmdType := range e.handledCommandTypes() {
+		cmdType := cmdType
+		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
+	}
+	log().Debug().Msg("RiskEngine initialized")
 }
 
 // Start starts the risk engine.
 func (e *Engine) Start() {
 	log().Debug().Msg("RiskEngine started (stub)")
+	e.NotifyReady()
 }
 
 // Stop stops the risk engine.
 func (e *Engine) Stop() {
 	log().Debug().Msg("RiskEngine stopped (stub)")
+	e.NotifyStop()
+}
+
+// handledCommandTypes returns the command types this engine processes.
+func (e *Engine) handledCommandTypes() []command.CommandType {
+	return []command.CommandType{
+		command.CommandTypeOrderRiskCheck,
+	}
 }
 
 // Execute executes a command.
@@ -61,5 +78,21 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 
 func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 	log().Debug().Msg("RiskEngine executing order risk check (stub)")
-
+	submitOrder := command.SubmitOrder{
+		AccountID:   cmd.AccountID,
+		SymbolID:    cmd.SymbolID,
+		Side:        cmd.Side,
+		OrderType:   cmd.OrderType,
+		TimeInForce: cmd.TimeInForce,
+		Price:       cmd.Price,
+		Quantity:    cmd.Quantity,
+	}
+	size := uint64(submitOrder.GetBufferLength())
+	offset, buf := e.msgBus.AllocateCmd(size)
+	submitOrder.Encode(buf)
+	e.msgBus.Send(msgbus.CommandRef{
+		CommandType: command.CommandTypeOrderSubmit,
+		Index:       offset,
+		Length:      size,
+	})
 }
