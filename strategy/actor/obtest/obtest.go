@@ -2,6 +2,7 @@ package obtest
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
@@ -11,6 +12,12 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
 )
+
+func init() {
+	strategy.Register("obtest", func(cat *catalog.Catalog, bus *msgbus.MsgBus, _ *cache.Cache) actor.Actor {
+		return NewOBTest(cat, bus)
+	})
+}
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 

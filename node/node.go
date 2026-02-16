@@ -7,7 +7,6 @@ import (
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/adapter/binance"
 	"github.com/BullionBear/seq/adapter/bybit"
-	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
@@ -35,9 +34,7 @@ type Node struct {
 	riskEngine      *risk.Engine
 	portfolioEngine *portfolio.Engine
 	executionEngine *execution.Engine
-
-	// Strategy engines (one per strategy actor)
-	strategyEngines []*strategy.Engine
+	strategyEngine  *strategy.Engine
 
 	// Execution router for managing execution clients
 	executionRouter *adapter.ExecutionRouter
@@ -61,6 +58,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 	riskEngine := risk.NewEngine(cat, bus, c)
 	portfolioEngine := portfolio.NewEngine(bus, c)
 	executionEngine := execution.NewEngine(executionRouter, bus, c)
+	strategyEngine := strategy.NewEngine(cat, bus, c)
 
 	return &Node{
 		msgBus:          bus,
@@ -69,14 +67,14 @@ func NewNode(cat *catalog.Catalog) *Node {
 		riskEngine:      riskEngine,
 		portfolioEngine: portfolioEngine,
 		executionEngine: executionEngine,
+		strategyEngine:  strategyEngine,
 		executionRouter: executionRouter,
 		cache:           c,
 	}
 }
 
 // Init initializes the node and all engines.
-// strategyActors must correspond 1:1 with config.Engine.Strategy entries.
-func (n *Node) Init(config Config, strategyActors []actor.Actor) {
+func (n *Node) Init(config Config) {
 	// Create state notifier for engines to broadcast state events
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
@@ -110,17 +108,8 @@ func (n *Node) Init(config Config, strategyActors []actor.Actor) {
 	// Initialize risk engine
 	n.riskEngine.Init()
 
-	// Create and initialize strategy engines (one per strategy entry)
-	n.strategyEngines = make([]*strategy.Engine, 0, len(strategyActors))
-	for i, sa := range strategyActors {
-		eng := strategy.NewEngine(sa, n.catalog, n.cache)
-		var strategyConfig map[string]any
-		if i < len(config.Engine.Strategy) {
-			strategyConfig = config.Engine.Strategy[i].Config
-		}
-		eng.Init(strategyConfig, n.msgBus)
-		n.strategyEngines = append(n.strategyEngines, eng)
-	}
+	// Initialize strategy engine (constructs actors from config registry)
+	n.strategyEngine.Init(config.Engine.Strategy)
 
 	log().Info().Msg("Node initialized")
 }
@@ -250,10 +239,8 @@ func (n *Node) Start(ctx context.Context) {
 	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
-	// Start all strategy engines
-	for _, eng := range n.strategyEngines {
-		eng.Start()
-	}
+	// Start strategy engine (starts all strategy actors)
+	n.strategyEngine.Start()
 	log().Info().Msg("Node started")
 }
 
@@ -283,9 +270,7 @@ func (n *Node) Run(ctx context.Context) {
 
 // stop performs graceful shutdown of all engines.
 func (n *Node) stop() {
-	for _, eng := range n.strategyEngines {
-		eng.Stop()
-	}
+	n.strategyEngine.Stop()
 	n.dataEngine.Disconnect()
 	n.executionEngine.Disconnect()
 	log().Info().Msg("Node stopped")

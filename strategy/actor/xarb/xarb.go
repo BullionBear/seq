@@ -2,6 +2,7 @@ package xarb
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
@@ -12,6 +13,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func init() {
+	strategy.Register("xarb", func(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) actor.Actor {
+		return NewXArb(cat, bus, c)
+	})
+}
+
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure XArb implements the Actor interface
@@ -20,6 +27,7 @@ var _ actor.Actor = (*XArb)(nil)
 // XArb is a cross-exchange arbitrage strategy.
 type XArb struct {
 	strategy.StrategyActorBase
+	cache         *cache.Cache
 	quotingSymbol cpanel.Symbol
 	hedgingSymbol cpanel.Symbol
 
@@ -33,7 +41,7 @@ type XArb struct {
 }
 
 // NewXArb creates a new XArb strategy.
-func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus) *XArb {
+func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache) *XArb {
 	return &XArb{
 		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, msgbus, []event.Topic{
 			// Market data
@@ -50,6 +58,7 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus) *XArb {
 			event.TopicEventOrderNew,
 			event.TopicEventOrderAccepted,
 		}),
+		cache:         cache,
 		quotingSymbol: cpanel.Symbol{},
 		hedgingSymbol: cpanel.Symbol{},
 

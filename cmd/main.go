@@ -8,26 +8,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	coreconfig "github.com/BullionBear/seq/core/config"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/node"
-	"github.com/BullionBear/seq/strategy/actor/obtest"
-	"github.com/BullionBear/seq/strategy/actor/xarb"
-)
 
-// strategyFactory maps strategy type names to their constructors.
-var strategyFactory = map[string]func(*catalog.Catalog, *msgbus.MsgBus) actor.Actor{
-	"xarb": func(cat *catalog.Catalog, bus *msgbus.MsgBus) actor.Actor {
-		return xarb.NewXArb(cat, bus)
-	},
-	"obtest": func(cat *catalog.Catalog, bus *msgbus.MsgBus) actor.Actor {
-		return obtest.NewOBTest(cat, bus)
-	},
-}
+	// Register strategy actor factories via init().
+	_ "github.com/BullionBear/seq/strategy/actor/obtest"
+	_ "github.com/BullionBear/seq/strategy/actor/xarb"
+)
 
 func main() {
 	// Parse command-line flags
@@ -94,20 +85,8 @@ func main() {
 		log.Info().Str("dir", cfg.MsgBus.MsgLog.Dir).Msg("MsgLogger enabled")
 	}
 
-	// Build strategy actors from config entries
-	strategyActors := make([]actor.Actor, 0, len(cfg.Node.Engine.Strategy))
-	for _, entry := range cfg.Node.Engine.Strategy {
-		factory, ok := strategyFactory[entry.Type]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Error: Unknown strategy type '%s'. Available: xarb, obtest\n", entry.Type)
-			os.Exit(1)
-		}
-		sa := factory(catalogService, n.MsgBus())
-		strategyActors = append(strategyActors, sa)
-		log.Info().Str("type", entry.Type).Msg("Strategy actor created")
-	}
-
-	n.Init(cfg.Node, strategyActors)
+	// Initialize, start, and run the node
+	n.Init(cfg.Node)
 	n.Start(ctx)
 	go n.Run(ctx)
 
