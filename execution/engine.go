@@ -11,7 +11,6 @@ import (
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
-	"github.com/BullionBear/seq/execution/actor/oms"
 	"github.com/rs/zerolog"
 )
 
@@ -20,24 +19,23 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 var _ engine.Engine = (*Engine)(nil)
 
 // Engine manages order execution and maintains open order state.
-// It is NOT an actor — it owns an EMS actor that handles EventBus events.
+// It constructs actors from config via the factory registry.
 type Engine struct {
 	engine.EngineBase
 	router *adapter.ExecutionRouter
 	msgBus *msgbus.MsgBus
-	oms    *oms.OMS
 	cache  *cache.Cache
+	actors []actor.Actor
 }
 
 // NewEngine creates a new execution engine
 func NewEngine(router *adapter.ExecutionRouter, msgBus *msgbus.MsgBus, cache *cache.Cache) *Engine {
-	e := &Engine{
+	return &Engine{
 		EngineBase: engine.NewEngineBase(common.EngineExecution),
 		router:     router,
 		msgBus:     msgBus,
 		cache:      cache,
 	}
-	return e
 }
 
 // handledCommandTypes returns the command types this engine processes.
@@ -49,14 +47,28 @@ func (e *Engine) handledCommandTypes() []command.CommandType {
 	}
 }
 
-// Init registers the EMS actor and command processors with the MsgBus.
-func (e *Engine) Init() {
-	e.oms = oms.NewOMS(e.cache)
-	actor.Register(e.msgBus, e.oms)
+// Init constructs actors from config, registers them and command processors.
+func (e *Engine) Init(config Config) {
+	for _, entry := range config.Actor {
+		factory, err := lookupFactory(entry.Type)
+		if err != nil {
+			log().Error().Err(err).Str("type", entry.Type).Msg("ExecutionEngine: skipping unknown actor type")
+			continue
+		}
+
+		a := factory(e.msgBus, e.cache)
+		actor.Register(e.msgBus, a)
+		a.OnInit(entry.Config)
+		e.actors = append(e.actors, a)
+
+		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("ExecutionEngine: actor initialized")
+	}
+
 	for _, cmdType := range e.handledCommandTypes() {
 		cmdType := cmdType
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
+
 	log().Info().Msg("ExecutionEngine initialized")
 }
 
@@ -80,14 +92,18 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 
 // Start starts the execution engine
 func (e *Engine) Start() {
-	e.oms.OnStart()
+	for _, a := range e.actors {
+		a.OnStart()
+	}
 	log().Info().Msg("ExecutionEngine started")
 	e.NotifyReady()
 }
 
 // Stop stops the execution engine
 func (e *Engine) Stop() {
-	e.oms.OnStop()
+	for _, a := range e.actors {
+		a.OnStop()
+	}
 	log().Info().Msg("ExecutionEngine stopped")
 }
 

@@ -33,7 +33,7 @@ func NewEngine(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) *Engine
 // Init constructs strategy actors from config entries using the factory
 // registry, registers them with the MsgBus, and calls OnInit.
 func (e *Engine) Init(config Config) {
-	for _, entry := range config {
+	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
 		if err != nil {
 			log().Error().Err(err).Str("type", entry.Type).Msg("StrategyEngine: skipping unknown strategy type")

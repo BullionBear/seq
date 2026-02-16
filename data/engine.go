@@ -12,7 +12,6 @@ import (
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
-	"github.com/BullionBear/seq/data/actor/orderbook"
 	"github.com/rs/zerolog"
 )
 
@@ -29,15 +28,21 @@ type DataSubscription struct {
 	Trade    *adapter.TradeOptions // nil if no trade subscription
 }
 
+// SymbolRegistrar is an optional interface that data actors can implement
+// to receive symbol registration calls from the engine during Connect.
+type SymbolRegistrar interface {
+	RegisterSymbol(symbolID, pricePrecision, sizePrecision int)
+}
+
 // Engine manages market data processing including orderbook management.
-// It owns the OrderBook actor and registers it with the EventBus.
-// The engine itself is NOT an actor.
+// It constructs actors from config via the factory registry.
 type Engine struct {
 	engine.EngineBase
-	catalog   *catalog.Catalog
-	msgBus    *msgbus.MsgBus
-	orderBook *orderbook.Actor
-	router    *adapter.DataRouter
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
+	cache   *cache.Cache
+	router  *adapter.DataRouter
+	actors  []actor.Actor
 
 	// Data subscriptions from config
 	dataSubs []DataSubscription
@@ -50,7 +55,7 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 		EngineBase: engine.NewEngineBase(common.EngineData),
 		catalog:    cat,
 		msgBus:     msgBus,
-		orderBook:  orderbook.NewActor(c),
+		cache:      c,
 		router:     router,
 	}
 }
@@ -62,26 +67,50 @@ func (e *Engine) handledCommandTypes() []command.CommandType {
 	}
 }
 
-// Init registers the engine's actors and command processors with the MsgBus.
-func (e *Engine) Init() {
-	actor.Register(e.msgBus, e.orderBook)
+// Init constructs actors from config, registers them and command processors.
+func (e *Engine) Init(config Config) {
+	// Parse data subscriptions
+	e.parseSubscriptions(config)
+
+	// Construct actors from config entries
+	for _, entry := range config.Actor {
+		factory, err := lookupFactory(entry.Type)
+		if err != nil {
+			log().Error().Err(err).Str("type", entry.Type).Msg("DataEngine: skipping unknown actor type")
+			continue
+		}
+
+		a := factory(e.catalog, e.msgBus, e.cache)
+		actor.Register(e.msgBus, a)
+		a.OnInit(entry.Config)
+		e.actors = append(e.actors, a)
+
+		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("DataEngine: actor initialized")
+	}
+
+	// Register command processors
 	for _, cmdType := range e.handledCommandTypes() {
 		cmdType := cmdType
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
+
 	log().Info().Msg("DataEngine initialized")
 }
 
 func (e *Engine) Start() {
 	e.Connect(context.Background())
-	e.orderBook.OnStart()
+	for _, a := range e.actors {
+		a.OnStart()
+	}
 	log().Info().Msg("DataEngine started")
 	e.NotifyReady()
 }
 
 func (e *Engine) Stop() {
 	e.Disconnect()
-	e.orderBook.OnStop()
+	for _, a := range e.actors {
+		a.OnStop()
+	}
 	log().Info().Msg("DataEngine stopped")
 	e.NotifyStop()
 }
@@ -101,19 +130,17 @@ func (e *Engine) execReqDepthSnapshot(req command.ReqDepthSnapshot) {
 }
 
 // ============================================================================
-// Config-based Subscription Methods
+// Config Parsing
 // ============================================================================
 
-// SetDataConfig parses config and stores subscription requirements.
-// Call this before Connect() to configure what data to subscribe to.
-func (e *Engine) SetDataConfig(config Config) error {
+func (e *Engine) parseSubscriptions(config Config) {
 	e.dataSubs = make([]DataSubscription, 0, len(config.Subscriptions))
 
 	for _, cfg := range config.Subscriptions {
 		symbol, err := e.catalog.GetSymbolByUniversalTicker(cfg.Symbol)
 		if err != nil {
 			log().Error().Err(err).Str("symbol", cfg.Symbol).Msg("DataEngine: Failed to resolve symbol from config")
-			return err
+			continue
 		}
 
 		sub := DataSubscription{
@@ -121,7 +148,6 @@ func (e *Engine) SetDataConfig(config Config) error {
 			Endpoint: cfg.Endpoint,
 		}
 
-		// Parse depth options
 		if cfg.Depth != nil {
 			sub.Depth = &adapter.DepthOptions{
 				Type:     cfg.Depth.Type,
@@ -130,7 +156,6 @@ func (e *Engine) SetDataConfig(config Config) error {
 			}
 		}
 
-		// Parse trade options
 		if cfg.Trade != nil {
 			sub.Trade = &adapter.TradeOptions{
 				Type: cfg.Trade.Type,
@@ -145,39 +170,6 @@ func (e *Engine) SetDataConfig(config Config) error {
 			Bool("hasTrade", sub.Trade != nil).
 			Msg("DataEngine: Configured subscription")
 	}
-
-	return nil
-}
-
-// ============================================================================
-// Legacy Subscription Methods (for backward compatibility)
-// ============================================================================
-
-// SubscribeDepthUpdate subscribes to depth updates for a symbol.
-// Deprecated: Use SetDataConfig() instead.
-func (e *Engine) SubscribeDepthUpdate(symbolID int) {
-	// Get symbol from catalog to get price precision
-	symbol, err := e.catalog.GetSymbol(symbolID)
-	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("DataEngine: Failed to get symbol from catalog")
-		return
-	}
-
-	// Register symbol with orderbook actor
-	e.orderBook.RegisterSymbol(symbolID, symbol.PricePrecision, symbol.SizePrecision)
-
-	// Subscribe to depth updates via router with default options
-	if err := e.router.SubscribeDepthUpdate(symbolID, nil); err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("DataEngine: Failed to subscribe to depth update")
-	}
-}
-
-// SubscribeTick subscribes to tick updates for a symbol.
-// Deprecated: Use SetDataConfig() instead.
-func (e *Engine) SubscribeTick(symbolID int) {
-	if err := e.router.SubscribeTrade(symbolID, nil); err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("DataEngine: Failed to subscribe to tick")
-	}
 }
 
 // ============================================================================
@@ -186,27 +178,26 @@ func (e *Engine) SubscribeTick(symbolID int) {
 
 // Connect subscribes to all configured data streams and connects to data sources.
 func (e *Engine) Connect(ctx context.Context) {
-	// Subscribe to all configured data streams
 	for _, sub := range e.dataSubs {
-		// Get symbol for orderbook registration
 		symbol, err := e.catalog.GetSymbol(sub.SymbolID)
 		if err != nil {
 			log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to get symbol")
 			continue
 		}
 
-		// Subscribe to depth if configured
 		if sub.Depth != nil {
-			// Register symbol with orderbook actor
-			e.orderBook.RegisterSymbol(sub.SymbolID, symbol.PricePrecision, symbol.SizePrecision)
+			// Notify all actors that support symbol registration
+			for _, a := range e.actors {
+				if sr, ok := a.(SymbolRegistrar); ok {
+					sr.RegisterSymbol(sub.SymbolID, symbol.PricePrecision, symbol.SizePrecision)
+				}
+			}
 
-			// Subscribe via router with options
 			if err := e.router.SubscribeDepthUpdate(sub.SymbolID, sub.Depth); err != nil {
 				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to subscribe to depth")
 			}
 		}
 
-		// Subscribe to trade if configured
 		if sub.Trade != nil {
 			if err := e.router.SubscribeTrade(sub.SymbolID, sub.Trade); err != nil {
 				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to subscribe to trade")
@@ -214,7 +205,6 @@ func (e *Engine) Connect(ctx context.Context) {
 		}
 	}
 
-	// Connect router (which connects exchange clients)
 	if err := e.router.Connect(ctx); err != nil {
 		log().Error().Err(err).Msg("DataEngine: Failed to connect to data router")
 	}

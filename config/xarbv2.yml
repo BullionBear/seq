@@ -25,25 +25,41 @@ node:
         - symbol: BYBIT_SPOT_UNIUSDT
           depth:
             levels: 50
+    actor:
+      - type: orderbook
+        config:
+          symbol: BINANCE_SPOT_UNIUSDT
+      - type: orderbook
+        config:
+          symbol: BYBIT_SPOT_UNIUSDT
 
     execution:
-      accounts:
-        - id: 19
-          account: bybit_lynxapp
-        - id: 22
-          account: lynxapp_ed25519
+      actor:
+        - type: oms
+          config:
+            id: 19
+            account: bybit_lynxapp
+        - type: oms
+          config:
+            id: 22
+            account: lynxapp_ed25519
 
     portfolio:
-      accounts:
-        - id: 19
-          account: bybit_lynxapp
-        - id: 22
-          account: lynxapp_ed25519
+      actor:
+        - type: balance
+          config:
+            id: 19
+            account: bybit_lynxapp
+        - type: balance
+          config:
+            id: 22
+            account: lynxapp_ed25519
 
     strategy:
-      - type: xarb
-        config:
-          quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-          hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-          quoting_account: bybit_lynxapp
-          hedging_account: lynxapp_ed25519
+      actor:
+        - type: xarb
+          config:
+            quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            quoting_account: bybit_lynxapp
+            hedging_account: lynxapp_ed25519

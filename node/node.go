@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 
 	"github.com/BullionBear/seq/adapter"
@@ -24,7 +25,6 @@ import (
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Node orchestrates all engines and the event loop.
-// It owns the EventBus and provides a Cache for strategies to access data.
 type Node struct {
 	msgBus  *msgbus.MsgBus
 	catalog *catalog.Catalog
@@ -46,107 +46,79 @@ type Node struct {
 // NewNode creates a new Node with the given catalog.
 func NewNode(cat *catalog.Catalog) *Node {
 	bus := msgbus.NewMsgBus()
-
-	// Create execution router
 	executionRouter := adapter.NewExecutionRouter()
-
-	// Create cache (self-contained, no engine dependencies)
 	c := cache.NewCache()
-
-	// Create engines
-	dataEngine := data.NewEngine(cat, bus, c)
-	riskEngine := risk.NewEngine(cat, bus, c)
-	portfolioEngine := portfolio.NewEngine(bus, c)
-	executionEngine := execution.NewEngine(executionRouter, bus, c)
-	strategyEngine := strategy.NewEngine(cat, bus, c)
 
 	return &Node{
 		msgBus:          bus,
 		catalog:         cat,
-		dataEngine:      dataEngine,
-		riskEngine:      riskEngine,
-		portfolioEngine: portfolioEngine,
-		executionEngine: executionEngine,
-		strategyEngine:  strategyEngine,
+		dataEngine:      data.NewEngine(cat, bus, c),
+		riskEngine:      risk.NewEngine(cat, bus, c),
+		portfolioEngine: portfolio.NewEngine(bus),
+		executionEngine: execution.NewEngine(executionRouter, bus, c),
+		strategyEngine:  strategy.NewEngine(cat, bus, c),
 		executionRouter: executionRouter,
 		cache:           c,
 	}
 }
 
-// Init initializes the node and all engines.
+// Init initializes the node and all engines from config.
 func (n *Node) Init(config Config) {
-	// Create state notifier for engines to broadcast state events
 	notifier := msgbus.NewStateNotifier(n.msgBus)
-
-	// Initialize data engine (registers OrderBook actor)
-	n.dataEngine.Init()
 
 	// Configure portfolio engine with execution router and notifier
 	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
 	n.portfolioEngine.SetNotifier(notifier)
 
-	// Configure data engine with subscriptions from config
-	if len(config.Engine.Data.Subscriptions) > 0 {
-		if err := n.dataEngine.SetDataConfig(config.Engine.Data); err != nil {
-			log().Error().Err(err).Msg("Node: Failed to configure data subscriptions")
-		}
-	}
+	// Set up execution clients and collect account IDs for portfolio
+	accountIDs := n.setupExecutionClients(config.Engine.Execution)
+	n.portfolioEngine.SetAccounts(accountIDs)
 
-	// Configure execution clients from config
-	if len(config.Engine.Execution.Accounts) > 0 {
-		n.setupExecutionClients(config.Engine.Execution)
-	}
-
-	// Configure portfolio accounts from config
-	if len(config.Engine.Portfolio.Accounts) > 0 {
-		n.setupPortfolioAccounts(config.Engine.Portfolio)
-	}
-
-	// Initialize portfolio engine (subscribes to balance updates)
-	n.portfolioEngine.Init()
-
-	// Initialize risk engine
+	// Initialize all engines with their configs
+	n.dataEngine.Init(config.Engine.Data)
+	n.executionEngine.Init(config.Engine.Execution)
+	n.portfolioEngine.Init(config.Engine.Portfolio)
 	n.riskEngine.Init()
-
-	// Initialize strategy engine (constructs actors from config registry)
 	n.strategyEngine.Init(config.Engine.Strategy)
 
 	log().Info().Msg("Node initialized")
 }
 
-// setupExecutionClients creates and registers execution clients for configured accounts.
-func (n *Node) setupExecutionClients(execConfig execution.Config) {
-	accountIDs := make([]int, 0, len(execConfig.Accounts))
+// setupExecutionClients creates and registers execution clients from config.
+// Returns the list of resolved account IDs for portfolio tracking.
+func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
+	accountIDs := make([]int, 0)
 
-	for _, cfg := range execConfig.Accounts {
-		// Resolve account from catalog
+	for _, entry := range execConfig.Actor {
+		cfg := entry.Config
+		accountName, _ := cfg["account"].(string)
+		accountID := toInt(cfg["id"])
+
 		var account *cpanel.Account
-		if cfg.Account != "" {
-			account = n.catalog.GetAccountByName(cfg.Account)
-		} else if cfg.ID > 0 {
+		if accountName != "" {
+			account = n.catalog.GetAccountByName(accountName)
+		} else if accountID > 0 {
 			var err error
-			account, err = n.catalog.GetAccount(cfg.ID)
+			account, err = n.catalog.GetAccount(accountID)
 			if err != nil {
-				log().Error().Err(err).Int("id", cfg.ID).Msg("Node: Failed to get account by ID")
+				log().Error().Err(err).Int("id", accountID).Msg("Node: Failed to get account by ID")
 				continue
 			}
 		}
 
 		if account == nil {
-			log().Warn().Str("account", cfg.Account).Int("id", cfg.ID).Msg("Node: Account not found")
+			log().Warn().Str("account", accountName).Int("id", accountID).Msg("Node: Account not found")
 			continue
 		}
 
 		accountIDs = append(accountIDs, account.ID)
 
-		// Create execution client based on exchange
 		client, err := n.createExecutionClient(account)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
 		}
 
-		// Register client with router
 		n.executionRouter.RegisterClient(account.ID, client)
 		log().Info().
 			Str("account", account.Name).
@@ -155,58 +127,18 @@ func (n *Node) setupExecutionClients(execConfig execution.Config) {
 			Msg("Node: Registered execution client")
 	}
 
-	// Set configured accounts on portfolio engine
-	n.portfolioEngine.SetAccounts(accountIDs)
+	return accountIDs
 }
 
-// setupPortfolioAccounts resolves portfolio account configs and sets them on the portfolio engine.
-func (n *Node) setupPortfolioAccounts(portConfig portfolio.Config) {
-	accountIDs := make([]int, 0, len(portConfig.Accounts))
-
-	for _, cfg := range portConfig.Accounts {
-		var account *cpanel.Account
-		if cfg.Account != "" {
-			account = n.catalog.GetAccountByName(cfg.Account)
-		} else if cfg.ID > 0 {
-			var err error
-			account, err = n.catalog.GetAccount(cfg.ID)
-			if err != nil {
-				log().Error().Err(err).Int("id", cfg.ID).Msg("Node: Failed to get portfolio account by ID")
-				continue
-			}
-		}
-
-		if account == nil {
-			log().Warn().Str("account", cfg.Account).Int("id", cfg.ID).Msg("Node: Portfolio account not found")
-			continue
-		}
-
-		accountIDs = append(accountIDs, account.ID)
-	}
-
-	if len(accountIDs) > 0 {
-		n.portfolioEngine.SetAccounts(accountIDs)
-	}
-}
-
-// createExecutionClient creates an execution client for the given account based on exchange.
+// createExecutionClient creates an execution client for the given account.
 func (n *Node) createExecutionClient(account *cpanel.Account) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE":
-		client, err := binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID)
-		if err != nil {
-			return nil, err
-		}
-		return client, nil
+		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID)
 	case "BYBIT":
-		client, err := bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID)
-		if err != nil {
-			return nil, err
-		}
-		return client, nil
+		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID)
 	default:
-		log().Warn().Str("exchange", account.Exchange).Msg("Node: Unsupported exchange for execution")
-		return nil, nil
+		return nil, fmt.Errorf("unsupported exchange: %s", account.Exchange)
 	}
 }
 
@@ -222,24 +154,35 @@ func getExchangeID(exchange string) int {
 	}
 }
 
-// Start connects engines and starts the strategy.
-func (n *Node) Start(ctx context.Context) {
-	// Connect data engine (subscribes to configured streams and connects)
-	n.dataEngine.Connect(ctx)
-	log().Info().Msg("Node: DataEngine connected")
+// toInt converts an interface{} to int (handles float64 from YAML/JSON).
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
+}
 
-	// Connect execution engine
+// Start connects engines and starts all actors.
+func (n *Node) Start(ctx context.Context) {
+	n.dataEngine.Start()
+	log().Info().Msg("Node: DataEngine started")
+
 	if err := n.executionEngine.Connect(ctx); err != nil {
 		log().Error().Err(err).Msg("Node: Failed to connect execution engine")
 	} else {
 		log().Info().Msg("Node: ExecutionEngine connected")
 	}
+	n.executionEngine.Start()
 
-	// Start portfolio engine (requests balance snapshots, notifies ready when complete)
 	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
-	// Start strategy engine (starts all strategy actors)
 	n.strategyEngine.Start()
 	log().Info().Msg("Node started")
 }
@@ -254,7 +197,6 @@ func (n *Node) Run(ctx context.Context) {
 			default:
 				hasWork := n.msgBus.Dispatch()
 				if hasWork {
-					// Update minSequence and release arena memory
 					n.msgBus.Release()
 					n.msgBus.ReleaseArenas()
 				} else {
@@ -276,12 +218,12 @@ func (n *Node) stop() {
 	log().Info().Msg("Node stopped")
 }
 
-// MsgBus returns the node's MsgBus for external access.
+// MsgBus returns the node's MsgBus.
 func (n *Node) MsgBus() *msgbus.MsgBus {
 	return n.msgBus
 }
 
-// Cache returns the node's Cache for strategy access.
+// Cache returns the node's Cache.
 func (n *Node) Cache() *cache.Cache {
 	return n.cache
 }
@@ -291,7 +233,7 @@ func (n *Node) DataEngine() *data.Engine {
 	return n.dataEngine
 }
 
-// ExecutionRouter returns the execution router for registering execution clients.
+// ExecutionRouter returns the execution router.
 func (n *Node) ExecutionRouter() *adapter.ExecutionRouter {
 	return n.executionRouter
 }

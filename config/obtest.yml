@@ -21,14 +21,19 @@ node:
         - symbol: BYBIT_SPOT_BTCUSDT
           depth:
             levels: 50
+      actor:
+        - type: orderbook
+          config:
+            symbol: BYBIT_SPOT_BTCUSDT
 
     execution:
-      accounts: []
+      actor: []
 
     portfolio:
-      accounts: []
+      actor: []
 
     strategy:
-      - type: obtest
-        config:
-          symbol_universal_ticker: BYBIT_SPOT_BTCUSDT
+      actor:
+        - type: obtest
+          config:
+            symbol_universal_ticker: BYBIT_SPOT_BTCUSDT

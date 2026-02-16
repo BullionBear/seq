@@ -6,8 +6,16 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/execution"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
 )
+
+func init() {
+	execution.Register("oms", func(_ *msgbus.MsgBus, c *cache.Cache) actor.Actor {
+		return NewOMS(c)
+	})
+}
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
@@ -15,7 +23,9 @@ var _ actor.Actor = (*OMS)(nil)
 
 type OMS struct {
 	actor.ActorBase
-	cache *cache.Cache
+	cache     *cache.Cache
+	accountID int
+	account   string
 }
 
 func NewOMS(c *cache.Cache) *OMS {
@@ -57,7 +67,23 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 }
 
 func (o *OMS) OnInit(config map[string]any) {
-	log().Info().Msg("OMS initialized")
+	var cfg OMSConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:  &cfg,
+		TagName: "yaml",
+	})
+	if err != nil {
+		log().Error().Err(err).Msg("OMS: failed to create decoder")
+		return
+	}
+	if err := decoder.Decode(config); err != nil {
+		log().Error().Err(err).Msg("OMS: failed to decode config")
+		return
+	}
+
+	o.accountID = cfg.ID
+	o.account = cfg.Account
+	log().Info().Int("accountID", o.accountID).Str("account", o.account).Msg("OMS initialized")
 }
 
 func (o *OMS) OnStart() {

@@ -15,7 +15,10 @@ import (
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/node"
 
-	// Register strategy actor factories via init().
+	// Register actor factories via init().
+	_ "github.com/BullionBear/seq/data/actor/orderbook"
+	_ "github.com/BullionBear/seq/execution/actor/oms"
+	_ "github.com/BullionBear/seq/portfolio/actor/balance"
 	_ "github.com/BullionBear/seq/strategy/actor/obtest"
 	_ "github.com/BullionBear/seq/strategy/actor/xarb"
 )

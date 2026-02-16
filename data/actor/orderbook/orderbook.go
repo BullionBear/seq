@@ -5,15 +5,24 @@ import (
 
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/data"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/btree"
 )
+
+func init() {
+	data.Register("orderbook", func(cat *catalog.Catalog, _ *msgbus.MsgBus, c *cache.Cache) coreactor.Actor {
+		return NewActor(cat, c)
+	})
+}
 
 const (
 	// DefaultDepthUpdateBufferSize is the default capacity for depth update ring buffers
@@ -330,20 +339,22 @@ func (sb *SymbolBook) processBufferedUpdates(c *cache.Cache) {
 // writes state to Cache, and requests snapshots via MsgBus commands.
 type Actor struct {
 	coreactor.ActorBase
-	books map[int]*SymbolBook // symbolID -> SymbolBook
-	cache *cache.Cache
+	catalog *catalog.Catalog
+	books   map[int]*SymbolBook // symbolID -> SymbolBook
+	cache   *cache.Cache
 }
 
 // NewActor creates a new orderbook Actor.
-func NewActor(c *cache.Cache) *Actor {
+func NewActor(cat *catalog.Catalog, c *cache.Cache) *Actor {
 	return &Actor{
 		ActorBase: coreactor.NewActorBase("orderbook", []event.Topic{
 			event.TopicEventDepthSnapshot,
 			event.TopicEventRespDepthSnapshot,
 			event.TopicEventDepthUpdate,
 		}),
-		books: make(map[int]*SymbolBook),
-		cache: c,
+		catalog: cat,
+		books:   make(map[int]*SymbolBook),
+		cache:   c,
 	}
 }
 
@@ -417,9 +428,38 @@ func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
 	book.onDepthUpdate(update, a.cache, bus)
 }
 
-// OnInit is called once when the actor is initialized.
+// OnInit decodes the config and registers the symbol for this orderbook.
 func (a *Actor) OnInit(config map[string]any) {
-	log().Info().Msg("OrderBook Actor: initialized")
+	var cfg OrderbookConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:  &cfg,
+		TagName: "yaml",
+	})
+	if err != nil {
+		log().Error().Err(err).Msg("OrderBook Actor: failed to create decoder")
+		return
+	}
+	if err := decoder.Decode(config); err != nil {
+		log().Error().Err(err).Msg("OrderBook Actor: failed to decode config")
+		return
+	}
+
+	if cfg.Symbol == "" {
+		log().Warn().Msg("OrderBook Actor: no symbol configured")
+		return
+	}
+
+	symbol, err := a.catalog.GetSymbolByUniversalTicker(cfg.Symbol)
+	if err != nil {
+		log().Error().Err(err).Str("symbol", cfg.Symbol).Msg("OrderBook Actor: failed to resolve symbol")
+		return
+	}
+
+	a.RegisterSymbol(symbol.ID, symbol.PricePrecision, symbol.SizePrecision)
+	log().Info().
+		Str("ticker", symbol.UniversalTicker).
+		Int("symbolID", symbol.ID).
+		Msg("OrderBook Actor: initialized from config")
 }
 
 // OnStart is called once when the actor is started.
