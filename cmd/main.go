@@ -12,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/node"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/BullionBear/seq/strategy/impl/obtest"
@@ -91,6 +92,21 @@ func main() {
 
 	// Create and initialize the Node
 	n := node.NewNode(catalogService)
+
+	// Set up binary message logger if configured
+	var msgLogger *msgbus.MsgLogger
+	if cfg.MsgLog.Enabled && cfg.MsgLog.Dir != "" {
+		var err error
+		msgLogger, err = msgbus.NewMsgLogger(cfg.MsgLog.Dir)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to initialize message logger")
+			os.Exit(1)
+		}
+		defer msgLogger.Close()
+		n.MsgBus().SetMsgLogger(msgLogger)
+		log.Info().Str("dir", cfg.MsgLog.Dir).Msg("MsgLogger enabled")
+	}
+
 	n.Init(cfg, strategyImpl)
 	n.Start(ctx)
 	go n.Run(ctx)

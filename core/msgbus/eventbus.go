@@ -40,6 +40,9 @@ type EventBus struct {
 	// Multi-consumer support
 	consumers   []*Consumer
 	minSequence uint64 // minimum sequence across all consumers (for arena release)
+
+	// Optional binary logger for persisting events to .dat files
+	msgLogger *MsgLogger
 }
 
 // NewEventBus creates a new EventBus with default capacity.
@@ -64,6 +67,11 @@ func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
 	}
 }
 
+// SetMsgLogger sets the binary message logger for persisting events to disk.
+func (e *EventBus) SetMsgLogger(l *MsgLogger) {
+	e.msgLogger = l
+}
+
 // Register adds a consumer to the EventBus with optional topic filtering.
 // If topics is nil or empty, the consumer will receive all topics.
 // Consumers should be registered before calling Dispatch.
@@ -83,6 +91,11 @@ func (e *EventBus) Dispatch() bool {
 	ev, ok := e.rbEvent.Read()
 	if !ok {
 		return false
+	}
+
+	if e.msgLogger != nil {
+		payload := e.byteArena.ReadSlice(ev.Ref.Index, ev.Ref.Length)
+		e.msgLogger.LogEvent(ev, payload)
 	}
 
 	// Dispatch to all consumers whose topic filter matches
@@ -142,9 +155,12 @@ func (e *EventBus) Poll(handler EventHandler) bool {
 	if !ok {
 		return false
 	}
+	if e.msgLogger != nil {
+		payload := e.byteArena.ReadSlice(event.Ref.Index, event.Ref.Length)
+		e.msgLogger.LogEvent(event, payload)
+	}
 	handler(event)
 	event.UpdatedAt = uint64(time.Now().UnixNano())
-	// logging the event (TBD)
 	return true
 }
 
