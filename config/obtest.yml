@@ -5,23 +5,30 @@ logger:
   max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
   max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
 
-msglog:
-  enabled: true
-  dir: ./logs/
+msgbus:
+  msglog:
+    enabled: true
+    dir: ./logs/
 
 catalog:
   base_url: https://capi.lynxlinkage.com
   api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
-# Data subscriptions - flat list, per-symbol config
-data:
-  - symbol: BYBIT_SPOT_BTCUSDT
-    depth:
-      levels: 50
 
-# Execution accounts (empty for now)
-execution:
-  accounts: []
+node:
+  engine:
+    data:
+      subscriptions:
+        - symbol: BYBIT_SPOT_BTCUSDT
+          depth:
+            levels: 50
 
-# Strategy-specific config
-strategy:
-  symbol_universal_ticker: BYBIT_SPOT_BTCUSDT
+    execution:
+      accounts: []
+
+    portfolio:
+      accounts: []
+
+    strategy:
+      - type: obtest
+        config:
+          symbol_universal_ticker: BYBIT_SPOT_BTCUSDT

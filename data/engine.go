@@ -13,7 +13,6 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/data/actor/orderbook"
-	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
 )
 
@@ -107,10 +106,10 @@ func (e *Engine) execReqDepthSnapshot(req command.ReqDepthSnapshot) {
 
 // SetDataConfig parses config and stores subscription requirements.
 // Call this before Connect() to configure what data to subscribe to.
-func (e *Engine) SetDataConfig(config []strategy.ConfigDataSub) error {
-	e.dataSubs = make([]DataSubscription, 0, len(config))
+func (e *Engine) SetDataConfig(config Config) error {
+	e.dataSubs = make([]DataSubscription, 0, len(config.Subscriptions))
 
-	for _, cfg := range config {
+	for _, cfg := range config.Subscriptions {
 		symbol, err := e.catalog.GetSymbolByUniversalTicker(cfg.Symbol)
 		if err != nil {
 			log().Error().Err(err).Str("symbol", cfg.Symbol).Msg("DataEngine: Failed to resolve symbol from config")

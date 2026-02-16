@@ -14,7 +14,6 @@ type Engine struct {
 	strategyActor actor.Actor
 	catalog       *catalog.Catalog
 	cache         *cache.Cache
-	config        *StrategyConfig
 }
 
 // NewEngine creates a new Engine with the given strategy actor, catalog, and cache.
@@ -28,22 +27,13 @@ func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache *cache.Cache) *Eng
 }
 
 // Init initializes the engine and the strategy actor.
-// It creates StrategyCommon and injects it into the strategy.
-func (e *Engine) Init(config *StrategyConfig, msgBus *msgbus.MsgBus) {
-	e.config = config
-
-	// Inject config into the strategy actor if it supports SetConfig
-	if s, ok := e.strategyActor.(interface {
-		SetConfig(*StrategyConfig)
-	}); ok {
-		s.SetConfig(config)
-	}
-
+// strategyConfig is the strategy-specific configuration map from the YAML entry.
+func (e *Engine) Init(strategyConfig map[string]any, msgBus *msgbus.MsgBus) {
 	// Register the strategy actor with the MsgBus
 	actor.Register(msgBus, e.strategyActor)
 
-	// Call OnInit on the strategy actor
-	e.strategyActor.OnInit(config.Strategy)
+	// Call OnInit on the strategy actor with strategy-specific config
+	e.strategyActor.OnInit(strategyConfig)
 }
 
 // Start starts the strategy actor.

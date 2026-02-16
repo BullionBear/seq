@@ -13,9 +13,8 @@ var _ actor.Actor = (*StrategyActorBase)(nil)
 
 type StrategyActorBase struct {
 	actor.ActorBase
-	catalog        *catalog.Catalog
-	msgbus         *msgbus.MsgBus
-	strategyConfig *StrategyConfig
+	catalog *catalog.Catalog
+	msgbus  *msgbus.MsgBus
 }
 
 func NewStrategyActorBase(name string, catalog *catalog.Catalog, msgbus *msgbus.MsgBus, topics []event.Topic) StrategyActorBase {

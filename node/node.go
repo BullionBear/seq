@@ -35,8 +35,9 @@ type Node struct {
 	riskEngine      *risk.Engine
 	portfolioEngine *portfolio.Engine
 	executionEngine *execution.Engine
-	// Strategy
-	strategyEngine *strategy.Engine
+
+	// Strategy engines (one per strategy actor)
+	strategyEngines []*strategy.Engine
 
 	// Execution router for managing execution clients
 	executionRouter *adapter.ExecutionRouter
@@ -74,7 +75,8 @@ func NewNode(cat *catalog.Catalog) *Node {
 }
 
 // Init initializes the node and all engines.
-func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) {
+// strategyActors must correspond 1:1 with config.Engine.Strategy entries.
+func (n *Node) Init(config Config, strategyActors []actor.Actor) {
 	// Create state notifier for engines to broadcast state events
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
@@ -86,32 +88,48 @@ func (n *Node) Init(config *strategy.StrategyConfig, strategyActor actor.Actor) 
 	n.portfolioEngine.SetNotifier(notifier)
 
 	// Configure data engine with subscriptions from config
-	if len(config.Data) > 0 {
-		if err := n.dataEngine.SetDataConfig(config.Data); err != nil {
+	if len(config.Engine.Data.Subscriptions) > 0 {
+		if err := n.dataEngine.SetDataConfig(config.Engine.Data); err != nil {
 			log().Error().Err(err).Msg("Node: Failed to configure data subscriptions")
 		}
 	}
 
-	// Configure execution and portfolio with accounts from config
-	if len(config.Execution) > 0 {
-		n.setupExecutionClients(config.Execution)
+	// Configure execution clients from config
+	if len(config.Engine.Execution.Accounts) > 0 {
+		n.setupExecutionClients(config.Engine.Execution)
+	}
+
+	// Configure portfolio accounts from config
+	if len(config.Engine.Portfolio.Accounts) > 0 {
+		n.setupPortfolioAccounts(config.Engine.Portfolio)
 	}
 
 	// Initialize portfolio engine (subscribes to balance updates)
 	n.portfolioEngine.Init()
 
-	// Create strategy engine and initialize it
-	n.strategyEngine = strategy.NewEngine(strategyActor, n.catalog, n.cache)
-	n.strategyEngine.Init(config, n.msgBus)
+	// Initialize risk engine
+	n.riskEngine.Init()
+
+	// Create and initialize strategy engines (one per strategy entry)
+	n.strategyEngines = make([]*strategy.Engine, 0, len(strategyActors))
+	for i, sa := range strategyActors {
+		eng := strategy.NewEngine(sa, n.catalog, n.cache)
+		var strategyConfig map[string]any
+		if i < len(config.Engine.Strategy) {
+			strategyConfig = config.Engine.Strategy[i].Config
+		}
+		eng.Init(strategyConfig, n.msgBus)
+		n.strategyEngines = append(n.strategyEngines, eng)
+	}
 
 	log().Info().Msg("Node initialized")
 }
 
 // setupExecutionClients creates and registers execution clients for configured accounts.
-func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
-	accountIDs := make([]int, 0, len(execConfig))
+func (n *Node) setupExecutionClients(execConfig execution.Config) {
+	accountIDs := make([]int, 0, len(execConfig.Accounts))
 
-	for _, cfg := range execConfig {
+	for _, cfg := range execConfig.Accounts {
 		// Resolve account from catalog
 		var account *cpanel.Account
 		if cfg.Account != "" {
@@ -148,8 +166,38 @@ func (n *Node) setupExecutionClients(execConfig strategy.ConfigExecution) {
 			Msg("Node: Registered execution client")
 	}
 
-	// Set configured accounts on execution engine and portfolio engine
+	// Set configured accounts on portfolio engine
 	n.portfolioEngine.SetAccounts(accountIDs)
+}
+
+// setupPortfolioAccounts resolves portfolio account configs and sets them on the portfolio engine.
+func (n *Node) setupPortfolioAccounts(portConfig portfolio.Config) {
+	accountIDs := make([]int, 0, len(portConfig.Accounts))
+
+	for _, cfg := range portConfig.Accounts {
+		var account *cpanel.Account
+		if cfg.Account != "" {
+			account = n.catalog.GetAccountByName(cfg.Account)
+		} else if cfg.ID > 0 {
+			var err error
+			account, err = n.catalog.GetAccount(cfg.ID)
+			if err != nil {
+				log().Error().Err(err).Int("id", cfg.ID).Msg("Node: Failed to get portfolio account by ID")
+				continue
+			}
+		}
+
+		if account == nil {
+			log().Warn().Str("account", cfg.Account).Int("id", cfg.ID).Msg("Node: Portfolio account not found")
+			continue
+		}
+
+		accountIDs = append(accountIDs, account.ID)
+	}
+
+	if len(accountIDs) > 0 {
+		n.portfolioEngine.SetAccounts(accountIDs)
+	}
 }
 
 // createExecutionClient creates an execution client for the given account based on exchange.
@@ -202,8 +250,10 @@ func (n *Node) Start(ctx context.Context) {
 	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
-	// Start strategy (now just calls OnStart for business logic)
-	n.strategyEngine.Start()
+	// Start all strategy engines
+	for _, eng := range n.strategyEngines {
+		eng.Start()
+	}
 	log().Info().Msg("Node started")
 }
 
@@ -233,7 +283,9 @@ func (n *Node) Run(ctx context.Context) {
 
 // stop performs graceful shutdown of all engines.
 func (n *Node) stop() {
-	n.strategyEngine.Stop()
+	for _, eng := range n.strategyEngines {
+		eng.Stop()
+	}
 	n.dataEngine.Disconnect()
 	n.executionEngine.Disconnect()
 	log().Info().Msg("Node stopped")
