@@ -21,6 +21,16 @@ func (o OrderError) Topic() Topic {
 	return TopicEventOrderError
 }
 
+type OrderRiskInvalid struct {
+	ClientOrderID int
+	ErrorCode     int
+	Msg           string
+}
+
+func (o OrderRiskInvalid) Topic() Topic {
+	return TopicEventOrderRiskInvalid
+}
+
 type OrderNew struct {
 	ClientOrderID int
 	OrderID       int

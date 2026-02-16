@@ -144,3 +144,46 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 		Msg:           msg,
 	}
 }
+
+// ============================================================================
+// OrderRiskInvalid
+// Layout: [ClientOrderID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
+// ============================================================================
+
+const orderRiskInvalidFixedSize = 8 + 8 + 4 // 20 bytes
+
+func (o OrderRiskInvalid) GetBufferLength() int {
+	return orderRiskInvalidFixedSize + len(o.Msg)
+}
+
+func (o OrderRiskInvalid) Encode(buf []byte) error {
+	needed := o.GetBufferLength()
+	if len(buf) < needed {
+		return ErrBufferTooSmall
+	}
+	pos := 0
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ClientOrderID))
+	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ErrorCode))
+	pos += 8
+	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
+	pos += 4
+	copy(buf[pos:], o.Msg)
+	return nil
+}
+
+func NewOrderRiskInvalidFromBytes(buf []byte) OrderRiskInvalid {
+	pos := 0
+	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
+	errorCode := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
+	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
+	pos += 4
+	msg := string(buf[pos : pos+msgLen])
+	return OrderRiskInvalid{
+		ClientOrderID: clientOrderID,
+		ErrorCode:     errorCode,
+		Msg:           msg,
+	}
+}
