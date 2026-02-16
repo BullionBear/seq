@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/command"
@@ -19,12 +20,16 @@ func log() *zerolog.Logger { l := logger.Get(); return &l }
 type Engine struct {
 	// Future: risk limits, position tracking, margin calculations
 	engine.EngineBase
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
 }
 
 // NewEngine creates a new risk engine.
-func NewEngine() *Engine {
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus) *Engine {
 	return &Engine{
 		EngineBase: engine.NewEngineBase(common.EngineRisk),
+		catalog:    cat,
+		msgBus:     msgBus,
 	}
 }
 
@@ -49,7 +54,12 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	switch cmd.Ref.CommandType {
 	case command.CommandTypeOrderRiskCheck:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		orderCmd := command.NewOrderRiskCheckFromBytes(buf)
-		e.handleOrderRiskCheck(orderCmd)
+		orderCmd := command.NewRiskCheckFromBytes(buf)
+		e.execOrderRiskCheck(orderCmd)
 	}
+}
+
+func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
+	log().Debug().Msg("RiskEngine executing order risk check (stub)")
+
 }
