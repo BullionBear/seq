@@ -153,6 +153,8 @@ func decodeEventPayload(topic event.Topic, buf []byte) any {
 		return event.NewOrderUnknownStatusFromBytes(buf)
 	case event.TopicEventOrderError:
 		return event.NewOrderErrorFromBytes(buf)
+	case event.TopicEventOrderRiskInvalid:
+		return event.NewOrderRiskInvalidFromBytes(buf)
 	case event.TopicEventOrderAccepted:
 		return event.NewOrderAcceptedFromBytes(buf)
 	case event.TopicEventPartialFill:

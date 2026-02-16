@@ -20,6 +20,8 @@ const (
 	// Execution Data
 	TopicEventOrderUnknownStatus
 	TopicEventOrderError
+	TopicEventOrderRiskInvalid
+	TopicEventOrderNew
 	TopicEventOrderAccepted
 	TopicEventPartialFill
 	TopicEventFill
@@ -52,10 +54,14 @@ func (t Topic) String() string {
 		return "DepthUpdate"
 	case TopicEventTick:
 		return "Tick"
+	case TopicEventOrderRiskInvalid:
+		return "OrderRiskInvalid"
 	case TopicEventOrderUnknownStatus:
 		return "OrderUnknownStatus"
 	case TopicEventOrderError:
 		return "OrderError"
+	case TopicEventOrderNew:
+		return "OrderNew"
 	case TopicEventOrderAccepted:
 		return "OrderAccepted"
 	case TopicEventPartialFill:
