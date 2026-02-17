@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"net"
 	"strconv"
 	"time"
 	"unsafe"
@@ -37,6 +38,9 @@ func NewBybitHTTPClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) BybitHT
 		msgBus:  msgBus,
 		client: fasthttp.Client{
 			MaxConnsPerHost: 100,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial("tcp4", addr)
+			},
 		},
 		baseURL: BaseURL,
 	}

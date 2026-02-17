@@ -88,6 +88,9 @@ func (c *BybitPrivateStreamClient) Connect(ctx context.Context) error {
 		Addr:             WsPrivateURL,
 		ReadBufferSize:   wsExecReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
@@ -807,6 +810,9 @@ func (c *BybitOrderEntryClient) Connect(ctx context.Context) error {
 		Addr:             WsTradeURL,
 		ReadBufferSize:   wsExecReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
@@ -1228,9 +1234,13 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 			log().Info().Int("accountID", c.accountID).Msg("Order entry authenticated")
 		} else {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
+			apiKey := c.account.APIKey
 			log().Error().
 				Str("msg", retMsg).
 				Int64("retCode", retCode).
+				Int("accountID", c.accountID).
+				Str("accountName", c.account.Name).
+				Str("apiKey", apiKey).
 				Msg("Order entry authentication failed")
 		}
 	case "order.create", "order.cancel", "order.cancelAll":
@@ -1238,10 +1248,14 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 		retCode, _ := jsonparser.GetInt(data, "retCode")
 		if retCode != 0 {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
+			apiKey := c.account.APIKey
 			log().Error().
 				Str("op", op).
 				Int64("retCode", retCode).
 				Str("retMsg", retMsg).
+				Int("accountID", c.accountID).
+				Str("accountName", c.account.Name).
+				Str("apiKey", apiKey).
 				Msg("Order operation failed")
 		}
 	}

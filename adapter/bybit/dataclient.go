@@ -211,6 +211,9 @@ func (c *BybitDataClient) connectCategory(category Category, topics []string) er
 		Addr:             wsURL,
 		ReadBufferSize:   wsReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	// Create WebSocket client

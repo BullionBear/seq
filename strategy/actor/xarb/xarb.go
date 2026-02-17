@@ -1,11 +1,15 @@
 package xarb
 
 import (
+	"math"
+	"sync"
+
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
@@ -38,6 +42,8 @@ type XArb struct {
 	// Count
 	quotingCount int
 	hedgingCount int
+	// Once
+	once sync.Once
 }
 
 // NewXArb creates a new XArb strategy.
@@ -67,6 +73,7 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 
 		quotingCount: 0,
 		hedgingCount: 0,
+		once:         sync.Once{},
 	}
 }
 
@@ -185,7 +192,35 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-
+	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.hedgingSymbol.ID {
+		x.hedgingCount += 1
+	}
+	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.quotingSymbol.ID {
+		x.quotingCount += 1
+	}
+	if x.hedgingCount == 0 || x.quotingCount == 0 {
+		log().Info().Msg("XArb strategy is not ready")
+		return
+	}
+	if x.quotingCount%100 == 0 {
+		log().Info().Msgf("Quoting count: %d", x.quotingCount)
+		price, ok := x.cache.GetMidPrice(x.quotingSymbol.ID)
+		if !ok {
+			log().Error().Msg("failed to get mid price")
+			return
+		}
+		x.once.Do(func() {
+			buyPrice := price * 0.95
+			pricePrecision := x.quotingSymbol.PricePrecision
+			buyPrice = math.Ceil(buyPrice*math.Pow10(pricePrecision)) / math.Pow10(pricePrecision)
+			buyQty := 2.0
+			log().Info().Msgf("Submit order: %f@%f", buyPrice, buyQty)
+			x.SubmitOrder(x.quotingCount, x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
+		})
+	}
+	if x.hedgingCount%100 == 0 {
+		log().Info().Msgf("Hedging count: %d", x.hedgingCount)
+	}
 }
 
 // OnRespDepthSnapshot processes the response to a depth snapshot request.
@@ -206,7 +241,9 @@ func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
 
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
 
-func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {}
+func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
+	log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
+}
 
 func (x *XArb) OnOrderError(orderError event.OrderError) {}
 

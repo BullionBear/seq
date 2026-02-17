@@ -145,6 +145,9 @@ func (c *BinanceSpotExecutionClient) Connect(ctx context.Context) error {
 		Addr:             BaseWsAPIURL,
 		ReadBufferSize:   wsAPIReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
