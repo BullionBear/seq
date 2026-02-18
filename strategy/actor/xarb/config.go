@@ -10,4 +10,9 @@ type XArbConfig struct {
 	QuotingAccount string `yaml:"quoting_account,omitempty"`
 	// HedgingAccount is used for hedging trades
 	HedgingAccount string `yaml:"hedging_account,omitempty"`
+
+	// Algo parameters
+	Side      string  `yaml:"side"`
+	ProfitBps float64 `yaml:"profit_bps"`
+	Qty       float64 `yaml:"qty"`
 }

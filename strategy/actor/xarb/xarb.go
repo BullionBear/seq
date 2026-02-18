@@ -35,6 +35,11 @@ type XArb struct {
 	quotingAccount cpanel.Account
 	hedgingAccount cpanel.Account
 
+	// Algo parameters
+	Side      common.Side
+	ProfitBps float64
+	Qty       float64
+
 	// Count
 	quotingCount int
 	hedgingCount int
@@ -128,6 +133,18 @@ func (x *XArb) OnInit(config map[string]any) {
 			x.Log().Warn().Str("account", xarbConfig.HedgingAccount).Msg("hedging account not found")
 		}
 	}
+
+	// Apply algo parameters
+	switch xarbConfig.Side {
+	case "buy":
+		x.Side = common.SideBuy
+	case "sell":
+		x.Side = common.SideSell
+	default:
+		x.Log().Panic().Str("side", xarbConfig.Side).Msg("invalid side")
+	}
+	x.ProfitBps = xarbConfig.ProfitBps
+	x.Qty = xarbConfig.Qty
 }
 
 // OnStart is called when the strategy starts.
