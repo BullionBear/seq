@@ -446,7 +446,7 @@ func (c *BybitPrivateStreamClient) processOrderItem(data []byte) {
 
 	case "Rejected":
 		rejectReason, _ := jsonparser.GetString(data, "rejectReason")
-		c.publishOrderRejected(clientOrderID, orderID, rejectReason)
+		c.publishOrderRejected(clientOrderID, orderID, rejectReason, updatedAt)
 
 	default:
 		c.publishOrderUnknownStatus(clientOrderID, orderID, status)
@@ -684,13 +684,15 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 	})
 }
 
-// publishOrderRejected publishes an OrderRejected event
-func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID int, reason string) {
+// publishOrderRejected publishes an OrderRejected event.
+// updatedAt is the exchange timestamp when available; otherwise use received time (e.g. time.Now().UnixNano()).
+func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID int, reason string, updatedAt uint64) {
 	e := event.OrderRejected{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
 		ErrorCode:     0,
+		UpdatedAt:     updatedAt,
 		Msg:           reason,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1288,13 +1290,14 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 				Int("clientOrderID", clientOrderID).
 				Msg("Order operation failed")
 
-			// Publish OrderRejected event so strategy is notified
+			// Publish OrderRejected event so strategy is notified (no exchange timestamp; use received time)
 			if found && op == "order.create" {
 				ev := event.OrderRejected{
 					ClientOrderID: clientOrderID,
 					OrderID:       -1,
 					AccountID:     c.accountID,
 					ErrorCode:     int(retCode),
+					UpdatedAt:     uint64(time.Now().UnixNano()),
 					Msg:           retMsg,
 				}
 				offset, buf := c.msgBus.Allocate(uint64(ev.GetBufferLength()))

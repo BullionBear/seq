@@ -109,10 +109,10 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 
 // ============================================================================
 // OrderRejected
-// Layout: [ClientOrderID(8)][OrderID(8)][AccountID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
+// Layout: [ClientOrderID(8)][OrderID(8)][AccountID(8)][ErrorCode(8)][UpdatedAt(8)][MsgLen(4)][Msg(...)]
 // ============================================================================
 
-const orderRejectedFixedSize = 8 + 8 + 8 + 8 + 4 // 36 bytes
+const orderRejectedFixedSize = 8 + 8 + 8 + 8 + 8 + 4 // 44 bytes
 
 func (o OrderRejected) GetBufferLength() int {
 	return orderRejectedFixedSize + len(o.Msg)
@@ -132,6 +132,8 @@ func (o OrderRejected) Encode(buf []byte) error {
 	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ErrorCode))
 	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], o.UpdatedAt)
+	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
 	pos += 4
 	copy(buf[pos:], o.Msg)
@@ -148,6 +150,8 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 	pos += 8
 	errorCode := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	updatedAt := binary.LittleEndian.Uint64(buf[pos:])
+	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
 	msg := string(buf[pos : pos+msgLen])
@@ -156,6 +160,7 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 		OrderID:       orderID,
 		AccountID:     accountID,
 		ErrorCode:     errorCode,
+		UpdatedAt:     updatedAt,
 		Msg:           msg,
 	}
 }

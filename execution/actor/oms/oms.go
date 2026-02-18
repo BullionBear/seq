@@ -32,7 +32,6 @@ func NewOMS(c *cache.Cache) *OMS {
 			event.TopicEventOrderAccepted,
 			event.TopicEventOrderPartialFill,
 			event.TopicEventOrderFilled,
-			event.TopicEventExecution,
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
 		}),
@@ -58,10 +57,6 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderFilled := event.NewOrderFilledFromBytes(buf)
 		o.OnOrderFilled(orderFilled)
-	case event.TopicEventExecution:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		execution := event.NewExecutionFromBytes(buf)
-		o.OnExecution(execution)
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderCanceled := event.NewOrderCanceledFromBytes(buf)
@@ -135,36 +130,50 @@ func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
 }
 
 func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
-	order := o.cache.GetOrder(ev.ClientOrderID)
-	if order == nil {
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
 		return
 	}
 	order.ExecutedQty += ev.ExecutedQty
 	order.UpdatedAt = ev.UpdatedAt
-	o.cache.UpdateOrder(order)
+	o.cache.UpdateOrder(&order)
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Float64("executedQty", ev.ExecutedQty).Msg("Order partially filled")
 }
 
 func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
-	order := o.cache.GetOrder(ev.ClientOrderID)
-	if order == nil {
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
 		return
 	}
 	order.ExecutedQty += ev.ExecutedQty
 	order.UpdatedAt = ev.UpdatedAt
 	order.OrderStatus = common.OrderStatusFilled
-	o.cache.UpdateOrder(order)
+	o.cache.UpdateOrder(&order)
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Float64("executedQty", ev.ExecutedQty).Msg("Order filled")
 }
 
-func (o *OMS) OnExecution(ev event.Execution) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Execution")
-}
-
 func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
+		return
+	}
+	order.OrderStatus = common.OrderStatusCanceled
+	order.UpdatedAt = ev.UpdatedAt
+	o.cache.UpdateOrder(&order)
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order canceled")
 }
 
 func (o *OMS) OnOrderRejected(ev event.OrderRejected) {
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
+		return
+	}
+	order.OrderStatus = common.OrderStatusRejected
+	order.UpdatedAt = ev.UpdatedAt
+	o.cache.UpdateOrder(&order)
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order rejected")
 }

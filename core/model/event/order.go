@@ -106,6 +106,7 @@ type OrderRejected struct {
 	OrderID       int
 	AccountID     int
 	ErrorCode     int
+	UpdatedAt     uint64
 	Msg           string
 }
 
