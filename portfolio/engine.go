@@ -314,6 +314,7 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 func (e *Engine) OnExecution(ev event.Execution) {
 	log().Debug().
 		Int("clientOrderID", ev.ClientOrderID).
+		Int("accountID", ev.AccountID).
 		Int("fillID", ev.FillID).
 		Float64("qty", ev.FilledQty).
 		Float64("price", ev.FilledPrice).

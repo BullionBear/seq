@@ -994,6 +994,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		FillID:        int(tradeID),
 		FilledQty:     lastQty,
 		FilledPrice:   lastPrice,
@@ -1024,6 +1025,7 @@ func (c *BinanceSpotExecutionClient) publishOrderAccepted(clientOrderID, orderID
 	e := event.OrderAccepted{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		CreatedAt:     createdAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1041,6 +1043,7 @@ func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, 
 	e := event.OrderPartiallyFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -1059,6 +1062,7 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 	e := event.OrderFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -1077,6 +1081,7 @@ func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID
 	e := event.OrderCanceled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1094,6 +1099,7 @@ func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID
 	e := event.OrderRejected{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ErrorCode:     0,
 		Msg:           reason,
 	}
@@ -1112,6 +1118,7 @@ func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, or
 	e := event.OrderUnknownStatus{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		Msg:           status,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1193,6 +1200,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		fill := event.Execution{
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
+			AccountID:     c.accountID,
 			FillID:        int(tradeID),
 			FilledQty:     parseFloat64([]byte(qtyStr)),
 			FilledPrice:   parseFloat64([]byte(priceStr)),

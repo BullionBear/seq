@@ -85,6 +85,7 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		log().Error().Err(err).Msg("RiskEngine: Order risk check failed")
 		ev := event.OrderRiskInvalid{
 			ClientOrderID: cmd.ClientOrderID,
+			AccountID:     cmd.AccountID,
 			ErrorCode:     -1,
 			Msg:           err.Error(),
 		}

@@ -504,6 +504,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		FillID:        fillID,
 		FilledQty:     execQty,
 		FilledPrice:   execPrice,
@@ -614,6 +615,7 @@ func (c *BybitPrivateStreamClient) publishOrderAccepted(clientOrderID, orderID i
 	e := event.OrderAccepted{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		CreatedAt:     createdAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -631,6 +633,7 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 	e := event.OrderPartiallyFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -649,6 +652,7 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 	e := event.OrderFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -667,6 +671,7 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 	e := event.OrderCanceled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -684,6 +689,7 @@ func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID i
 	e := event.OrderRejected{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ErrorCode:     0,
 		Msg:           reason,
 	}
@@ -702,6 +708,7 @@ func (c *BybitPrivateStreamClient) publishOrderUnknownStatus(clientOrderID, orde
 	e := event.OrderUnknownStatus{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		Msg:           status,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1286,6 +1293,7 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 				ev := event.OrderRejected{
 					ClientOrderID: clientOrderID,
 					OrderID:       -1,
+					AccountID:     c.accountID,
 					ErrorCode:     int(retCode),
 					Msg:           retMsg,
 				}

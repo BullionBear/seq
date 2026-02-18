@@ -190,6 +190,11 @@ func (c *Cache) SetBookState(symbolID int, state common.BookState) {
 // Open Order Read Methods
 // ============================================================================
 
+// InsertOrder by client order ID.
+func (c *Cache) InsertOrder(order *common.Order) {
+
+}
+
 // GetOpenOrder returns an open order by account ID and client order ID.
 func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) *common.Order {
 	acctOrders, ok := c.openOrders.Get(acctID)

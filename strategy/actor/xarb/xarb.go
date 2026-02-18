@@ -239,7 +239,7 @@ func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
 
 func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
-	x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
+	x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("accountID", orderRejected.AccountID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
 }
 
 func (x *XArb) OnOrderError(orderError event.OrderError) {}
@@ -251,5 +251,5 @@ func (x *XArb) OnOrderNew(orderNew event.OrderNew) {
 }
 
 func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
-	x.Log().Info().Int("clientOrderID", orderAccepted.ClientOrderID).Int("orderID", orderAccepted.OrderID).Uint64("createdAt", orderAccepted.CreatedAt).Msg("Order accepted")
+	x.Log().Info().Int("clientOrderID", orderAccepted.ClientOrderID).Int("orderID", orderAccepted.OrderID).Int("accountID", orderAccepted.AccountID).Uint64("createdAt", orderAccepted.CreatedAt).Msg("Order accepted")
 }
