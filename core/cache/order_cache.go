@@ -25,19 +25,13 @@ func (oc *OrderCache) InsertOrder(order *common.Order) {
 }
 
 func (oc *OrderCache) UpdateOrder(order *common.Order) {
-	prev, exists := oc.orders.Get(order.ClientOrderID)
+	prev, _ := oc.orders.Get(order.ClientOrderID)
 	oc.orders.Set(order.ClientOrderID, order)
 
-	wasOpen := exists && prev.OrderStatus.IsOpen()
-	isOpen := order.OrderStatus.IsOpen()
-
-	switch {
-	case !wasOpen && isOpen:
+	if !prev.OrderStatus.IsOpen() && order.OrderStatus.IsOpen() {
 		oc.addOpenOrder(order)
-	case wasOpen && !isOpen:
-		oc.removeOpenOrder(prev.AccountID, order.ClientOrderID)
-	case wasOpen && isOpen:
-		oc.addOpenOrder(order)
+	} else if prev.OrderStatus.IsOpen() && !order.OrderStatus.IsOpen() {
+		oc.removeOpenOrder(order.AccountID, order.ClientOrderID)
 	}
 }
 
@@ -52,12 +46,12 @@ func (oc *OrderCache) DeleteOrder(clientOrderID int) {
 	}
 }
 
-func (oc *OrderCache) GetOrder(clientOrderID int) *common.Order {
+func (oc *OrderCache) GetOrder(clientOrderID int) (common.Order, bool) {
 	order, ok := oc.orders.Get(clientOrderID)
 	if !ok {
-		return nil
+		return common.Order{}, false
 	}
-	return order
+	return *order, true
 }
 
 func (oc *OrderCache) GetOpenOrders(accountID int) []*common.Order {

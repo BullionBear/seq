@@ -3,6 +3,7 @@ package oms
 import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/execution"
@@ -112,18 +113,48 @@ func (o *OMS) OnOrderNew(ev event.OrderNew) {
 		Float64("price", ev.Price).
 		Float64("quantity", ev.Quantity).
 		Msg("Order new")
+	o.cache.InsertOrder(&common.Order{
+		ClientOrderID: ev.ClientOrderID,
+		OrderID:       ev.OrderID,
+		AccountID:     ev.AccountID,
+		SymbolID:      ev.SymbolID,
+		Side:          ev.Side,
+		OrderType:     ev.OrderType,
+		TimeInForce:   ev.TimeInForce,
+		OrderStatus:   common.OrderStatusInitialized,
+		Quantity:      ev.Quantity,
+		Price:         ev.Price,
+		ExecutedQty:   ev.ExecutedQty,
+		CreatedAt:     ev.CreatedAt,
+		UpdatedAt:     ev.UpdatedAt,
+	})
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order accepted")
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Msg("Order accepted")
 }
 
 func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order partially filled")
+	order := o.cache.GetOrder(ev.ClientOrderID)
+	if order == nil {
+		return
+	}
+	order.ExecutedQty += ev.ExecutedQty
+	order.UpdatedAt = ev.UpdatedAt
+	o.cache.UpdateOrder(order)
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Float64("executedQty", ev.ExecutedQty).Msg("Order partially filled")
 }
 
 func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order filled")
+	order := o.cache.GetOrder(ev.ClientOrderID)
+	if order == nil {
+		return
+	}
+	order.ExecutedQty += ev.ExecutedQty
+	order.UpdatedAt = ev.UpdatedAt
+	order.OrderStatus = common.OrderStatusFilled
+	o.cache.UpdateOrder(order)
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Float64("executedQty", ev.ExecutedQty).Msg("Order filled")
 }
 
 func (o *OMS) OnExecution(ev event.Execution) {

@@ -35,6 +35,10 @@ func (o OrderStatus) IsOpen() bool {
 	return o == OrderStatusAccepted || o == OrderStatusPartiallyFilled || o == OrderStatusInitialized
 }
 
+func (o OrderStatus) IsTerminal() bool {
+	return o == OrderStatusFilled || o == OrderStatusCanceled || o == OrderStatusRejected
+}
+
 type Side int
 
 const (

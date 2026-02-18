@@ -191,17 +191,17 @@ func (c *Cache) SetBookState(symbolID int, state common.BookState) {
 // ============================================================================
 
 // GetOrder returns an order by client order ID, or nil if not found.
-func (c *Cache) GetOrder(clientOrderID int) *common.Order {
+func (c *Cache) GetOrder(clientOrderID int) (common.Order, bool) {
 	return c.orderCache.GetOrder(clientOrderID)
 }
 
 // GetOpenOrder returns an open order by account ID and client order ID.
-func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) *common.Order {
-	order := c.orderCache.GetOrder(clientOrderID)
-	if order == nil || order.AccountID != acctID || !order.OrderStatus.IsOpen() {
-		return nil
+func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) (common.Order, bool) {
+	order, ok := c.orderCache.GetOrder(clientOrderID)
+	if !ok || order.AccountID != acctID || !order.OrderStatus.IsOpen() {
+		return common.Order{}, false
 	}
-	return order
+	return order, true
 }
 
 // GetOpenOrdersByAccount returns all open orders for an account.
