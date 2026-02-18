@@ -31,6 +31,7 @@ func NewOMS(c *cache.Cache) *OMS {
 			event.TopicEventOrderAccepted,
 			event.TopicEventOrderPartialFill,
 			event.TopicEventOrderFilled,
+			event.TopicEventExecution,
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
 		}),
