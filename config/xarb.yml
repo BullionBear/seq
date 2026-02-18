@@ -66,7 +66,7 @@ node:
         - type: xarb
           name: xarb-uni
           config:
-            quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-            quoting_account: bybit_lynxapp
-            hedging_account: lynxapp_ed25519
+            quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            quoting_account: lynxapp_ed25519
+            hedging_account: bybit_lynxapp

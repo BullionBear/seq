@@ -210,14 +210,29 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 	c.bufLock.Lock()
 	defer c.bufLock.Unlock()
 
-	// Build params for signing
+	// Build params for signing (sorted alphabetically per Binance spec)
 	c.msgBuffer.Reset()
+	timestamp := time.Now().UnixMilli()
 
-	// symbol
-	c.msgBuffer.WriteString("symbol=")
-	c.msgBuffer.WriteString(symbol.Name)
+	isLimitMaker := orderType == common.OrderTypeLimit && timeInForce == common.TimeInForcePO
 
-	// side
+	c.msgBuffer.WriteString("apiKey=")
+	c.msgBuffer.WriteString(c.account.APIKey)
+
+	c.msgBuffer.WriteString("&newClientOrderId=")
+	c.msgBuffer.WriteString(strconv.Itoa(clientOrderID))
+
+	if orderType == common.OrderTypeLimit {
+		c.msgBuffer.WriteString("&price=")
+		c.msgBuffer.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
+	}
+
+	c.msgBuffer.WriteString("&quantity=")
+	c.msgBuffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
+
+	c.msgBuffer.WriteString("&recvWindow=")
+	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
+
 	c.msgBuffer.WriteString("&side=")
 	switch side {
 	case common.SideBuy:
@@ -226,22 +241,9 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 		c.msgBuffer.WriteString("SELL")
 	}
 
-	// type
-	c.msgBuffer.WriteString("&type=")
-	isLimitMaker := false
-	switch orderType {
-	case common.OrderTypeLimit:
-		if timeInForce == common.TimeInForcePO {
-			c.msgBuffer.WriteString("LIMIT_MAKER")
-			isLimitMaker = true
-		} else {
-			c.msgBuffer.WriteString("LIMIT")
-		}
-	case common.OrderTypeMarket:
-		c.msgBuffer.WriteString("MARKET")
-	}
+	c.msgBuffer.WriteString("&symbol=")
+	c.msgBuffer.WriteString(symbol.Name)
 
-	// timeInForce
 	if orderType == common.OrderTypeLimit && !isLimitMaker {
 		c.msgBuffer.WriteString("&timeInForce=")
 		switch timeInForce {
@@ -254,34 +256,21 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 		}
 	}
 
-	// quantity
-	c.msgBuffer.WriteString("&quantity=")
-	c.msgBuffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
-
-	// price
-	if orderType == common.OrderTypeLimit {
-		c.msgBuffer.WriteString("&price=")
-		c.msgBuffer.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
-	}
-
-	// newClientOrderId
-	c.msgBuffer.WriteString("&newClientOrderId=")
-	c.msgBuffer.WriteString(strconv.Itoa(clientOrderID))
-
-	// timestamp
-	timestamp := time.Now().UnixMilli()
 	c.msgBuffer.WriteString("&timestamp=")
 	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 
-	// recvWindow
-	c.msgBuffer.WriteString("&recvWindow=")
-	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
+	c.msgBuffer.WriteString("&type=")
+	switch orderType {
+	case common.OrderTypeLimit:
+		if isLimitMaker {
+			c.msgBuffer.WriteString("LIMIT_MAKER")
+		} else {
+			c.msgBuffer.WriteString("LIMIT")
+		}
+	case common.OrderTypeMarket:
+		c.msgBuffer.WriteString("MARKET")
+	}
 
-	// apiKey (required for signature)
-	c.msgBuffer.WriteString("&apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
-
-	// Sign with Ed25519
 	signature := c.signEd25519(c.msgBuffer.Bytes())
 
 	// Build WebSocket request message
@@ -301,20 +290,20 @@ func (c *BinanceSpotExecutionClient) CancelOrder(symbolID int, orderID int) erro
 	c.bufLock.Lock()
 	defer c.bufLock.Unlock()
 
-	// Build params for signing
+	// Build params for signing (sorted alphabetically per Binance spec)
 	c.msgBuffer.Reset()
-	c.msgBuffer.WriteString("symbol=")
-	c.msgBuffer.WriteString(symbol.Name)
+	timestamp := time.Now().UnixMilli()
+
+	c.msgBuffer.WriteString("apiKey=")
+	c.msgBuffer.WriteString(c.account.APIKey)
 	c.msgBuffer.WriteString("&orderId=")
 	c.msgBuffer.WriteString(strconv.Itoa(orderID))
-
-	timestamp := time.Now().UnixMilli()
-	c.msgBuffer.WriteString("&timestamp=")
-	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 	c.msgBuffer.WriteString("&recvWindow=")
 	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
-	c.msgBuffer.WriteString("&apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString("&symbol=")
+	c.msgBuffer.WriteString(symbol.Name)
+	c.msgBuffer.WriteString("&timestamp=")
+	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 
 	signature := c.signEd25519(c.msgBuffer.Bytes())
 
@@ -334,18 +323,18 @@ func (c *BinanceSpotExecutionClient) CancelAllOrders(symbolID int) error {
 	c.bufLock.Lock()
 	defer c.bufLock.Unlock()
 
-	// Build params for signing
+	// Build params for signing (sorted alphabetically per Binance spec)
 	c.msgBuffer.Reset()
-	c.msgBuffer.WriteString("symbol=")
-	c.msgBuffer.WriteString(symbol.Name)
-
 	timestamp := time.Now().UnixMilli()
-	c.msgBuffer.WriteString("&timestamp=")
-	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
+
+	c.msgBuffer.WriteString("apiKey=")
+	c.msgBuffer.WriteString(c.account.APIKey)
 	c.msgBuffer.WriteString("&recvWindow=")
 	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
-	c.msgBuffer.WriteString("&apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString("&symbol=")
+	c.msgBuffer.WriteString(symbol.Name)
+	c.msgBuffer.WriteString("&timestamp=")
+	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 
 	signature := c.signEd25519(c.msgBuffer.Bytes())
 
@@ -1135,8 +1124,15 @@ func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, or
 	})
 }
 
-// processOrderResponse processes order-related responses from request/response pattern
+// processOrderResponse processes order-related responses from request/response pattern.
+// When the user data stream is active, order lifecycle events (accepted, filled, etc.)
+// and executions arrive via executionReport, so this method skips publishing them to
+// avoid duplication. It only publishes as a fallback when the stream is not subscribed.
 func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
+	if c.userDataStreamSubscribed.Load() {
+		return
+	}
+
 	// Parse order response fields
 	orderIDInt, err := jsonparser.GetInt(data, "orderId")
 	if err != nil {
@@ -1163,14 +1159,12 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 
 	case "PARTIALLY_FILLED":
 		c.publishOrderPartiallyFilled(clientOrderID, int(orderIDInt), executedQty, updatedAt)
-		// Check for fills in the response
 		if _, _, _, fillErr := jsonparser.Get(data, "fills"); fillErr == nil {
 			c.processFills(data, clientOrderID, int(orderIDInt))
 		}
 
 	case "FILLED":
 		c.publishOrderFilled(clientOrderID, int(orderIDInt), executedQty, updatedAt)
-		// Check for fills in the response
 		if _, _, _, fillErr := jsonparser.Get(data, "fills"); fillErr == nil {
 			c.processFills(data, clientOrderID, int(orderIDInt))
 		}
