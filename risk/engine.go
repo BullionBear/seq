@@ -99,11 +99,19 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		return
 	}
 
+	now := uint64(time.Now().UnixNano())
 	ev := event.OrderNew{
+		AccountID:     cmd.AccountID,
 		ClientOrderID: cmd.ClientOrderID,
 		OrderID:       -1,
-		AccountID:     cmd.AccountID,
-		CreatedAt:     uint64(time.Now().UnixNano()),
+		SymbolID:      cmd.SymbolID,
+		Side:          cmd.Side,
+		OrderType:     cmd.OrderType,
+		TimeInForce:   cmd.TimeInForce,
+		Quantity:      cmd.Quantity,
+		Price:         cmd.Price,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	offset, buf := e.msgBus.Allocate(uint64(ev.GetBufferLength()))
 	ev.Encode(buf)

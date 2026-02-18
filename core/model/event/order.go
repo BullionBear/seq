@@ -1,5 +1,7 @@
 package event
 
+import "github.com/BullionBear/seq/core/model/common"
+
 type OrderUnknownStatus struct {
 	ClientOrderID int
 	OrderID       int
@@ -35,10 +37,18 @@ func (o OrderRiskInvalid) Topic() Topic {
 }
 
 type OrderNew struct {
+	AccountID     int
 	ClientOrderID int
 	OrderID       int
-	AccountID     int
+	SymbolID      int
+	Side          common.Side
+	OrderType     common.OrderType
+	TimeInForce   common.TimeInForce
+	Quantity      float64
+	Price         float64
+	ExecutedQty   float64
 	CreatedAt     uint64
+	UpdatedAt     uint64
 }
 
 func (o OrderNew) Topic() Topic {

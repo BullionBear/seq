@@ -104,7 +104,14 @@ func (o *OMS) OnOrderNew(ev event.OrderNew) {
 	if ev.AccountID != o.accountID {
 		return
 	}
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order new")
+	o.Log().Info().
+		Int("clientOrderID", ev.ClientOrderID).
+		Int("orderID", ev.OrderID).
+		Int("accountID", ev.AccountID).
+		Int("symbolID", ev.SymbolID).
+		Float64("price", ev.Price).
+		Float64("quantity", ev.Quantity).
+		Msg("Order new")
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {

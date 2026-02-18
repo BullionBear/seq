@@ -3,7 +3,6 @@ package xarb
 import (
 	"math"
 	"sync"
-	"time"
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
@@ -212,7 +211,8 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			buyPrice = math.Ceil(buyPrice*math.Pow10(pricePrecision)) / math.Pow10(pricePrecision)
 			buyQty := 2.0
 			x.Log().Info().Msgf("Submit order: %f@%f", buyPrice, buyQty)
-			x.SubmitOrder(int(time.Now().UnixMilli()), x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForceGTC, buyPrice, buyQty)
+			clientOrderId := x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForceGTC, buyPrice, buyQty)
+			x.Log().Info().Int("clientOrderID", clientOrderId).Msg("Order submitted")
 		})
 	}
 	if x.hedgingCount%50 == 0 {
@@ -247,7 +247,15 @@ func (x *XArb) OnOrderError(orderError event.OrderError) {}
 func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {}
 
 func (x *XArb) OnOrderNew(orderNew event.OrderNew) {
-	x.Log().Info().Int("clientOrderID", orderNew.ClientOrderID).Int("orderID", orderNew.OrderID).Int("accountID", orderNew.AccountID).Uint64("createdAt", orderNew.CreatedAt).Msg("Order new")
+	x.Log().Info().
+		Int("clientOrderID", orderNew.ClientOrderID).
+		Int("orderID", orderNew.OrderID).
+		Int("accountID", orderNew.AccountID).
+		Int("symbolID", orderNew.SymbolID).
+		Float64("price", orderNew.Price).
+		Float64("quantity", orderNew.Quantity).
+		Uint64("createdAt", orderNew.CreatedAt).
+		Msg("Order new")
 }
 
 func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
