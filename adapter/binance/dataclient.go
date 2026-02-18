@@ -158,6 +158,9 @@ func (c *BinanceSpotDataClient) Connect(ctx context.Context) error {
 		Addr:             url,
 		ReadBufferSize:   wsReadBufferSize,
 		CheckUtf8Enabled: false, // Disable UTF-8 check for performance
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	// Create WebSocket client using gws.NewClient

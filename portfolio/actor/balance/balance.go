@@ -1,39 +1,38 @@
-package actor
+package balance
 
 import (
 	"sync"
 
-	coreactor "github.com/BullionBear/seq/core/actor"
-	"github.com/BullionBear/seq/core/logger"
-	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/adapter"
+	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
-	"github.com/rs/zerolog"
+	"github.com/BullionBear/seq/portfolio"
+	"github.com/mitchellh/mapstructure"
 )
 
-func log() *zerolog.Logger { l := logger.Get(); return &l }
-
-// BalanceEngineHandler is implemented by the portfolio engine.
-// It receives event callbacks and lifecycle notifications from BalanceActor.
-type BalanceEngineHandler interface {
-	OnBalanceUpdate(ev event.BalanceUpdate)
-	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
-	OnFill(ev event.Fill)
-	NotifyReady()
+func init() {
+	portfolio.Register("balance", func(handler portfolio.BalanceEngineHandler) actor.Actor {
+		return NewBalanceActor(handler)
+	})
 }
 
 // Ensure BalanceActor implements the Actor interface
-var _ coreactor.Actor = (*BalanceActor)(nil)
+var _ actor.Actor = (*BalanceActor)(nil)
 
 // BalanceActor is an actor owned by the portfolio Engine.
 // It subscribes to balance and fill events from the EventBus, routes them to
 // the engine's update methods, and notifies the engine when all initial
 // balance snapshots have been received.
 type BalanceActor struct {
-	coreactor.ActorBase
-	handler    BalanceEngineHandler
+	actor.ActorBase
+	handler    portfolio.BalanceEngineHandler
 	execRouter *adapter.ExecutionRouter
 	accountIDs []int
+
+	// Config-derived fields
+	accountID int
+	account   string
 
 	// Snapshot tracking
 	pending map[int]bool // accountID -> snapshot received
@@ -41,29 +40,49 @@ type BalanceActor struct {
 }
 
 // NewBalanceActor creates a new BalanceActor for the given engine handler.
-func NewBalanceActor(handler BalanceEngineHandler) *BalanceActor {
+func NewBalanceActor(handler portfolio.BalanceEngineHandler) *BalanceActor {
 	return &BalanceActor{
-		ActorBase: coreactor.NewActorBase("portfolio-balance", []event.Topic{
+		ActorBase: actor.NewActorBase("portfolio-balance", []event.Topic{
 			event.TopicEventBalanceUpdate,
 			event.TopicEventRespBalanceSnapshot,
-			event.TopicEventFill,
+			event.TopicEventExecution,
 		}),
 		handler: handler,
 	}
 }
 
 // Configure sets the execution router and account IDs.
-// Call this from the engine's Init() before registering with the EventBus.
+// Implements portfolio.BalanceConfigurer.
 func (b *BalanceActor) Configure(router *adapter.ExecutionRouter, accountIDs []int) {
 	b.execRouter = router
 	b.accountIDs = accountIDs
 }
 
+// OnInit decodes the config for this balance actor.
+func (b *BalanceActor) OnInit(config map[string]any) {
+	var cfg BalanceConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:  &cfg,
+		TagName: "yaml",
+	})
+	if err != nil {
+		b.Log().Error().Err(err).Msg("BalanceActor: failed to create decoder")
+		return
+	}
+	if err := decoder.Decode(config); err != nil {
+		b.Log().Error().Err(err).Msg("BalanceActor: failed to decode config")
+		return
+	}
+
+	b.accountID = cfg.ID
+	b.account = cfg.Account
+	b.Log().Info().Int("accountID", b.accountID).Str("account", b.account).Msg("BalanceActor: initialized from config")
+}
+
 // OnStart requests initial balance snapshots for all configured accounts.
-// Called by the engine's Start() to initiate the ready flow.
 func (b *BalanceActor) OnStart() {
 	if b.execRouter == nil || len(b.accountIDs) == 0 {
-		log().Info().Msg("BalanceActor: no router or accounts configured, notifying ready immediately")
+		b.Log().Info().Msg("BalanceActor: no router or accounts configured, notifying ready immediately")
 		b.handler.NotifyReady()
 		return
 	}
@@ -77,13 +96,13 @@ func (b *BalanceActor) OnStart() {
 
 	for _, id := range b.accountIDs {
 		if err := b.execRouter.ReqBalanceSnapshot(id); err != nil {
-			log().Error().Err(err).Int("accountID", id).Msg("BalanceActor: failed to request balance snapshot")
+			b.Log().Error().Err(err).Int("accountID", id).Msg("BalanceActor: failed to request balance snapshot")
 		} else {
-			log().Debug().Int("accountID", id).Msg("BalanceActor: requested balance snapshot")
+			b.Log().Debug().Int("accountID", id).Msg("BalanceActor: requested balance snapshot")
 		}
 	}
 
-	log().Info().Msg("BalanceActor: started, waiting for balance snapshots")
+	b.Log().Info().Msg("BalanceActor: started, waiting for balance snapshots")
 }
 
 // Handle routes events to the engine's update methods.
@@ -98,15 +117,13 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
-	case event.TopicEventFill:
+	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := event.NewFillFromBytes(buf)
-		b.handler.OnFill(fill)
+		exec := event.NewExecutionFromBytes(buf)
+		b.handler.OnExecution(exec)
 	}
 }
 
-// markSnapshotReceived marks the given account's snapshot as received.
-// Calls NotifyReady on the handler once all accounts have been snapshotted.
 func (b *BalanceActor) markSnapshotReceived(accountID int) {
 	b.mu.Lock()
 	if b.pending == nil {
@@ -118,13 +135,11 @@ func (b *BalanceActor) markSnapshotReceived(accountID int) {
 	b.mu.Unlock()
 
 	if allDone {
-		log().Info().Msg("BalanceActor: all balance snapshots received, notifying engine ready")
+		b.Log().Info().Msg("BalanceActor: all balance snapshots received, notifying engine ready")
 		b.handler.NotifyReady()
 	}
 }
 
-// checkAllDoneLocked returns true if all pending snapshots have been received.
-// Must be called with mu held.
 func (b *BalanceActor) checkAllDoneLocked() bool {
 	if len(b.pending) == 0 {
 		return false

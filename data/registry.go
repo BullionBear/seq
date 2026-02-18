@@ -1,4 +1,4 @@
-package strategy
+package data
 
 import (
 	"fmt"
@@ -10,12 +10,7 @@ import (
 	"github.com/BullionBear/seq/core/msgbus"
 )
 
-// Config contains strategy engine configuration.
-type Config struct {
-	Actor []actor.Entry `yaml:"actor"`
-}
-
-// Factory is a constructor function that creates a strategy actor.
+// Factory is a constructor function that creates a data actor.
 type Factory func(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) actor.Actor
 
 var (
@@ -23,24 +18,23 @@ var (
 	registry   = make(map[string]Factory)
 )
 
-// Register registers a strategy actor factory under the given type name.
-// Typically called from init() in each strategy actor package.
+// Register registers a data actor factory under the given type name.
+// Typically called from init() in each data actor package.
 func Register(typeName string, factory Factory) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, dup := registry[typeName]; dup {
-		panic(fmt.Sprintf("strategy: Register called twice for type %q", typeName))
+		panic(fmt.Sprintf("data: Register called twice for type %q", typeName))
 	}
 	registry[typeName] = factory
 }
 
-// lookupFactory returns the factory for the given type name.
 func lookupFactory(typeName string) (Factory, error) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 	f, ok := registry[typeName]
 	if !ok {
-		return nil, fmt.Errorf("strategy: unknown actor type %q", typeName)
+		return nil, fmt.Errorf("data: unknown actor type %q", typeName)
 	}
 	return f, nil
 }

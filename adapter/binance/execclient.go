@@ -145,6 +145,9 @@ func (c *BinanceSpotExecutionClient) Connect(ctx context.Context) error {
 		Addr:             BaseWsAPIURL,
 		ReadBufferSize:   wsAPIReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
@@ -198,7 +201,7 @@ func (c *BinanceSpotExecutionClient) Disconnect() {
 }
 
 // SubmitOrder submits a new order via WebSocket
-func (c *BinanceSpotExecutionClient) SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
+func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -261,6 +264,10 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(symbolID int, side common.Side,
 		c.msgBuffer.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
 	}
 
+	// newClientOrderId
+	c.msgBuffer.WriteString("&newClientOrderId=")
+	c.msgBuffer.WriteString(strconv.Itoa(clientOrderID))
+
 	// timestamp
 	timestamp := time.Now().UnixMilli()
 	c.msgBuffer.WriteString("&timestamp=")
@@ -279,7 +286,7 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(symbolID int, side common.Side,
 
 	// Build WebSocket request message
 	requestID := c.requestID.Add(1)
-	msg := c.buildOrderNewRequest(symbol.Name, side, orderType, timeInForce, price, quantity, timestamp, signature, requestID)
+	msg := c.buildOrderNewRequest(symbol.Name, side, orderType, timeInForce, price, quantity, clientOrderID, timestamp, signature, requestID)
 
 	return c.sendMessage(msg)
 }
@@ -512,7 +519,7 @@ func (c *BinanceSpotExecutionClient) signEd25519(payload []byte) string {
 }
 
 // buildOrderNewRequest builds a JSON message for order.place
-func (c *BinanceSpotExecutionClient) buildOrderNewRequest(symbol string, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64, timestamp int64, signature string, requestID uint64) []byte {
+func (c *BinanceSpotExecutionClient) buildOrderNewRequest(symbol string, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64, clientOrderID int, timestamp int64, signature string, requestID uint64) []byte {
 	var buf bytes.Buffer
 	buf.Grow(512)
 
@@ -569,6 +576,10 @@ func (c *BinanceSpotExecutionClient) buildOrderNewRequest(symbol string, side co
 		buf.WriteString(strconv.FormatFloat(price, 'f', -1, 64))
 		buf.WriteString(`"`)
 	}
+
+	buf.WriteString(`,"newClientOrderId":"`)
+	buf.WriteString(strconv.Itoa(clientOrderID))
+	buf.WriteString(`"`)
 
 	buf.WriteString(`,"timestamp":`)
 	buf.WriteString(strconv.FormatInt(timestamp, 10))
@@ -991,7 +1002,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	commissionAsset, _ := jsonparser.GetString(data, "N")
 	tradeID, _ := jsonparser.GetInt(data, "t")
 
-	fill := event.Fill{
+	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		FillID:        int(tradeID),
@@ -1006,7 +1017,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	offset, buf := c.msgBus.Allocate(size)
 	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventFill,
+		Topic:  event.TopicEventExecution,
 		Index:  offset,
 		Length: size,
 	})
@@ -1048,7 +1059,7 @@ func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, 
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventPartialFill,
+		Topic:  event.TopicEventOrderPartialFill,
 		Index:  offset,
 		Length: size,
 	})
@@ -1066,7 +1077,7 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventFill,
+		Topic:  event.TopicEventOrderFilled,
 		Index:  offset,
 		Length: size,
 	})
@@ -1185,7 +1196,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		commissionAsset, _ := jsonparser.GetString(value, "commissionAsset")
 		tradeID, _ := jsonparser.GetInt(value, "tradeId")
 
-		fill := event.Fill{
+		fill := event.Execution{
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
 			FillID:        int(tradeID),
@@ -1201,7 +1212,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		fillOffset, buf := c.msgBus.Allocate(size)
 		fill.Encode(buf)
 		c.msgBus.Publish(msgbus.EventRef{
-			Topic:  event.TopicEventFill,
+			Topic:  event.TopicEventExecution,
 			Index:  fillOffset,
 			Length: size,
 		})

@@ -157,10 +157,12 @@ func decodeEventPayload(topic event.Topic, buf []byte) any {
 		return event.NewOrderRiskInvalidFromBytes(buf)
 	case event.TopicEventOrderAccepted:
 		return event.NewOrderAcceptedFromBytes(buf)
-	case event.TopicEventPartialFill:
+	case event.TopicEventOrderPartialFill:
 		return event.NewOrderPartiallyFilledFromBytes(buf)
-	case event.TopicEventFill:
-		return event.NewFillFromBytes(buf)
+	case event.TopicEventOrderFilled:
+		return event.NewOrderFilledFromBytes(buf)
+	case event.TopicEventExecution:
+		return event.NewExecutionFromBytes(buf)
 	case event.TopicEventOrderCanceled:
 		return event.NewOrderCanceledFromBytes(buf)
 	case event.TopicEventOrderRejected:
@@ -182,6 +184,8 @@ func decodeCommandPayload(cmdType command.CommandType, buf []byte) any {
 		return nil
 	}
 	switch cmdType {
+	case command.CommandTypeOrderRiskCheck:
+		return command.NewRiskCheckFromBytes(buf)
 	case command.CommandTypeOrderSubmit:
 		return command.NewSubmitOrderFromBytes(buf)
 	case command.CommandTypeOrderCancel:

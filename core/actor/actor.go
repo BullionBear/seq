@@ -32,7 +32,7 @@ type Actor interface {
 
 	// Lifecycle methods
 	// OnInit is called once when the actor is initialized.
-	OnInit()
+	OnInit(map[string]any)
 	// OnStart is called once when the actor is started.
 	OnStart()
 	// OnStop is called once when the actor is stopped.
@@ -46,4 +46,17 @@ func Register(bus *msgbus.MsgBus, actor Actor) {
 		actor.Handle(ev, bus)
 	}
 	bus.Register(actor.Name(), actor.SubscribedTypes(), handler)
+}
+
+// ApplyName sets the actor's name from the config entry. If name is empty,
+// the actor keeps its default name from construction.
+// This works on any actor that embeds ActorBase (which provides SetName).
+func ApplyName(a Actor, name string) {
+	if name == "" {
+		return
+	}
+	type namer interface{ SetName(string) }
+	if n, ok := a.(namer); ok {
+		n.SetName(name)
+	}
 }

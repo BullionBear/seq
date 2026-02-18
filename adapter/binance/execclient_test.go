@@ -156,7 +156,7 @@ func TestBuildOrderNewRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			msg := client.buildOrderNewRequest(
 				tt.symbol, tt.side, tt.orderType, tt.timeInForce,
-				tt.price, tt.quantity, 1234567890000, "test-sig", 1,
+				tt.price, tt.quantity, 12345, 1234567890000, "test-sig", 1,
 			)
 			msgStr := string(msg)
 
@@ -510,10 +510,10 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		ok := eb.Poll(func(e msgbus.Event) {
-			if e.Ref.Topic == event.TopicEventPartialFill {
+			if e.Ref.Topic == event.TopicEventOrderPartialFill {
 				partialFillEvent = e
 				eventCount++
-			} else if e.Ref.Topic == event.TopicEventFill {
+			} else if e.Ref.Topic == event.TopicEventExecution {
 				fillEvent = e
 				eventCount++
 			}
@@ -539,9 +539,9 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		t.Errorf("Expected ExecutedQty 0.5, got %f", orderPartiallyFilled.ExecutedQty)
 	}
 
-	// Verify Fill
+	// Verify Execution
 	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
-	fill := event.NewFillFromBytes(fillBuf)
+	fill := event.NewExecutionFromBytes(fillBuf)
 
 	if fill.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)

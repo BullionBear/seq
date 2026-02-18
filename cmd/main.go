@@ -8,21 +8,24 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
+	coreconfig "github.com/BullionBear/seq/core/config"
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/node"
-	"github.com/BullionBear/seq/strategy"
-	"github.com/BullionBear/seq/strategy/actor/obtest"
-	"github.com/BullionBear/seq/strategy/actor/xarb"
+
+	// Register actor factories via init().
+	_ "github.com/BullionBear/seq/data/actor/orderbook"
+	_ "github.com/BullionBear/seq/execution/actor/oms"
+	_ "github.com/BullionBear/seq/portfolio/actor/balance"
+	_ "github.com/BullionBear/seq/strategy/actor/obtest"
+	_ "github.com/BullionBear/seq/strategy/actor/xarb"
 )
 
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("c", "", "Path to configuration file")
-	strategyName := flag.String("s", "xarb", "Strategy to run (xarb, obtest)")
 	flag.Parse()
 
 	// Determine config path: flag takes precedence over environment variable
@@ -33,26 +36,19 @@ func main() {
 	// Exit if no config path provided
 	if *configPath == "" {
 		fmt.Fprintf(os.Stderr, "Error: Configuration file path is required.\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s -c <config-file> [-s <strategy>] or set CONFIG environment variable\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s -c <config-file> or set CONFIG environment variable\n", os.Args[0])
 		os.Exit(1)
 	}
 
 	// Load configuration
-	cfg, err := strategy.LoadConfig(*configPath)
+	cfg, err := coreconfig.LoadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to load configuration from %s: %v\n", *configPath, err)
 		os.Exit(1)
 	}
 
 	// Initialize logger from configuration
-	loggerOpts := logger.Options{
-		Level:          cfg.Logger.Level,
-		Output:         cfg.Logger.Output,
-		Path:           cfg.Logger.Path,
-		MaxByteSize:    cfg.Logger.MaxByteSize,
-		MaxBackupFiles: cfg.Logger.MaxBackupFiles,
-	}
-	if err := logger.Init(loggerOpts); err != nil {
+	if err := logger.Init(cfg.Logger.ToOptions()); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
@@ -64,9 +60,8 @@ func main() {
 	log.Info().Msg("Build Time: " + env.BuildTime)
 	log.Info().Msg("Commit Hash: " + env.CommitHash)
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
-	log.Info().Msgf("Strategy: %s", *strategyName)
 
-	// Initialize Catelog service (InstrumentCatalog)
+	// Initialize Catalog service
 	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	if catalogService == nil {
 		log.Error().Msg("Failed to initialize catalog service")
@@ -74,40 +69,27 @@ func main() {
 	}
 	log.Info().Msg("Catalog service initialized successfully")
 
-	// Select strategy based on flag
-	var strategyImpl actor.Actor
-	switch *strategyName {
-	case "xarb":
-		strategyImpl = xarb.NewXArb()
-	case "obtest":
-		strategyImpl = obtest.NewOBTest()
-	default:
-		fmt.Fprintf(os.Stderr, "Error: Unknown strategy '%s'. Available strategies: xarb, obtest\n", *strategyName)
-		os.Exit(1)
-	}
-
 	// Create context that cancels on SIGINT (Ctrl+C) or SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Create and initialize the Node
+	// Create the Node
 	n := node.NewNode(catalogService)
 
 	// Set up binary message logger if configured
-	var msgLogger *msgbus.MsgLogger
-	if cfg.MsgLog.Enabled && cfg.MsgLog.Dir != "" {
-		var err error
-		msgLogger, err = msgbus.NewMsgLogger(cfg.MsgLog.Dir)
+	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.Dir != "" {
+		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.Dir)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to initialize message logger")
 			os.Exit(1)
 		}
 		defer msgLogger.Close()
 		n.MsgBus().SetMsgLogger(msgLogger)
-		log.Info().Str("dir", cfg.MsgLog.Dir).Msg("MsgLogger enabled")
+		log.Info().Str("dir", cfg.MsgBus.MsgLog.Dir).Msg("MsgLogger enabled")
 	}
 
-	n.Init(cfg, strategyImpl)
+	// Initialize, start, and run the node
+	n.Init(cfg.Node)
 	n.Start(ctx)
 	go n.Run(ctx)
 

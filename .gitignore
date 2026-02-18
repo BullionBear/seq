@@ -41,3 +41,5 @@ logs/
 
 # Tests
 tests/
+venv
+scripts/

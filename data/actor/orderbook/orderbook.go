@@ -5,22 +5,28 @@ import (
 
 	coreactor "github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
-	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/data"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/btree"
 )
+
+func init() {
+	data.Register("orderbook", func(cat *catalog.Catalog, _ *msgbus.MsgBus, c *cache.Cache) coreactor.Actor {
+		return NewActor(cat, c)
+	})
+}
 
 const (
 	// DefaultDepthUpdateBufferSize is the default capacity for depth update ring buffers
 	DefaultDepthUpdateBufferSize = 100
 )
-
-func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure Actor implements the coreactor.Actor interface
 var _ coreactor.Actor = (*Actor)(nil)
@@ -36,6 +42,9 @@ type SymbolBook struct {
 	pricePrecision int
 	sizePrecision  int
 	tickMultiplier float64 // = 10^pricePrecision, cached
+
+	// Logger inherited from the parent Actor
+	log *zerolog.Logger
 
 	// State machine
 	state   common.BookState
@@ -55,12 +64,13 @@ type SymbolBook struct {
 }
 
 // newSymbolBook creates a new SymbolBook.
-func newSymbolBook(symbolID, pricePrecision, sizePrecision int) *SymbolBook {
+func newSymbolBook(symbolID, pricePrecision, sizePrecision int, log *zerolog.Logger) *SymbolBook {
 	return &SymbolBook{
 		symbolID:       symbolID,
 		pricePrecision: pricePrecision,
 		sizePrecision:  sizePrecision,
 		tickMultiplier: math.Pow(10, float64(pricePrecision)),
+		log:            log,
 		state:          common.BookStateWaitForSnapshot,
 		updateBuffer:   mem.NewSPSCRingBuffer[DepthUpdateBuffer](DefaultDepthUpdateBufferSize),
 	}
@@ -168,12 +178,12 @@ func (sb *SymbolBook) requestSnapshot(bus *msgbus.MsgBus) {
 		Length:      size,
 	})
 
-	log().Debug().Int("symbolID", sb.symbolID).Msg("SymbolBook: requested depth snapshot")
+	sb.log.Debug().Int("symbolID", sb.symbolID).Msg("SymbolBook: requested depth snapshot")
 }
 
 // onDepthSnapshot handles a depth snapshot event (from WS).
 func (sb *SymbolBook) onDepthSnapshot(snapshot event.DepthSnapshot, c *cache.Cache) {
-	log().Info().
+	sb.log.Info().
 		Int("symbolID", sb.symbolID).
 		Int("snapshotDepthID", snapshot.DepthID).
 		Int("bids", len(snapshot.Bids)).
@@ -194,7 +204,7 @@ func (sb *SymbolBook) onDepthSnapshot(snapshot event.DepthSnapshot, c *cache.Cac
 
 // onRespDepthSnapshot handles an HTTP response snapshot.
 func (sb *SymbolBook) onRespDepthSnapshot(resp event.RespDepthSnapshot, c *cache.Cache) {
-	log().Info().
+	sb.log.Info().
 		Int("symbolID", sb.symbolID).
 		Int("snapshotDepthID", resp.DepthID).
 		Int("bids", len(resp.Bids)).
@@ -219,7 +229,7 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 	case common.BookStateWaitForSnapshot:
 		// Buffer the update for later processing
 		sb.bufferUpdate(update)
-		log().Debug().
+		sb.log.Debug().
 			Int("symbolID", sb.symbolID).
 			Int("depthID", update.DepthID).
 			Uint64("buffered", sb.updateBuffer.Count()).
@@ -241,7 +251,7 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 			sb.applyLevels(update.Bids, update.Asks)
 			sb.depthID = update.CurrentDepthID
 			sb.lastUpdated = update.Timestamp
-			log().Debug().
+			sb.log.Debug().
 				Int("symbolID", sb.symbolID).
 				Int("prevDepthID", update.PreviousDepthID).
 				Int("bookDepthID", sb.depthID).
@@ -251,7 +261,7 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 			sb.applySyncToCache(c, update.Bids, update.Asks)
 		} else if update.CurrentDepthID <= sb.depthID {
 			// Stale update - ignore
-			log().Debug().
+			sb.log.Debug().
 				Int("symbolID", sb.symbolID).
 				Int("bookDepthID", sb.depthID).
 				Int("updateFinalDepthID", update.CurrentDepthID).
@@ -259,7 +269,7 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 		} else {
 			// Gap detected - reset
 			gap := update.PreviousDepthID - sb.depthID
-			log().Warn().
+			sb.log.Warn().
 				Int("symbolID", sb.symbolID).
 				Int("bookDepthID", sb.depthID).
 				Int("updatePrevDepthID", update.PreviousDepthID).
@@ -283,7 +293,7 @@ func (sb *SymbolBook) bufferUpdate(update event.DepthUpdate) {
 		Asks:            update.Asks,
 	}
 	if !sb.updateBuffer.Write(buffered) {
-		log().Warn().
+		sb.log.Warn().
 			Int("symbolID", sb.symbolID).
 			Msg("SymbolBook: Update buffer full, dropping update")
 	}
@@ -314,7 +324,7 @@ func (sb *SymbolBook) processBufferedUpdates(c *cache.Cache) {
 	// Transition to Ready if buffer is drained
 	if sb.updateBuffer.IsEmpty() && sb.state == common.BookStateUpdating {
 		sb.state = common.BookStateReady
-		log().Info().
+		sb.log.Info().
 			Int("symbolID", sb.symbolID).
 			Int("depthID", sb.depthID).
 			Int("processedUpdates", processed).
@@ -330,20 +340,22 @@ func (sb *SymbolBook) processBufferedUpdates(c *cache.Cache) {
 // writes state to Cache, and requests snapshots via MsgBus commands.
 type Actor struct {
 	coreactor.ActorBase
-	books map[int]*SymbolBook // symbolID -> SymbolBook
-	cache *cache.Cache
+	catalog *catalog.Catalog
+	books   map[int]*SymbolBook // symbolID -> SymbolBook
+	cache   *cache.Cache
 }
 
 // NewActor creates a new orderbook Actor.
-func NewActor(c *cache.Cache) *Actor {
+func NewActor(cat *catalog.Catalog, c *cache.Cache) *Actor {
 	return &Actor{
 		ActorBase: coreactor.NewActorBase("orderbook", []event.Topic{
 			event.TopicEventDepthSnapshot,
 			event.TopicEventRespDepthSnapshot,
 			event.TopicEventDepthUpdate,
 		}),
-		books: make(map[int]*SymbolBook),
-		cache: c,
+		catalog: cat,
+		books:   make(map[int]*SymbolBook),
+		cache:   c,
 	}
 }
 
@@ -351,12 +363,12 @@ func NewActor(c *cache.Cache) *Actor {
 // Creates a new SymbolBook in WaitForSnapshot state.
 func (a *Actor) RegisterSymbol(symbolID, pricePrecision, sizePrecision int) {
 	if _, exists := a.books[symbolID]; exists {
-		log().Warn().Int("symbolID", symbolID).Msg("OrderBook Actor: Symbol already registered")
+		a.Log().Warn().Int("symbolID", symbolID).Msg("OrderBook Actor: Symbol already registered")
 		return
 	}
 
-	a.books[symbolID] = newSymbolBook(symbolID, pricePrecision, sizePrecision)
-	log().Info().
+	a.books[symbolID] = newSymbolBook(symbolID, pricePrecision, sizePrecision, a.Log())
+	a.Log().Info().
 		Int("symbolID", symbolID).
 		Int("pricePrecision", pricePrecision).
 		Int("sizePrecision", sizePrecision).
@@ -387,7 +399,7 @@ func (a *Actor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshot) {
 	book, exists := a.books[snapshot.SymbolID]
 	if !exists {
-		log().Warn().
+		a.Log().Warn().
 			Int("symbolID", snapshot.SymbolID).
 			Msg("OrderBook Actor: Received snapshot for unregistered symbol")
 		return
@@ -398,7 +410,7 @@ func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshot) {
 func (a *Actor) onRespDepthSnapshot(resp event.RespDepthSnapshot) {
 	book, exists := a.books[resp.SymbolID]
 	if !exists {
-		log().Warn().
+		a.Log().Warn().
 			Int("symbolID", resp.SymbolID).
 			Msg("OrderBook Actor: Received RespDepthSnapshot for unregistered symbol")
 		return
@@ -409,7 +421,7 @@ func (a *Actor) onRespDepthSnapshot(resp event.RespDepthSnapshot) {
 func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
 	book, exists := a.books[update.SymbolID]
 	if !exists {
-		log().Debug().
+		a.Log().Debug().
 			Int("symbolID", update.SymbolID).
 			Msg("OrderBook Actor: Received update for unregistered symbol")
 		return
@@ -417,14 +429,43 @@ func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
 	book.onDepthUpdate(update, a.cache, bus)
 }
 
-// OnInit is called once when the actor is initialized.
-func (a *Actor) OnInit() {
-	log().Info().Msg("OrderBook Actor: initialized")
+// OnInit decodes the config and registers the symbol for this orderbook.
+func (a *Actor) OnInit(config map[string]any) {
+	var cfg OrderbookConfig
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:  &cfg,
+		TagName: "yaml",
+	})
+	if err != nil {
+		a.Log().Error().Err(err).Msg("OrderBook Actor: failed to create decoder")
+		return
+	}
+	if err := decoder.Decode(config); err != nil {
+		a.Log().Error().Err(err).Msg("OrderBook Actor: failed to decode config")
+		return
+	}
+
+	if cfg.Symbol == "" {
+		a.Log().Warn().Msg("OrderBook Actor: no symbol configured")
+		return
+	}
+
+	symbol, err := a.catalog.GetSymbolByUniversalTicker(cfg.Symbol)
+	if err != nil {
+		a.Log().Error().Err(err).Str("symbol", cfg.Symbol).Msg("OrderBook Actor: failed to resolve symbol")
+		return
+	}
+
+	a.RegisterSymbol(symbol.ID, symbol.PricePrecision, symbol.SizePrecision)
+	a.Log().Info().
+		Str("ticker", symbol.UniversalTicker).
+		Int("symbolID", symbol.ID).
+		Msg("OrderBook Actor: initialized from config")
 }
 
 // OnStart is called once when the actor is started.
 func (a *Actor) OnStart() {
-	log().Info().Msg("OrderBook Actor: started")
+	a.Log().Info().Msg("OrderBook Actor: started")
 }
 
 // OnStop is called once when the actor is stopped.
@@ -433,5 +474,5 @@ func (a *Actor) OnStop() {
 		book.reset()
 		book.syncToCache(a.cache)
 	}
-	log().Info().Int("symbols", len(a.books)).Msg("OrderBook Actor: stopped, all books reset")
+	a.Log().Info().Int("symbols", len(a.books)).Msg("OrderBook Actor: stopped, all books reset")
 }

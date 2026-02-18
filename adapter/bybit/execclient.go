@@ -88,6 +88,9 @@ func (c *BybitPrivateStreamClient) Connect(ctx context.Context) error {
 		Addr:             WsPrivateURL,
 		ReadBufferSize:   wsExecReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
@@ -498,7 +501,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	execFee := parseFloat64([]byte(execFeeStr))
 	execTime, _ := strconv.ParseInt(execTimeStr, 10, 64)
 
-	fill := event.Fill{
+	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		FillID:        fillID,
@@ -513,7 +516,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	offset, buf := c.msgBus.Allocate(size)
 	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventFill,
+		Topic:  event.TopicEventExecution,
 		Index:  offset,
 		Length: size,
 	})
@@ -635,7 +638,7 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventPartialFill,
+		Topic:  event.TopicEventOrderPartialFill,
 		Index:  offset,
 		Length: size,
 	})
@@ -653,7 +656,7 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventFill,
+		Topic:  event.TopicEventOrderFilled,
 		Index:  offset,
 		Length: size,
 	})
@@ -767,6 +770,10 @@ type BybitOrderEntryClient struct {
 	// Request ID for tracking responses
 	requestID atomic.Uint64
 
+	// Pending order tracking: reqID -> clientOrderID
+	pendingOrders map[uint64]int
+	pendingMu     sync.Mutex
+
 	// Connection state
 	connected     atomic.Bool
 	authenticated atomic.Bool
@@ -789,10 +796,11 @@ func NewBybitOrderEntryClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, a
 	}
 
 	return &BybitOrderEntryClient{
-		catalog:   catalog,
-		msgBus:    msgBus,
-		accountID: accountID,
-		account:   *account,
+		catalog:       catalog,
+		msgBus:        msgBus,
+		accountID:     accountID,
+		account:       *account,
+		pendingOrders: make(map[uint64]int),
 	}, nil
 }
 
@@ -807,6 +815,9 @@ func (c *BybitOrderEntryClient) Connect(ctx context.Context) error {
 		Addr:             WsTradeURL,
 		ReadBufferSize:   wsExecReadBufferSize,
 		CheckUtf8Enabled: false,
+		NewDialer: func() (gws.Dialer, error) {
+			return &ipv4Dialer{}, nil
+		},
 	}
 
 	conn, _, err := gws.NewClient(handler, option)
@@ -891,6 +902,11 @@ func (c *BybitOrderEntryClient) SubmitOrder(symbolID int, clientOrderID int, sid
 
 	timestamp := time.Now().UnixMilli()
 	reqID := c.requestID.Add(1)
+
+	// Track pending order for response correlation
+	c.pendingMu.Lock()
+	c.pendingOrders[reqID] = clientOrderID
+	c.pendingMu.Unlock()
 
 	c.msgBuffer.Reset()
 	c.msgBuffer.WriteString(`{"reqId":"`)
@@ -1228,21 +1244,59 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 			log().Info().Int("accountID", c.accountID).Msg("Order entry authenticated")
 		} else {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
+			apiKey := c.account.APIKey
 			log().Error().
 				Str("msg", retMsg).
 				Int64("retCode", retCode).
+				Int("accountID", c.accountID).
+				Str("accountName", c.account.Name).
+				Str("apiKey", apiKey).
 				Msg("Order entry authentication failed")
 		}
 	case "order.create", "order.cancel", "order.cancelAll":
-		// Order operation response - check success
 		retCode, _ := jsonparser.GetInt(data, "retCode")
+		reqIDStr, _ := jsonparser.GetString(data, "reqId")
+		reqID, _ := strconv.ParseUint(reqIDStr, 10, 64)
+
+		// Look up and remove the pending order
+		c.pendingMu.Lock()
+		clientOrderID, found := c.pendingOrders[reqID]
+		delete(c.pendingOrders, reqID)
+		c.pendingMu.Unlock()
+
 		if retCode != 0 {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
+			apiKey := c.account.APIKey
+			maskedKey := apiKey
+			if len(apiKey) > 6 {
+				maskedKey = apiKey[:3] + "***" + apiKey[len(apiKey)-3:]
+			}
 			log().Error().
 				Str("op", op).
 				Int64("retCode", retCode).
 				Str("retMsg", retMsg).
+				Int("accountID", c.accountID).
+				Str("accountName", c.account.Name).
+				Str("apiKey", maskedKey).
+				Int("clientOrderID", clientOrderID).
 				Msg("Order operation failed")
+
+			// Publish OrderRejected event so strategy is notified
+			if found && op == "order.create" {
+				ev := event.OrderRejected{
+					ClientOrderID: clientOrderID,
+					OrderID:       -1,
+					ErrorCode:     int(retCode),
+					Msg:           retMsg,
+				}
+				offset, buf := c.msgBus.Allocate(uint64(ev.GetBufferLength()))
+				ev.Encode(buf)
+				c.msgBus.Publish(msgbus.EventRef{
+					Topic:  event.TopicEventOrderRejected,
+					Index:  offset,
+					Length: uint64(ev.GetBufferLength()),
+				})
+			}
 		}
 	}
 }
@@ -1290,9 +1344,6 @@ type BybitExecutionClient struct {
 	privateStream *BybitPrivateStreamClient
 	orderEntry    *BybitOrderEntryClient
 	httpClient    *BybitHTTPClient
-
-	// Client order ID counter for generating unique order link IDs
-	clientOrderID atomic.Int64
 
 	// Account info for HTTP requests
 	accountID int
@@ -1363,10 +1414,8 @@ func (c *BybitExecutionClient) SubscribeBalance() error {
 }
 
 // SubmitOrder submits a new order via the order entry WebSocket
-// Generates a unique clientOrderID internally
-func (c *BybitExecutionClient) SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
-	// Generate unique client order ID
-	clientOrderID := int(c.clientOrderID.Add(1))
+// SubmitOrder submits a new order with the strategy-provided clientOrderID
+func (c *BybitExecutionClient) SubmitOrder(clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
 	return c.orderEntry.SubmitOrder(symbolID, clientOrderID, side, orderType, timeInForce, price, quantity)
 }
 

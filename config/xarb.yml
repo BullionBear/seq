@@ -5,44 +5,68 @@ logger:
   max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
   max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
 
-msglog:
-  enabled: true
-  dir: ./logs/
+msgbus:
+  msglog:
+    enabled: true
+    dir: ./logs/
 
 catalog:
   base_url: https://capi.lynxlinkage.com
   api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
 
-# Data subscriptions - flat list, per-symbol config
-data:
-  - symbol: BINANCE_SPOT_UNIUSDT
-    depth:
-      type: delta
-      push_rate: 100ms
+node:
+  engine:
+    data:
+      subscriptions:
+        - symbol: BINANCE_SPOT_UNIUSDT
+          depth:
+            type: delta
+            push_rate: 100ms
+        - symbol: BYBIT_SPOT_UNIUSDT
+          depth:
+            levels: 50
+      actor:
+        - type: orderbook
+          name: orderbook-binance
+          config:
+            symbol: BINANCE_SPOT_UNIUSDT
+        - type: orderbook
+          name: orderbook-bybit
+          config:
+            symbol: BYBIT_SPOT_UNIUSDT
 
-  - symbol: BYBIT_SPOT_UNIUSDT
-    depth:
-      levels: 50
+    execution:
+      actor:
+        - type: oms
+          name: oms-bybit
+          config:
+            id: 19
+            account: bybit_lynxapp
+        - type: oms
+          name: oms-binance
+          config:
+            id: 22
+            account: lynxapp_ed25519
 
-# Execution accounts
-execution:
-  - id: 19
-    account: bybit_lynxapp
-  - id: 22
-    account: lynxapp_ed25519
+    portfolio:
+      actor:
+        - type: balance
+          name: balance-bybit
+          config:
+            id: 19
+            account: bybit_lynxapp
+        - type: balance
+          name: balance-binance
+          config:
+            id: 22
+            account: lynxapp_ed25519
 
-portfolio:
-  - id: 19
-    account: bybit_lynxapp
-    subscriptions: [] # wallet, order, fill
-  - id: 22
-    account: lynxapp_ed25519
-    subscriptions: []
-  
-# Strategy-specific config
-strategy:
-  quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-  hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-  # Account assignments for trading
-  quoting_account: bybit_lynxapp  # Account for quoting (Bybit) - not configured yet
-  hedging_account: lynxapp_ed25519  # Account for hedging (Binance)
+    strategy:
+      actor:
+        - type: xarb
+          name: xarb-uni
+          config:
+            quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            quoting_account: bybit_lynxapp
+            hedging_account: lynxapp_ed25519

@@ -14,7 +14,6 @@ type Engine interface {
 	Type() common.EngineType
 
 	// Lifecycle methods
-	Init()
 	Start()
 	Stop()
 

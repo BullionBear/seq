@@ -4,64 +4,62 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/rs/zerolog"
 )
 
-// Engine manages strategy lifecycle.
-// It focuses on strategy initialization and lifecycle management.
-// The event loop is owned by the Node, not the Engine.
+func log() *zerolog.Logger { l := logger.Get(); return &l }
+
+// Engine manages the lifecycle of multiple strategy actors.
+// It constructs actors from config entries using the factory registry,
+// registers them with the MsgBus, and manages their lifecycle.
 type Engine struct {
-	strategyActor actor.Actor
-	catalog       *catalog.Catalog
-	cache         *cache.Cache
-	config        *StrategyConfig
+	actors  []actor.Actor
+	catalog *catalog.Catalog
+	cache   *cache.Cache
+	msgBus  *msgbus.MsgBus
 }
 
-// NewEngine creates a new Engine with the given strategy actor, catalog, and cache.
-// The strategy must implement the Actor interface (e.g., by embedding StrategyBase).
-func NewEngine(strat actor.Actor, cat *catalog.Catalog, cache *cache.Cache) *Engine {
+// NewEngine creates a new strategy Engine.
+func NewEngine(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	return &Engine{
-		strategyActor: strat,
-		catalog:       cat,
-		cache:         cache,
+		catalog: cat,
+		cache:   c,
+		msgBus:  bus,
 	}
 }
 
-// Init initializes the engine and the strategy actor.
-// It creates StrategyCommon and injects it into the strategy.
-func (e *Engine) Init(config *StrategyConfig, msgBus *msgbus.MsgBus) {
-	e.config = config
+// Init constructs strategy actors from config entries using the factory
+// registry, registers them with the MsgBus, and calls OnInit.
+func (e *Engine) Init(config Config) {
+	for _, entry := range config.Actor {
+		factory, err := lookupFactory(entry.Type)
+		if err != nil {
+			log().Error().Err(err).Str("type", entry.Type).Msg("StrategyEngine: skipping unknown strategy type")
+			continue
+		}
 
-	// Create StrategyCommon which wraps the cache
-	common := NewStrategyCommon(e.cache, e.catalog)
+		a := factory(e.catalog, e.msgBus, e.cache)
+		actor.ApplyName(a, entry.Name)
+		actor.Register(e.msgBus, a)
+		a.OnInit(entry.Config)
+		e.actors = append(e.actors, a)
 
-	// Inject StrategyCommon into the strategy actor if it supports SetCommon
-	if s, ok := e.strategyActor.(interface {
-		SetCommon(*StrategyCommon)
-	}); ok {
-		s.SetCommon(common)
+		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("StrategyEngine: actor initialized")
 	}
-
-	// Inject config into the strategy actor if it supports SetConfig
-	if s, ok := e.strategyActor.(interface {
-		SetConfig(*StrategyConfig)
-	}); ok {
-		s.SetConfig(config)
-	}
-
-	// Register the strategy actor with the MsgBus
-	actor.Register(msgBus, e.strategyActor)
-
-	// Call OnInit on the strategy actor
-	e.strategyActor.OnInit()
 }
 
-// Start starts the strategy actor.
+// Start calls OnStart on every actor.
 func (e *Engine) Start() {
-	e.strategyActor.OnStart()
+	for _, a := range e.actors {
+		a.OnStart()
+	}
 }
 
-// Stop performs graceful shutdown of the strategy actor.
+// Stop calls OnStop on every actor.
 func (e *Engine) Stop() {
-	e.strategyActor.OnStop()
+	for _, a := range e.actors {
+		a.OnStop()
+	}
 }
