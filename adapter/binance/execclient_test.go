@@ -156,7 +156,7 @@ func TestBuildOrderNewRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			msg := client.buildOrderNewRequest(
 				tt.symbol, tt.side, tt.orderType, tt.timeInForce,
-				tt.price, tt.quantity, 1234567890000, "test-sig", 1,
+				tt.price, tt.quantity, 12345, 1234567890000, "test-sig", 1,
 			)
 			msgStr := string(msg)
 
@@ -510,10 +510,10 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		ok := eb.Poll(func(e msgbus.Event) {
-			if e.Ref.Topic == event.TopicEventPartialFill {
+			if e.Ref.Topic == event.TopicEventOrderPartialFill {
 				partialFillEvent = e
 				eventCount++
-			} else if e.Ref.Topic == event.TopicEventFill {
+			} else if e.Ref.Topic == event.TopicEventOrderFill {
 				fillEvent = e
 				eventCount++
 			}

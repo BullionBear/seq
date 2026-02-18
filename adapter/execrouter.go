@@ -43,8 +43,8 @@ type ExecutionClient interface {
 	// Events: BalanceUpdate (available, locked, total for each asset)
 	SubscribeBalance() error
 
-	// SubmitOrder submits a new order
-	SubmitOrder(symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error
+	// SubmitOrder submits a new order with the given client order ID
+	SubmitOrder(clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error
 
 	// CancelOrder cancels an order by orderID
 	CancelOrder(symbolID int, orderID int) error
@@ -98,12 +98,12 @@ func (r *ExecutionRouter) GetClient(acctID int) (ExecutionClient, error) {
 }
 
 // SubmitOrder routes the order submission to the appropriate client
-func (r *ExecutionRouter) SubmitOrder(acctID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
+func (r *ExecutionRouter) SubmitOrder(acctID int, clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
 	}
-	return client.SubmitOrder(symbolID, side, orderType, timeInForce, price, quantity)
+	return client.SubmitOrder(clientOrderID, symbolID, side, orderType, timeInForce, price, quantity)
 }
 
 // CancelOrder routes the order cancellation to the appropriate client
@@ -207,6 +207,17 @@ func (r *ExecutionRouter) ClientCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.clients)
+}
+
+// AccountIDs returns the list of registered account IDs
+func (r *ExecutionRouter) AccountIDs() []int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]int, 0, len(r.clients))
+	for id := range r.clients {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // RouterError represents an error that occurred for a specific account

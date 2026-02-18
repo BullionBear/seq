@@ -3,6 +3,7 @@ package xarb
 import (
 	"math"
 	"sync"
+	"time"
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
@@ -34,6 +35,8 @@ type XArb struct {
 	cache         *cache.Cache
 	quotingSymbol cpanel.Symbol
 	hedgingSymbol cpanel.Symbol
+	// Logger
+	logger zerolog.Logger
 
 	// Account IDs for trading
 	quotingAccount cpanel.Account
@@ -54,8 +57,8 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 			event.TopicEventDepthSnapshot,
 			event.TopicEventDepthUpdate,
 			// Execution data
-			event.TopicEventPartialFill,
-			event.TopicEventFill,
+			event.TopicEventOrderPartialFill,
+			event.TopicEventOrderFill,
 			// Reconciliation data
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
@@ -99,27 +102,27 @@ func (x *XArb) OnInit(config map[string]any) {
 	// Resolve trading symbols
 	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
 	if err != nil {
-		log().Error().Err(err).Msg("failed to get quoting symbol")
+		x.Log().Error().Err(err).Msg("failed to get quoting symbol")
 		return
 	}
 	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.HedgingSymbolUniversalTicker)
 	if err != nil {
-		log().Error().Err(err).Msg("failed to get hedging symbol")
+		x.Log().Error().Err(err).Msg("failed to get hedging symbol")
 		return
 	}
 	x.quotingSymbol = *quotingSymbol
 	x.hedgingSymbol = *hedgingSymbol
-	log().Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
-	log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
+	x.Log().Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
+	x.Log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 
 	// Resolve trading accounts
 	if xarbConfig.QuotingAccount != "" {
 		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
 		if quotingAccount != nil {
 			x.quotingAccount = *quotingAccount
-			log().Info().Msgf("Quoting account: %s(%d)", quotingAccount.Name, quotingAccount.ID)
+			x.Log().Info().Msgf("Quoting account: %s(%d)", quotingAccount.Name, quotingAccount.ID)
 		} else {
-			log().Warn().Str("account", xarbConfig.QuotingAccount).Msg("quoting account not found")
+			x.Log().Warn().Str("account", xarbConfig.QuotingAccount).Msg("quoting account not found")
 		}
 	}
 
@@ -127,9 +130,9 @@ func (x *XArb) OnInit(config map[string]any) {
 		hedgingAccount := x.GetCatalog().GetAccountByName(xarbConfig.HedgingAccount)
 		if hedgingAccount != nil {
 			x.hedgingAccount = *hedgingAccount
-			log().Info().Msgf("Hedging account: %s(%d)", hedgingAccount.Name, hedgingAccount.ID)
+			x.Log().Info().Msgf("Hedging account: %s(%d)", hedgingAccount.Name, hedgingAccount.ID)
 		} else {
-			log().Warn().Str("account", xarbConfig.HedgingAccount).Msg("hedging account not found")
+			x.Log().Warn().Str("account", xarbConfig.HedgingAccount).Msg("hedging account not found")
 		}
 	}
 }
@@ -137,13 +140,13 @@ func (x *XArb) OnInit(config map[string]any) {
 // OnStart is called when the strategy starts.
 // Note: Data subscriptions are now handled by the config - no manual Subscribe/Connect needed.
 func (x *XArb) OnStart() {
-	log().Info().Msgf("XArb strategy started for symbols: %s, %s",
+	x.Log().Info().Msgf("XArb strategy started for symbols: %s, %s",
 		x.quotingSymbol.UniversalTicker, x.hedgingSymbol.UniversalTicker)
 }
 
 // OnStop is called when the strategy stops.
 func (x *XArb) OnStop() {
-	log().Info().Msg("XArb strategy stopped")
+	x.Log().Info().Msg("XArb strategy stopped")
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.
@@ -154,11 +157,11 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := event.NewDepthUpdateFromBytes(buf)
 		x.OnDepthUpdate(update)
-	case event.TopicEventFill:
+	case event.TopicEventOrderFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := event.NewFillFromBytes(buf)
 		x.OnFill(fill)
-	case event.TopicEventPartialFill:
+	case event.TopicEventOrderPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		partialFill := event.NewOrderPartiallyFilledFromBytes(buf)
 		x.OnPartialFill(partialFill)
@@ -199,34 +202,34 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		x.quotingCount += 1
 	}
 	if x.hedgingCount == 0 || x.quotingCount == 0 {
-		log().Info().Msg("XArb strategy is not ready")
+		x.Log().Info().Msg("XArb strategy is not ready")
 		return
 	}
-	if x.quotingCount%100 == 0 {
-		log().Info().Msgf("Quoting count: %d", x.quotingCount)
+	if x.quotingCount%50 == 0 {
+		x.Log().Info().Msgf("Quoting count: %d", x.quotingCount)
 		price, ok := x.cache.GetMidPrice(x.quotingSymbol.ID)
 		if !ok {
-			log().Error().Msg("failed to get mid price")
+			x.Log().Error().Msg("failed to get mid price")
 			return
 		}
 		x.once.Do(func() {
-			buyPrice := price * 0.95
+			buyPrice := price * 0.995
 			pricePrecision := x.quotingSymbol.PricePrecision
 			buyPrice = math.Ceil(buyPrice*math.Pow10(pricePrecision)) / math.Pow10(pricePrecision)
 			buyQty := 2.0
-			log().Info().Msgf("Submit order: %f@%f", buyPrice, buyQty)
-			x.SubmitOrder(x.quotingCount, x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
+			x.Log().Info().Msgf("Submit order: %f@%f", buyPrice, buyQty)
+			x.SubmitOrder(int(time.Now().UnixMilli()), x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForceGTC, buyPrice, buyQty)
 		})
 	}
-	if x.hedgingCount%100 == 0 {
-		log().Info().Msgf("Hedging count: %d", x.hedgingCount)
+	if x.hedgingCount%50 == 0 {
+		x.Log().Info().Msgf("Hedging count: %d", x.hedgingCount)
 	}
 }
 
 // OnRespDepthSnapshot processes the response to a depth snapshot request.
 func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 	symbolID := snapshot.SymbolID
-	log().Info().
+	x.Log().Info().
 		Int("symbolID", symbolID).
 		Int("depthID", snapshot.DepthID).
 		Int("asks", len(snapshot.Asks)).
@@ -242,13 +245,17 @@ func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
 
 func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
-	log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
+	x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
 }
 
 func (x *XArb) OnOrderError(orderError event.OrderError) {}
 
 func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {}
 
-func (x *XArb) OnOrderNew(orderNew event.OrderNew) {}
+func (x *XArb) OnOrderNew(orderNew event.OrderNew) {
+	x.Log().Info().Int("clientOrderID", orderNew.ClientOrderID).Int("orderID", orderNew.OrderID).Uint64("createdAt", orderNew.CreatedAt).Msg("Order new")
+}
 
-func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {}
+func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
+	x.Log().Info().Int("clientOrderID", orderAccepted.ClientOrderID).Int("orderID", orderAccepted.OrderID).Uint64("createdAt", orderAccepted.CreatedAt).Msg("Order accepted")
+}

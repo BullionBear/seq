@@ -49,7 +49,7 @@ func NewBalanceActor(handler portfolio.BalanceEngineHandler) *BalanceActor {
 		ActorBase: actor.NewActorBase("portfolio-balance", []event.Topic{
 			event.TopicEventBalanceUpdate,
 			event.TopicEventRespBalanceSnapshot,
-			event.TopicEventFill,
+			event.TopicEventOrderFill,
 		}),
 		handler: handler,
 	}
@@ -121,7 +121,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
-	case event.TopicEventFill:
+	case event.TopicEventOrderFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		fill := event.NewFillFromBytes(buf)
 		b.handler.OnFill(fill)

@@ -23,8 +23,8 @@ const (
 	TopicEventOrderRiskInvalid
 	TopicEventOrderNew
 	TopicEventOrderAccepted
-	TopicEventPartialFill
-	TopicEventFill
+	TopicEventOrderPartialFill
+	TopicEventOrderFill
 	TopicEventOrderCanceled
 	TopicEventOrderRejected
 	// Reconciliation Data
@@ -64,10 +64,10 @@ func (t Topic) String() string {
 		return "OrderNew"
 	case TopicEventOrderAccepted:
 		return "OrderAccepted"
-	case TopicEventPartialFill:
-		return "PartialFill"
-	case TopicEventFill:
-		return "Fill"
+	case TopicEventOrderPartialFill:
+		return "OrderPartialFill"
+	case TopicEventOrderFill:
+		return "OrderFill"
 	case TopicEventOrderCanceled:
 		return "OrderCanceled"
 	case TopicEventOrderRejected:

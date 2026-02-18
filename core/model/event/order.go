@@ -59,7 +59,7 @@ type OrderPartiallyFilled struct {
 }
 
 func (o OrderPartiallyFilled) Topic() Topic {
-	return TopicEventPartialFill
+	return TopicEventOrderPartialFill
 }
 
 type OrderFilled struct {
@@ -70,7 +70,7 @@ type OrderFilled struct {
 }
 
 func (o OrderFilled) Topic() Topic {
-	return TopicEventFill
+	return TopicEventOrderFill
 }
 
 type OrderCanceled struct {
@@ -106,5 +106,5 @@ type Fill struct {
 }
 
 func (f Fill) Topic() Topic {
-	return TopicEventFill
+	return TopicEventOrderFill
 }

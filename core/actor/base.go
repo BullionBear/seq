@@ -1,8 +1,10 @@
 package actor
 
 import (
+	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/rs/zerolog"
 )
 
 // ActorBase provides a default implementation for the Actor interface.
@@ -11,6 +13,7 @@ import (
 type ActorBase struct {
 	name   string
 	topics []event.Topic
+	logger zerolog.Logger
 }
 
 // NewActorBase creates a new ActorBase with the given name and subscribed topics.
@@ -18,12 +21,18 @@ func NewActorBase(name string, topics []event.Topic) ActorBase {
 	return ActorBase{
 		name:   name,
 		topics: topics,
+		logger: logger.Get().With().Str("actor", name).Logger(),
 	}
 }
 
 // Name returns the actor's unique identifier.
 func (a *ActorBase) Name() string {
 	return a.name
+}
+
+// Logger returns the actor's logger.
+func (a *ActorBase) Log() *zerolog.Logger {
+	return &a.logger
 }
 
 // SubscribedTypes returns the topics this actor handles.

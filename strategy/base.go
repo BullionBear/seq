@@ -30,7 +30,7 @@ func (s *StrategyActorBase) GetCatalog() *catalog.Catalog {
 }
 
 func (s *StrategyActorBase) SubmitOrder(clientOrderID int, accountID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) {
-	submitCmd := command.SubmitOrder{
+	riskCmd := command.RiskCheck{
 		ClientOrderID: clientOrderID,
 		AccountID:     accountID,
 		SymbolID:      symbolID,
@@ -40,11 +40,11 @@ func (s *StrategyActorBase) SubmitOrder(clientOrderID int, accountID int, symbol
 		Price:         price,
 		Quantity:      quantity,
 	}
-	size := uint64(submitCmd.GetBufferLength())
+	size := uint64(riskCmd.GetBufferLength())
 	offset, buf := s.msgbus.AllocateCmd(size)
-	submitCmd.Encode(buf)
+	riskCmd.Encode(buf)
 	s.msgbus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeOrderSubmit,
+		CommandType: command.CommandTypeOrderRiskCheck,
 		Index:       offset,
 		Length:      size,
 	})

@@ -111,9 +111,23 @@ func (e *Engine) Stop() {
 // Connection Methods
 // ============================================================================
 
-// Connect connects the execution router
+// Connect connects the execution router and subscribes to order/fill events
 func (e *Engine) Connect(ctx context.Context) error {
-	return e.router.Connect(ctx)
+	if err := e.router.Connect(ctx); err != nil {
+		return err
+	}
+
+	// Subscribe to order updates and fills for all accounts
+	for _, acctID := range e.router.AccountIDs() {
+		if err := e.router.SubscribeOrderUpdate(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to subscribe to order updates")
+		}
+		if err := e.router.SubscribeFill(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to subscribe to fills")
+		}
+	}
+
+	return nil
 }
 
 // Disconnect disconnects the execution router
@@ -126,7 +140,7 @@ func (e *Engine) Disconnect() {
 // ============================================================================
 
 func (e *Engine) execOrderSubmit(cmd command.SubmitOrder) {
-	e.router.SubmitOrder(cmd.AccountID, cmd.SymbolID, cmd.Side, cmd.OrderType, cmd.TimeInForce, cmd.Price, cmd.Quantity)
+	e.router.SubmitOrder(cmd.AccountID, cmd.ClientOrderID, cmd.SymbolID, cmd.Side, cmd.OrderType, cmd.TimeInForce, cmd.Price, cmd.Quantity)
 }
 
 func (e *Engine) execOrderCancel(cmd command.CancelOrder) {
