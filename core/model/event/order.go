@@ -34,6 +34,7 @@ func (o OrderRiskInvalid) Topic() Topic {
 type OrderNew struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	CreatedAt     uint64
 }
 

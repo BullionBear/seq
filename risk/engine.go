@@ -101,6 +101,7 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 	ev := event.OrderNew{
 		ClientOrderID: cmd.ClientOrderID,
 		OrderID:       -1,
+		AccountID:     cmd.AccountID,
 		CreatedAt:     uint64(time.Now().UnixNano()),
 	}
 	offset, buf := e.msgBus.Allocate(uint64(ev.GetBufferLength()))

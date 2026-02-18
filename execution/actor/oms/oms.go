@@ -101,7 +101,7 @@ func (o *OMS) OnStop() {
 }
 
 func (o *OMS) OnOrderNew(ev event.OrderNew) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Order new")
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order new")
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {

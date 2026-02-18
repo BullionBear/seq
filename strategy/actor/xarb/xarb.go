@@ -247,7 +247,7 @@ func (x *XArb) OnOrderError(orderError event.OrderError) {}
 func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {}
 
 func (x *XArb) OnOrderNew(orderNew event.OrderNew) {
-	x.Log().Info().Int("clientOrderID", orderNew.ClientOrderID).Int("orderID", orderNew.OrderID).Uint64("createdAt", orderNew.CreatedAt).Msg("Order new")
+	x.Log().Info().Int("clientOrderID", orderNew.ClientOrderID).Int("orderID", orderNew.OrderID).Int("accountID", orderNew.AccountID).Uint64("createdAt", orderNew.CreatedAt).Msg("Order new")
 }
 
 func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
