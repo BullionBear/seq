@@ -5,12 +5,10 @@ import (
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
-	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/portfolio"
 	"github.com/mitchellh/mapstructure"
-	"github.com/rs/zerolog"
 )
 
 func init() {
@@ -18,8 +16,6 @@ func init() {
 		return NewBalanceActor(handler)
 	})
 }
-
-func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure BalanceActor implements the Actor interface
 var _ actor.Actor = (*BalanceActor)(nil)
@@ -49,7 +45,7 @@ func NewBalanceActor(handler portfolio.BalanceEngineHandler) *BalanceActor {
 		ActorBase: actor.NewActorBase("portfolio-balance", []event.Topic{
 			event.TopicEventBalanceUpdate,
 			event.TopicEventRespBalanceSnapshot,
-			event.TopicEventOrderFill,
+			event.TopicEventExecution,
 		}),
 		handler: handler,
 	}
@@ -70,23 +66,23 @@ func (b *BalanceActor) OnInit(config map[string]any) {
 		TagName: "yaml",
 	})
 	if err != nil {
-		log().Error().Err(err).Msg("BalanceActor: failed to create decoder")
+		b.Log().Error().Err(err).Msg("BalanceActor: failed to create decoder")
 		return
 	}
 	if err := decoder.Decode(config); err != nil {
-		log().Error().Err(err).Msg("BalanceActor: failed to decode config")
+		b.Log().Error().Err(err).Msg("BalanceActor: failed to decode config")
 		return
 	}
 
 	b.accountID = cfg.ID
 	b.account = cfg.Account
-	log().Info().Int("accountID", b.accountID).Str("account", b.account).Msg("BalanceActor: initialized from config")
+	b.Log().Info().Int("accountID", b.accountID).Str("account", b.account).Msg("BalanceActor: initialized from config")
 }
 
 // OnStart requests initial balance snapshots for all configured accounts.
 func (b *BalanceActor) OnStart() {
 	if b.execRouter == nil || len(b.accountIDs) == 0 {
-		log().Info().Msg("BalanceActor: no router or accounts configured, notifying ready immediately")
+		b.Log().Info().Msg("BalanceActor: no router or accounts configured, notifying ready immediately")
 		b.handler.NotifyReady()
 		return
 	}
@@ -100,13 +96,13 @@ func (b *BalanceActor) OnStart() {
 
 	for _, id := range b.accountIDs {
 		if err := b.execRouter.ReqBalanceSnapshot(id); err != nil {
-			log().Error().Err(err).Int("accountID", id).Msg("BalanceActor: failed to request balance snapshot")
+			b.Log().Error().Err(err).Int("accountID", id).Msg("BalanceActor: failed to request balance snapshot")
 		} else {
-			log().Debug().Int("accountID", id).Msg("BalanceActor: requested balance snapshot")
+			b.Log().Debug().Int("accountID", id).Msg("BalanceActor: requested balance snapshot")
 		}
 	}
 
-	log().Info().Msg("BalanceActor: started, waiting for balance snapshots")
+	b.Log().Info().Msg("BalanceActor: started, waiting for balance snapshots")
 }
 
 // Handle routes events to the engine's update methods.
@@ -121,10 +117,10 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
 		b.handler.OnRespBalanceSnapshot(snapshot)
 		b.markSnapshotReceived(snapshot.AccountID)
-	case event.TopicEventOrderFill:
+	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := event.NewFillFromBytes(buf)
-		b.handler.OnFill(fill)
+		exec := event.NewExecutionFromBytes(buf)
+		b.handler.OnExecution(exec)
 	}
 }
 
@@ -139,7 +135,7 @@ func (b *BalanceActor) markSnapshotReceived(accountID int) {
 	b.mu.Unlock()
 
 	if allDone {
-		log().Info().Msg("BalanceActor: all balance snapshots received, notifying engine ready")
+		b.Log().Info().Msg("BalanceActor: all balance snapshots received, notifying engine ready")
 		b.handler.NotifyReady()
 	}
 }

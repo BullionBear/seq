@@ -159,8 +159,10 @@ func decodeEventPayload(topic event.Topic, buf []byte) any {
 		return event.NewOrderAcceptedFromBytes(buf)
 	case event.TopicEventOrderPartialFill:
 		return event.NewOrderPartiallyFilledFromBytes(buf)
-	case event.TopicEventOrderFill:
-		return event.NewFillFromBytes(buf)
+	case event.TopicEventOrderFilled:
+		return event.NewOrderFilledFromBytes(buf)
+	case event.TopicEventExecution:
+		return event.NewExecutionFromBytes(buf)
 	case event.TopicEventOrderCanceled:
 		return event.NewOrderCanceledFromBytes(buf)
 	case event.TopicEventOrderRejected:

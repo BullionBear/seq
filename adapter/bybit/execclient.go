@@ -501,7 +501,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	execFee := parseFloat64([]byte(execFeeStr))
 	execTime, _ := strconv.ParseInt(execTimeStr, 10, 64)
 
-	fill := event.Fill{
+	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		FillID:        fillID,
@@ -516,7 +516,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	offset, buf := c.msgBus.Allocate(size)
 	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderFill,
+		Topic:  event.TopicEventExecution,
 		Index:  offset,
 		Length: size,
 	})
@@ -656,7 +656,7 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderFill,
+		Topic:  event.TopicEventOrderFilled,
 		Index:  offset,
 		Length: size,
 	})

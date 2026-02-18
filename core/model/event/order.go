@@ -70,7 +70,7 @@ type OrderFilled struct {
 }
 
 func (o OrderFilled) Topic() Topic {
-	return TopicEventOrderFill
+	return TopicEventOrderFilled
 }
 
 type OrderCanceled struct {
@@ -94,7 +94,7 @@ func (o OrderRejected) Topic() Topic {
 	return TopicEventOrderRejected
 }
 
-type Fill struct {
+type Execution struct {
 	ClientOrderID int
 	OrderID       int
 	FillID        int
@@ -105,6 +105,6 @@ type Fill struct {
 	FilledAt      uint64
 }
 
-func (f Fill) Topic() Topic {
-	return TopicEventOrderFill
+func (e Execution) Topic() Topic {
+	return TopicEventExecution
 }

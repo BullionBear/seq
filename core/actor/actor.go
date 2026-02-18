@@ -47,3 +47,16 @@ func Register(bus *msgbus.MsgBus, actor Actor) {
 	}
 	bus.Register(actor.Name(), actor.SubscribedTypes(), handler)
 }
+
+// ApplyName sets the actor's name from the config entry. If name is empty,
+// the actor keeps its default name from construction.
+// This works on any actor that embeds ActorBase (which provides SetName).
+func ApplyName(a Actor, name string) {
+	if name == "" {
+		return
+	}
+	type namer interface{ SetName(string) }
+	if n, ok := a.(namer); ok {
+		n.SetName(name)
+	}
+}

@@ -30,7 +30,7 @@ func NewOMS(c *cache.Cache) *OMS {
 			event.TopicEventOrderNew,
 			event.TopicEventOrderAccepted,
 			event.TopicEventOrderPartialFill,
-			event.TopicEventOrderFill,
+			event.TopicEventOrderFilled,
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
 		}),
@@ -52,10 +52,14 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderPartiallyFilled := event.NewOrderPartiallyFilledFromBytes(buf)
 		o.OnOrderPartiallyFilled(orderPartiallyFilled)
-	case event.TopicEventOrderFill:
+	case event.TopicEventOrderFilled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := event.NewFillFromBytes(buf)
-		o.OnFill(fill)
+		orderFilled := event.NewOrderFilledFromBytes(buf)
+		o.OnOrderFilled(orderFilled)
+	case event.TopicEventExecution:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		execution := event.NewExecutionFromBytes(buf)
+		o.OnExecution(execution)
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderCanceled := event.NewOrderCanceledFromBytes(buf)
@@ -107,8 +111,12 @@ func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Order partially filled")
 }
 
-func (o *OMS) OnFill(ev event.Fill) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Fill")
+func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Order filled")
+}
+
+func (o *OMS) OnExecution(ev event.Execution) {
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Execution")
 }
 
 func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {

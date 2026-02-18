@@ -5,12 +5,10 @@ import (
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
-	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/mitchellh/mapstructure"
-	"github.com/rs/zerolog"
 )
 
 func init() {
@@ -18,8 +16,6 @@ func init() {
 		return NewOBTest(cat, bus)
 	})
 }
-
-func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure OBTest implements the Actor interface
 var _ actor.Actor = (*OBTest)(nil)
@@ -60,41 +56,41 @@ func (o *OBTest) OnInit(config map[string]any) {
 		TagName: "yaml", // Use yaml tags for mapping
 	})
 	if err != nil {
-		log().Panic().Msg("failed to create decoder")
+		o.Log().Panic().Msg("failed to create decoder")
 		return
 	}
 
 	err = decoder.Decode(config)
 	if err != nil {
-		log().Panic().Msg("failed to decode config")
+		o.Log().Panic().Msg("failed to decode config")
 		return
 	}
 
 	symbol, err := o.GetCatalog().GetSymbolByUniversalTicker(obtestConfig.SymbolUniversalTicker)
 	if err != nil {
-		log().Error().Err(err).Msg("failed to get symbol")
+		o.Log().Error().Err(err).Msg("failed to get symbol")
 		return
 	}
-	log().Info().Msgf("OBTest: Symbol configured: %s (ID: %d)", symbol.UniversalTicker, symbol.ID)
+	o.Log().Info().Msgf("OBTest: Symbol configured: %s (ID: %d)", symbol.UniversalTicker, symbol.ID)
 	o.symbol = *symbol
 }
 
 // OnStart is called when the strategy starts.
 // Note: Data subscriptions are now handled by the config - no manual Subscribe/Connect needed.
 func (o *OBTest) OnStart() {
-	log().Info().Msgf("OBTest: Strategy started for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
+	o.Log().Info().Msgf("OBTest: Strategy started for symbol: %s (ID: %d)", o.symbol.UniversalTicker, o.symbol.ID)
 }
 
 // OnStop is called when the strategy stops.
 func (o *OBTest) OnStop() {
-	log().Info().Msg("OBTest: Strategy stopped")
+	o.Log().Info().Msg("OBTest: Strategy stopped")
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to OBTest's typed callbacks.
 // This is necessary because Go doesn't have virtual method dispatch.
 func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	// Log ALL incoming events at the top level for debugging
-	log().Debug().
+	o.Log().Debug().
 		Int("topic", int(ev.Ref.Topic)).
 		Uint64("eventID", ev.EventID).
 		Msgf("OBTest: Handle called with topic: %d", ev.Ref.Topic)
@@ -113,7 +109,7 @@ func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		snapshot := event.NewRespDepthSnapshotFromBytes(buf)
 		o.OnRespDepthSnapshot(snapshot)
 	default:
-		log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")
+		o.Log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")
 	}
 }
 

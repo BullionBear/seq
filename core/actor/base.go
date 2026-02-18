@@ -25,6 +25,17 @@ func NewActorBase(name string, topics []event.Topic) ActorBase {
 	}
 }
 
+// SetName overrides the actor's name and re-initializes its logger with the new name context.
+// This is typically called by the engine after construction to apply the name from config.
+// If name is empty, this is a no-op.
+func (a *ActorBase) SetName(name string) {
+	if name == "" {
+		return
+	}
+	a.name = name
+	a.logger = logger.Get().With().Str("actor", name).Logger()
+}
+
 // Name returns the actor's unique identifier.
 func (a *ActorBase) Name() string {
 	return a.name

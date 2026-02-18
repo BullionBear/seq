@@ -57,6 +57,7 @@ func (e *Engine) Init(config Config) {
 		}
 
 		a := factory(e.msgBus, e.cache)
+		actor.ApplyName(a, entry.Name)
 		actor.Register(e.msgBus, a)
 		a.OnInit(entry.Config)
 		e.actors = append(e.actors, a)

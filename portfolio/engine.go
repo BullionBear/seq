@@ -99,6 +99,7 @@ func (e *Engine) Init(config Config) {
 		}
 
 		a := factory(e)
+		actor.ApplyName(a, entry.Name)
 		// If the actor supports balance configuration, pass router and accounts
 		if bc, ok := a.(BalanceConfigurer); ok {
 			bc.Configure(e.execRouter, e.accountIDs)
@@ -310,7 +311,7 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 	}
 }
 
-func (e *Engine) OnFill(ev event.Fill) {
+func (e *Engine) OnExecution(ev event.Execution) {
 	log().Debug().
 		Int("clientOrderID", ev.ClientOrderID).
 		Int("fillID", ev.FillID).

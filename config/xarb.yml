@@ -27,19 +27,23 @@ node:
             levels: 50
       actor:
         - type: orderbook
+          name: orderbook-binance
           config:
             symbol: BINANCE_SPOT_UNIUSDT
         - type: orderbook
+          name: orderbook-bybit
           config:
             symbol: BYBIT_SPOT_UNIUSDT
 
     execution:
       actor:
         - type: oms
+          name: oms-bybit
           config:
             id: 19
             account: bybit_lynxapp
         - type: oms
+          name: oms-binance
           config:
             id: 22
             account: lynxapp_ed25519
@@ -47,10 +51,12 @@ node:
     portfolio:
       actor:
         - type: balance
+          name: balance-bybit
           config:
             id: 19
             account: bybit_lynxapp
         - type: balance
+          name: balance-binance
           config:
             id: 22
             account: lynxapp_ed25519
@@ -58,6 +64,7 @@ node:
     strategy:
       actor:
         - type: xarb
+          name: xarb-uni
           config:
             quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT

@@ -513,7 +513,7 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 			if e.Ref.Topic == event.TopicEventOrderPartialFill {
 				partialFillEvent = e
 				eventCount++
-			} else if e.Ref.Topic == event.TopicEventOrderFill {
+			} else if e.Ref.Topic == event.TopicEventExecution {
 				fillEvent = e
 				eventCount++
 			}
@@ -539,9 +539,9 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 		t.Errorf("Expected ExecutedQty 0.5, got %f", orderPartiallyFilled.ExecutedQty)
 	}
 
-	// Verify Fill
+	// Verify Execution
 	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
-	fill := event.NewFillFromBytes(fillBuf)
+	fill := event.NewExecutionFromBytes(fillBuf)
 
 	if fill.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)

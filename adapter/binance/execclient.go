@@ -1002,7 +1002,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	commissionAsset, _ := jsonparser.GetString(data, "N")
 	tradeID, _ := jsonparser.GetInt(data, "t")
 
-	fill := event.Fill{
+	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		FillID:        int(tradeID),
@@ -1017,7 +1017,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	offset, buf := c.msgBus.Allocate(size)
 	fill.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderFill,
+		Topic:  event.TopicEventExecution,
 		Index:  offset,
 		Length: size,
 	})
@@ -1077,7 +1077,7 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 	offset, buf := c.msgBus.Allocate(size)
 	e.Encode(buf)
 	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderFill,
+		Topic:  event.TopicEventOrderFilled,
 		Index:  offset,
 		Length: size,
 	})
@@ -1196,7 +1196,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		commissionAsset, _ := jsonparser.GetString(value, "commissionAsset")
 		tradeID, _ := jsonparser.GetInt(value, "tradeId")
 
-		fill := event.Fill{
+		fill := event.Execution{
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
 			FillID:        int(tradeID),
@@ -1212,7 +1212,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		fillOffset, buf := c.msgBus.Allocate(size)
 		fill.Encode(buf)
 		c.msgBus.Publish(msgbus.EventRef{
-			Topic:  event.TopicEventOrderFill,
+			Topic:  event.TopicEventExecution,
 			Index:  fillOffset,
 			Length: size,
 		})

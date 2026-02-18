@@ -9,13 +9,11 @@ import (
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
-	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/mitchellh/mapstructure"
-	"github.com/rs/zerolog"
 )
 
 func init() {
@@ -23,8 +21,6 @@ func init() {
 		return NewXArb(cat, bus, c)
 	})
 }
-
-func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Ensure XArb implements the Actor interface
 var _ actor.Actor = (*XArb)(nil)
@@ -35,8 +31,6 @@ type XArb struct {
 	cache         *cache.Cache
 	quotingSymbol cpanel.Symbol
 	hedgingSymbol cpanel.Symbol
-	// Logger
-	logger zerolog.Logger
 
 	// Account IDs for trading
 	quotingAccount cpanel.Account
@@ -58,7 +52,7 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 			event.TopicEventDepthUpdate,
 			// Execution data
 			event.TopicEventOrderPartialFill,
-			event.TopicEventOrderFill,
+			event.TopicEventExecution,
 			// Reconciliation data
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
@@ -89,13 +83,13 @@ func (x *XArb) OnInit(config map[string]any) {
 		TagName: "yaml", // Use yaml tags for mapping
 	})
 	if err != nil {
-		log().Panic().Msg("failed to create decoder")
+		x.Log().Panic().Msg("failed to create decoder")
 		return
 	}
 
 	err = decoder.Decode(config)
 	if err != nil {
-		log().Panic().Msg("failed to decode config")
+		x.Log().Panic().Msg("failed to decode config")
 		return
 	}
 
@@ -157,10 +151,10 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update := event.NewDepthUpdateFromBytes(buf)
 		x.OnDepthUpdate(update)
-	case event.TopicEventOrderFill:
+	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		fill := event.NewFillFromBytes(buf)
-		x.OnFill(fill)
+		exec := event.NewExecutionFromBytes(buf)
+		x.OnExecution(exec)
 	case event.TopicEventOrderPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		partialFill := event.NewOrderPartiallyFilledFromBytes(buf)
@@ -213,7 +207,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			return
 		}
 		x.once.Do(func() {
-			buyPrice := price * 0.995
+			buyPrice := price * 1.005
 			pricePrecision := x.quotingSymbol.PricePrecision
 			buyPrice = math.Ceil(buyPrice*math.Pow10(pricePrecision)) / math.Pow10(pricePrecision)
 			buyQty := 2.0
@@ -237,8 +231,8 @@ func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
 		Msg("RespDepthSnapshot received")
 }
 
-// OnFill processes fill events.
-func (x *XArb) OnFill(fill event.Fill) {}
+// OnExecution processes execution (fill) events.
+func (x *XArb) OnExecution(exec event.Execution) {}
 
 func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
 

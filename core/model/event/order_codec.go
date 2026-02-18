@@ -9,7 +9,7 @@ const (
 	sizeOfOrderPartiallyFilled = int(unsafe.Sizeof(OrderPartiallyFilled{}))
 	sizeOfOrderFilled          = int(unsafe.Sizeof(OrderFilled{}))
 	sizeOfOrderCanceled        = int(unsafe.Sizeof(OrderCanceled{}))
-	sizeOfFill                 = int(unsafe.Sizeof(Fill{}))
+	sizeOfExecution            = int(unsafe.Sizeof(Execution{}))
 )
 
 // ============================================================================
@@ -108,20 +108,20 @@ func NewOrderCanceledFromBytes(buf []byte) OrderCanceled {
 }
 
 // ============================================================================
-// Fill
+// Execution
 // ============================================================================
 
-func (f Fill) GetBufferLength() int { return sizeOfFill }
+func (e Execution) GetBufferLength() int { return sizeOfExecution }
 
-func (f Fill) Encode(buf []byte) error {
-	if len(buf) < sizeOfFill {
+func (e Execution) Encode(buf []byte) error {
+	if len(buf) < sizeOfExecution {
 		return ErrBufferTooSmall
 	}
-	data := (*[sizeOfFill]byte)(unsafe.Pointer(&f))[:]
+	data := (*[sizeOfExecution]byte)(unsafe.Pointer(&e))[:]
 	copy(buf, data)
 	return nil
 }
 
-func NewFillFromBytes(buf []byte) Fill {
-	return *(*Fill)(unsafe.Pointer(&buf[0]))
+func NewExecutionFromBytes(buf []byte) Execution {
+	return *(*Execution)(unsafe.Pointer(&buf[0]))
 }

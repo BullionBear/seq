@@ -42,4 +42,4 @@ logs/
 # Tests
 tests/
 venv
-scripts
+scripts/

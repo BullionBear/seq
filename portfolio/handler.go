@@ -7,6 +7,6 @@ import "github.com/BullionBear/seq/core/model/event"
 type BalanceEngineHandler interface {
 	OnBalanceUpdate(ev event.BalanceUpdate)
 	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
-	OnFill(ev event.Fill)
+	OnExecution(ev event.Execution)
 	NotifyReady()
 }
