@@ -66,7 +66,6 @@ func (e *Engine) Init(config Config) {
 	}
 
 	for _, cmdType := range e.handledCommandTypes() {
-		cmdType := cmdType
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
 
