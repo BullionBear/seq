@@ -1,6 +1,8 @@
 package strategy
 
 import (
+	"time"
+
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/command"
@@ -29,9 +31,10 @@ func (s *StrategyActorBase) GetCatalog() *catalog.Catalog {
 	return s.catalog
 }
 
-func (s *StrategyActorBase) SubmitOrder(clientOrderID int, accountID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) {
+func (s *StrategyActorBase) SubmitOrder(accountID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) int {
+	clientOrderId := int(time.Now().UnixNano() % 1000000)
 	riskCmd := command.RiskCheck{
-		ClientOrderID: clientOrderID,
+		ClientOrderID: clientOrderId,
 		AccountID:     accountID,
 		SymbolID:      symbolID,
 		Side:          side,
@@ -48,6 +51,7 @@ func (s *StrategyActorBase) SubmitOrder(clientOrderID int, accountID int, symbol
 		Index:       offset,
 		Length:      size,
 	})
+	return clientOrderId
 }
 
 func (s *StrategyActorBase) CancelOrder(clientOrderID int, accountID int) {

@@ -8,10 +8,10 @@ import "encoding/binary"
 
 // ============================================================================
 // OrderUnknownStatus
-// Layout: [ClientOrderID(8)][OrderID(8)][MsgLen(4)][Msg(...)]
+// Layout: [ClientOrderID(8)][OrderID(8)][AccountID(8)][MsgLen(4)][Msg(...)]
 // ============================================================================
 
-const orderUnknownStatusFixedSize = 8 + 8 + 4 // 20 bytes
+const orderUnknownStatusFixedSize = 8 + 8 + 8 + 4 // 28 bytes
 
 func (o OrderUnknownStatus) GetBufferLength() int {
 	return orderUnknownStatusFixedSize + len(o.Msg)
@@ -27,6 +27,8 @@ func (o OrderUnknownStatus) Encode(buf []byte) error {
 	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.OrderID))
 	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.AccountID))
+	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
 	pos += 4
 	copy(buf[pos:], o.Msg)
@@ -39,22 +41,25 @@ func NewOrderUnknownStatusFromBytes(buf []byte) OrderUnknownStatus {
 	pos += 8
 	orderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
 	msg := string(buf[pos : pos+msgLen])
 	return OrderUnknownStatus{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     accountID,
 		Msg:           msg,
 	}
 }
 
 // ============================================================================
 // OrderError
-// Layout: [ClientOrderID(8)][OrderID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
+// Layout: [ClientOrderID(8)][OrderID(8)][AccountID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
 // ============================================================================
 
-const orderErrorFixedSize = 8 + 8 + 8 + 4 // 28 bytes
+const orderErrorFixedSize = 8 + 8 + 8 + 8 + 4 // 36 bytes
 
 func (o OrderError) GetBufferLength() int {
 	return orderErrorFixedSize + len(o.Msg)
@@ -70,6 +75,8 @@ func (o OrderError) Encode(buf []byte) error {
 	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.OrderID))
 	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.AccountID))
+	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ErrorCode))
 	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
@@ -84,6 +91,8 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 	pos += 8
 	orderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	errorCode := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
@@ -92,6 +101,7 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 	return OrderError{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     accountID,
 		ErrorCode:     errorCode,
 		Msg:           msg,
 	}
@@ -99,10 +109,10 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 
 // ============================================================================
 // OrderRejected
-// Layout: [ClientOrderID(8)][OrderID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
+// Layout: [ClientOrderID(8)][OrderID(8)][AccountID(8)][ErrorCode(8)][UpdatedAt(8)][MsgLen(4)][Msg(...)]
 // ============================================================================
 
-const orderRejectedFixedSize = 8 + 8 + 8 + 4 // 28 bytes
+const orderRejectedFixedSize = 8 + 8 + 8 + 8 + 8 + 4 // 44 bytes
 
 func (o OrderRejected) GetBufferLength() int {
 	return orderRejectedFixedSize + len(o.Msg)
@@ -118,7 +128,11 @@ func (o OrderRejected) Encode(buf []byte) error {
 	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.OrderID))
 	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.AccountID))
+	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ErrorCode))
+	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], o.UpdatedAt)
 	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
 	pos += 4
@@ -132,7 +146,11 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 	pos += 8
 	orderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	errorCode := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
+	updatedAt := binary.LittleEndian.Uint64(buf[pos:])
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
@@ -140,17 +158,19 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 	return OrderRejected{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     accountID,
 		ErrorCode:     errorCode,
+		UpdatedAt:     updatedAt,
 		Msg:           msg,
 	}
 }
 
 // ============================================================================
 // OrderRiskInvalid
-// Layout: [ClientOrderID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
+// Layout: [ClientOrderID(8)][AccountID(8)][ErrorCode(8)][MsgLen(4)][Msg(...)]
 // ============================================================================
 
-const orderRiskInvalidFixedSize = 8 + 8 + 4 // 20 bytes
+const orderRiskInvalidFixedSize = 8 + 8 + 8 + 4 // 28 bytes
 
 func (o OrderRiskInvalid) GetBufferLength() int {
 	return orderRiskInvalidFixedSize + len(o.Msg)
@@ -164,6 +184,8 @@ func (o OrderRiskInvalid) Encode(buf []byte) error {
 	pos := 0
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ClientOrderID))
 	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.AccountID))
+	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(o.ErrorCode))
 	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(len(o.Msg)))
@@ -176,6 +198,8 @@ func NewOrderRiskInvalidFromBytes(buf []byte) OrderRiskInvalid {
 	pos := 0
 	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	errorCode := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
@@ -183,6 +207,7 @@ func NewOrderRiskInvalidFromBytes(buf []byte) OrderRiskInvalid {
 	msg := string(buf[pos : pos+msgLen])
 	return OrderRiskInvalid{
 		ClientOrderID: clientOrderID,
+		AccountID:     accountID,
 		ErrorCode:     errorCode,
 		Msg:           msg,
 	}

@@ -22,8 +22,8 @@ type Cache struct {
 	// Orderbook data: symbolID -> OrderBook
 	books *haxmap.Map[int, *OrderBook]
 
-	// Open orders: acctID -> (clientOrderID -> Order)
-	openOrders *haxmap.Map[int, *haxmap.Map[int, *common.Order]]
+	// Order tracking with open-orders index
+	orderCache *OrderCache
 
 	// Balances: acctID -> (tokenID -> Balance)
 	balances *haxmap.Map[int, *haxmap.Map[int, *common.Balance]]
@@ -33,7 +33,7 @@ type Cache struct {
 func NewCache() *Cache {
 	return &Cache{
 		books:      haxmap.New[int, *OrderBook](),
-		openOrders: haxmap.New[int, *haxmap.Map[int, *common.Order]](),
+		orderCache: NewOrderCache(),
 		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
 	}
 }
@@ -187,77 +187,65 @@ func (c *Cache) SetBookState(symbolID int, state common.BookState) {
 }
 
 // ============================================================================
-// Open Order Read Methods
+// Order Read Methods
 // ============================================================================
 
+// GetOrder returns an order by client order ID, or nil if not found.
+func (c *Cache) GetOrder(clientOrderID int) (common.Order, bool) {
+	return c.orderCache.GetOrder(clientOrderID)
+}
+
 // GetOpenOrder returns an open order by account ID and client order ID.
-func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) *common.Order {
-	acctOrders, ok := c.openOrders.Get(acctID)
-	if !ok {
-		return nil
+func (c *Cache) GetOpenOrder(acctID int, clientOrderID int) (common.Order, bool) {
+	order, ok := c.orderCache.GetOrder(clientOrderID)
+	if !ok || order.AccountID != acctID || !order.OrderStatus.IsOpen() {
+		return common.Order{}, false
 	}
-	order, _ := acctOrders.Get(clientOrderID)
-	return order
+	return order, true
 }
 
 // GetOpenOrdersByAccount returns all open orders for an account.
 func (c *Cache) GetOpenOrdersByAccount(acctID int) []*common.Order {
-	acctOrders, ok := c.openOrders.Get(acctID)
-	if !ok {
-		return nil
-	}
-
-	orders := make([]*common.Order, 0, acctOrders.Len())
-	acctOrders.ForEach(func(_ int, order *common.Order) bool {
-		orders = append(orders, order)
-		return true
-	})
-	return orders
+	return c.orderCache.GetOpenOrders(acctID)
 }
 
 // GetOpenOrdersBySymbol returns all open orders for an account and symbol.
 func (c *Cache) GetOpenOrdersBySymbol(acctID int, symbolID int) []*common.Order {
-	acctOrders, ok := c.openOrders.Get(acctID)
-	if !ok {
+	all := c.orderCache.GetOpenOrders(acctID)
+	if all == nil {
 		return nil
 	}
-
-	orders := make([]*common.Order, 0)
-	acctOrders.ForEach(func(_ int, order *common.Order) bool {
-		if order.SymbolID == symbolID {
-			orders = append(orders, order)
+	orders := make([]*common.Order, 0, len(all))
+	for _, o := range all {
+		if o.SymbolID == symbolID {
+			orders = append(orders, o)
 		}
-		return true
-	})
+	}
 	return orders
 }
 
 // OpenOrderCount returns the number of open orders for an account.
 func (c *Cache) OpenOrderCount(acctID int) int {
-	acctOrders, ok := c.openOrders.Get(acctID)
-	if !ok {
-		return 0
-	}
-	return int(acctOrders.Len())
+	return len(c.orderCache.GetOpenOrders(acctID))
 }
 
 // ============================================================================
-// Open Order Write Methods
+// Order Write Methods
 // ============================================================================
 
-// SetOpenOrder adds or updates an open order in the cache.
-func (c *Cache) SetOpenOrder(acctID int, order *common.Order) {
-	acctOrders, _ := c.openOrders.GetOrCompute(acctID, func() *haxmap.Map[int, *common.Order] {
-		return haxmap.New[int, *common.Order]()
-	})
-	acctOrders.Set(order.ClientOrderID, order)
+// InsertOrder inserts a new order into the cache.
+func (c *Cache) InsertOrder(order *common.Order) {
+	c.orderCache.InsertOrder(order)
 }
 
-// RemoveOpenOrder removes an open order from the cache.
-func (c *Cache) RemoveOpenOrder(acctID int, clientOrderID int) {
-	if acctOrders, ok := c.openOrders.Get(acctID); ok {
-		acctOrders.Del(clientOrderID)
-	}
+// UpdateOrder updates an existing order and maintains the open-orders index.
+func (c *Cache) UpdateOrder(order *common.Order) {
+	c.orderCache.UpdateOrder(order)
+}
+
+// DeleteOrder removes an order from the cache.
+func (c *Cache) DeleteOrder(clientOrderID int) {
+	c.orderCache.DeleteOrder(clientOrderID)
 }
 
 // ============================================================================

@@ -70,3 +70,6 @@ node:
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
             quoting_account: lynxapp_ed25519
             hedging_account: bybit_lynxapp
+            side: BUY
+            profit_bps: 10
+            qty: 2

@@ -19,7 +19,6 @@ type OrderStatus int
 const (
 	OrderStatusUninitialized OrderStatus = iota
 	OrderStatusInitialized
-	OrderStatusInFlight
 	OrderStatusAccepted
 	OrderStatusPartiallyFilled
 	OrderStatusFilled
@@ -28,10 +27,23 @@ const (
 	OrderStatusUnknown
 )
 
+func (o OrderStatus) Cancellable() bool {
+	return o == OrderStatusAccepted || o == OrderStatusPartiallyFilled
+}
+
+func (o OrderStatus) IsOpen() bool {
+	return o == OrderStatusAccepted || o == OrderStatusPartiallyFilled || o == OrderStatusInitialized
+}
+
+func (o OrderStatus) IsTerminal() bool {
+	return o == OrderStatusFilled || o == OrderStatusCanceled || o == OrderStatusRejected
+}
+
 type Side int
 
 const (
-	SideBuy Side = iota
+	SideUnknown Side = iota
+	SideBuy
 	SideSell
 )
 

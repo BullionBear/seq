@@ -955,7 +955,7 @@ func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
 	case "REJECTED":
 		if subOrderUpdate {
 			rejectReason, _ := jsonparser.GetString(data, "r")
-			c.publishOrderRejected(clientOrderID, int(orderID), rejectReason)
+			c.publishOrderRejected(clientOrderID, int(orderID), rejectReason, updatedAt)
 		}
 
 	default:
@@ -994,6 +994,7 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		FillID:        int(tradeID),
 		FilledQty:     lastQty,
 		FilledPrice:   lastPrice,
@@ -1024,6 +1025,7 @@ func (c *BinanceSpotExecutionClient) publishOrderAccepted(clientOrderID, orderID
 	e := event.OrderAccepted{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		CreatedAt:     createdAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1041,6 +1043,7 @@ func (c *BinanceSpotExecutionClient) publishOrderPartiallyFilled(clientOrderID, 
 	e := event.OrderPartiallyFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -1059,6 +1062,7 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 	e := event.OrderFilled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ExecutedQty:   executedQty,
 		UpdatedAt:     updatedAt,
 	}
@@ -1077,6 +1081,7 @@ func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID
 	e := event.OrderCanceled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1089,12 +1094,15 @@ func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID
 	})
 }
 
-// publishOrderRejected publishes an OrderRejected event
-func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID int, reason string) {
+// publishOrderRejected publishes an OrderRejected event.
+// updatedAt is the exchange timestamp when available; otherwise use received time (e.g. time.Now().UnixNano()).
+func (c *BinanceSpotExecutionClient) publishOrderRejected(clientOrderID, orderID int, reason string, updatedAt uint64) {
 	e := event.OrderRejected{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		ErrorCode:     0,
+		UpdatedAt:     updatedAt,
 		Msg:           reason,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1112,6 +1120,7 @@ func (c *BinanceSpotExecutionClient) publishOrderUnknownStatus(clientOrderID, or
 	e := event.OrderUnknownStatus{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
+		AccountID:     c.accountID,
 		Msg:           status,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1173,7 +1182,7 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 		c.publishOrderCanceled(clientOrderID, int(orderIDInt), updatedAt)
 
 	case "REJECTED":
-		c.publishOrderRejected(clientOrderID, int(orderIDInt), "Order rejected")
+		c.publishOrderRejected(clientOrderID, int(orderIDInt), "Order rejected", updatedAt)
 
 	default:
 		c.publishOrderUnknownStatus(clientOrderID, int(orderIDInt), status)
@@ -1193,6 +1202,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		fill := event.Execution{
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
+			AccountID:     c.accountID,
 			FillID:        int(tradeID),
 			FilledQty:     parseFloat64([]byte(qtyStr)),
 			FilledPrice:   parseFloat64([]byte(priceStr)),

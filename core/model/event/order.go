@@ -1,8 +1,11 @@
 package event
 
+import "github.com/BullionBear/seq/core/model/common"
+
 type OrderUnknownStatus struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	Msg           string
 }
 
@@ -13,6 +16,7 @@ func (o OrderUnknownStatus) Topic() Topic {
 type OrderError struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	ErrorCode     int
 	Msg           string
 }
@@ -23,6 +27,7 @@ func (o OrderError) Topic() Topic {
 
 type OrderRiskInvalid struct {
 	ClientOrderID int
+	AccountID     int
 	ErrorCode     int
 	Msg           string
 }
@@ -32,9 +37,18 @@ func (o OrderRiskInvalid) Topic() Topic {
 }
 
 type OrderNew struct {
+	AccountID     int
 	ClientOrderID int
 	OrderID       int
+	SymbolID      int
+	Side          common.Side
+	OrderType     common.OrderType
+	TimeInForce   common.TimeInForce
+	Quantity      float64
+	Price         float64
+	ExecutedQty   float64
 	CreatedAt     uint64
+	UpdatedAt     uint64
 }
 
 func (o OrderNew) Topic() Topic {
@@ -44,6 +58,7 @@ func (o OrderNew) Topic() Topic {
 type OrderAccepted struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	CreatedAt     uint64
 }
 
@@ -54,6 +69,7 @@ func (o OrderAccepted) Topic() Topic {
 type OrderPartiallyFilled struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	ExecutedQty   float64
 	UpdatedAt     uint64
 }
@@ -65,6 +81,7 @@ func (o OrderPartiallyFilled) Topic() Topic {
 type OrderFilled struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	ExecutedQty   float64
 	UpdatedAt     uint64
 }
@@ -76,6 +93,7 @@ func (o OrderFilled) Topic() Topic {
 type OrderCanceled struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	UpdatedAt     uint64
 }
 
@@ -86,7 +104,9 @@ func (o OrderCanceled) Topic() Topic {
 type OrderRejected struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	ErrorCode     int
+	UpdatedAt     uint64
 	Msg           string
 }
 
@@ -97,6 +117,7 @@ func (o OrderRejected) Topic() Topic {
 type Execution struct {
 	ClientOrderID int
 	OrderID       int
+	AccountID     int
 	FillID        int
 	FilledQty     float64
 	FilledPrice   float64

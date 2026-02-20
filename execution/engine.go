@@ -144,8 +144,8 @@ func (e *Engine) execOrderSubmit(cmd command.SubmitOrder) {
 }
 
 func (e *Engine) execOrderCancel(cmd command.CancelOrder) {
-	order := e.cache.GetOpenOrder(cmd.AccountID, cmd.ClientOrderID)
-	if order == nil {
+	order, ok := e.cache.GetOpenOrder(cmd.AccountID, cmd.ClientOrderID)
+	if !ok {
 		log().Error().Int("accountID", cmd.AccountID).Int("clientOrderID", cmd.ClientOrderID).Msg("Order not found")
 		return
 	}

@@ -85,6 +85,7 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		log().Error().Err(err).Msg("RiskEngine: Order risk check failed")
 		ev := event.OrderRiskInvalid{
 			ClientOrderID: cmd.ClientOrderID,
+			AccountID:     cmd.AccountID,
 			ErrorCode:     -1,
 			Msg:           err.Error(),
 		}
@@ -98,10 +99,19 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		return
 	}
 
+	now := uint64(time.Now().UnixNano())
 	ev := event.OrderNew{
+		AccountID:     cmd.AccountID,
 		ClientOrderID: cmd.ClientOrderID,
 		OrderID:       -1,
-		CreatedAt:     uint64(time.Now().UnixNano()),
+		SymbolID:      cmd.SymbolID,
+		Side:          cmd.Side,
+		OrderType:     cmd.OrderType,
+		TimeInForce:   cmd.TimeInForce,
+		Quantity:      cmd.Quantity,
+		Price:         cmd.Price,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	offset, buf := e.msgBus.Allocate(uint64(ev.GetBufferLength()))
 	ev.Encode(buf)
