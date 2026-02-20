@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -493,6 +494,7 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	feeCurrency, _ := jsonparser.GetString(data, "feeCurrency")
 	execTimeStr, _ := jsonparser.GetString(data, "execTime")
 	symbolStr, _ := jsonparser.GetString(data, "symbol")
+	sideStr, _ := jsonparser.GetString(data, "side")
 
 	clientOrderID, _ := strconv.Atoi(orderLinkIDStr)
 	orderID, _ := strconv.Atoi(orderIDStr)
@@ -507,12 +509,16 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 			symbolID = sym.ID
 		}
 	}
+	side := parseSide(sideStr)
+	isMaker, _ := jsonparser.GetBoolean(data, "isMaker")
 
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
 		SymbolID:      symbolID,
+		Side:          side,
+		IsMaker:       isMaker,
 		FillID:        fillID,
 		FilledQty:     execQty,
 		FilledPrice:   execPrice,
@@ -739,6 +745,18 @@ func (c *BybitPrivateStreamClient) getTokenIDByName(name string) int {
 		}
 	}
 	return 0
+}
+
+// parseSide maps Bybit side string ("Buy"/"Sell") to common.Side.
+func parseSide(s string) common.Side {
+	switch strings.ToUpper(s) {
+	case "BUY":
+		return common.SideBuy
+	case "SELL":
+		return common.SideSell
+	default:
+		return common.SideUnknown
+	}
 }
 
 // wsPrivateStreamHandler implements gws.Event interface for private stream WebSocket

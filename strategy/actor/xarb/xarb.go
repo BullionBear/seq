@@ -42,10 +42,11 @@ type XArb struct {
 	PriceToleranceBps float64
 
 	// Algo variables
-	clientOrderID int
-	quotingCount  int
-	hedgingCount  int
-	unhedgedQty   float64
+	clientOrderID     int
+	quotingCount      int
+	hedgingCount      int
+	unhedgedAvailable float64
+	unhedgedLocked    float64
 }
 
 // NewXArb creates a new XArb strategy.
@@ -76,10 +77,11 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 		Qty:               0.0,
 		PriceToleranceBps: 0.0000,
 
-		clientOrderID: 0,
-		unhedgedQty:   0.0,
-		quotingCount:  0,
-		hedgingCount:  0,
+		clientOrderID:     0,
+		unhedgedAvailable: 0.0,
+		unhedgedLocked:    0.0,
+		quotingCount:      0,
+		hedgingCount:      0,
 	}
 }
 
@@ -292,6 +294,18 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 
 // OnExecution processes execution (fill) events.
 func (x *XArb) OnExecution(exec event.Execution) {
+	if exec.SymbolID == x.quotingSymbol.ID && exec.Side == common.SideBuy {
+		x.unhedgedAvailable += exec.FilledQty
+	} else if exec.SymbolID == x.quotingSymbol.ID && exec.Side == common.SideSell {
+		x.unhedgedAvailable -= exec.FilledQty
+	} else if exec.SymbolID == x.hedgingSymbol.ID && exec.Side == common.SideBuy {
+		x.unhedgedLocked += exec.FilledQty
+	} else if exec.SymbolID == x.hedgingSymbol.ID && exec.Side == common.SideSell {
+		x.unhedgedLocked -= exec.FilledQty
+	} else {
+		x.Log().Error().Int("symbolID", exec.SymbolID).Str("side", exec.Side.String()).Msg("Invalid execution")
+		return
+	}
 }
 
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
