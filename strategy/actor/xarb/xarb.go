@@ -2,7 +2,7 @@ package xarb
 
 import (
 	"math"
-	"sync"
+	"strings"
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
@@ -36,15 +36,16 @@ type XArb struct {
 	hedgingAccount cpanel.Account
 
 	// Algo parameters
-	Side      common.Side
-	ProfitBps float64
-	Qty       float64
+	Side              common.Side
+	ProfitBps         float64
+	Qty               float64
+	PriceToleranceBps float64
 
-	// Count
-	quotingCount int
-	hedgingCount int
-	// Once
-	once sync.Once
+	// Algo variables
+	clientOrderID int
+	quotingCount  int
+	hedgingCount  int
+	unhedgedQty   float64
 }
 
 // NewXArb creates a new XArb strategy.
@@ -52,10 +53,8 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 	return &XArb{
 		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, msgbus, []event.Topic{
 			// Market data
-			event.TopicEventDepthSnapshot,
 			event.TopicEventDepthUpdate,
 			// Execution data
-			event.TopicEventOrderPartialFill,
 			event.TopicEventExecution,
 			// Reconciliation data
 			event.TopicEventOrderCanceled,
@@ -72,9 +71,15 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 		quotingAccount: cpanel.Account{},
 		hedgingAccount: cpanel.Account{},
 
-		quotingCount: 0,
-		hedgingCount: 0,
-		once:         sync.Once{},
+		Side:              common.SideUnknown,
+		ProfitBps:         0.0,
+		Qty:               0.0,
+		PriceToleranceBps: 0.0000,
+
+		clientOrderID: 0,
+		unhedgedQty:   0.0,
+		quotingCount:  0,
+		hedgingCount:  0,
 	}
 }
 
@@ -113,6 +118,18 @@ func (x *XArb) OnInit(config map[string]any) {
 	x.Log().Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
 	x.Log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
 
+	// Resolve algo parameters
+	switch strings.ToLower(xarbConfig.Side) {
+	case "buy", "b":
+		x.Side = common.SideBuy
+	case "sell", "s":
+		x.Side = common.SideSell
+	default:
+		x.Log().Panic().Str("side", xarbConfig.Side).Msg("invalid side")
+	}
+	x.ProfitBps = xarbConfig.ProfitBps
+	x.Qty = xarbConfig.Qty
+	x.PriceToleranceBps = xarbConfig.PriceToleranceBps
 	// Resolve trading accounts
 	if xarbConfig.QuotingAccount != "" {
 		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
@@ -134,17 +151,6 @@ func (x *XArb) OnInit(config map[string]any) {
 		}
 	}
 
-	// Apply algo parameters
-	switch xarbConfig.Side {
-	case "buy":
-		x.Side = common.SideBuy
-	case "sell":
-		x.Side = common.SideSell
-	default:
-		x.Log().Panic().Str("side", xarbConfig.Side).Msg("invalid side")
-	}
-	x.ProfitBps = xarbConfig.ProfitBps
-	x.Qty = xarbConfig.Qty
 }
 
 // OnStart is called when the strategy starts.
@@ -171,10 +177,6 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		exec := event.NewExecutionFromBytes(buf)
 		x.OnExecution(exec)
-	case event.TopicEventOrderPartialFill:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		partialFill := event.NewOrderPartiallyFilledFromBytes(buf)
-		x.OnPartialFill(partialFill)
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderCanceled := event.NewOrderCanceledFromBytes(buf)
@@ -205,6 +207,9 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
+	if update.SymbolID != x.hedgingSymbol.ID || update.SymbolID != x.quotingSymbol.ID {
+		return
+	}
 	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.hedgingSymbol.ID {
 		x.hedgingCount += 1
 	}
@@ -215,43 +220,79 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		x.Log().Info().Msg("XArb strategy is not ready")
 		return
 	}
-	if x.quotingCount%50 == 0 {
-		x.Log().Info().Msgf("Quoting count: %d", x.quotingCount)
-		price, ok := x.cache.GetMidPrice(x.quotingSymbol.ID)
+	switch x.Side {
+	case common.SideBuy:
+		refPrice, _, ok := x.cache.GetBestBid(x.hedgingSymbol.ID)
 		if !ok {
-			x.Log().Error().Msg("failed to get mid price")
+			x.Log().Error().Msg("failed to get best bid")
 			return
 		}
-		x.once.Do(func() {
-			buyPrice := price * 1.005
-			pricePrecision := x.quotingSymbol.PricePrecision
-			buyPrice = math.Ceil(buyPrice*math.Pow10(pricePrecision)) / math.Pow10(pricePrecision)
-			buyQty := 2.0
-			x.Log().Info().Msgf("Submit order: %f@%f", buyPrice, buyQty)
-			clientOrderId := x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForceGTC, buyPrice, buyQty)
-			x.Log().Info().Int("clientOrderID", clientOrderId).Msg("Order submitted")
-		})
+		if x.clientOrderID != 0 {
+			order, ok := x.cache.GetOpenOrder(x.quotingAccount.ID, x.clientOrderID)
+			if ok {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Quote order already submitted")
+				return
+			}
+			if order.OrderStatus.IsTerminal() {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Quote order already terminal")
+				x.clientOrderID = 0
+				return
+			}
+			if !order.OrderStatus.Cancellable() {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Quote order not cancellable")
+				return
+			}
+			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Quote order price tolerance exceeded")
+				x.CancelOrder(x.clientOrderID, x.quotingAccount.ID)
+				return
+			}
+		}
+		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
+		buyPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
+		buyQty := x.Qty
+		x.Log().Info().Float64("buyPrice", buyPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
+		x.clientOrderID = x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
+		x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Quote order submitted")
+	case common.SideSell:
+		refPrice, _, ok := x.cache.GetBestAsk(x.quotingSymbol.ID)
+		if !ok {
+			x.Log().Error().Msg("failed to get best ask")
+			return
+		}
+		if x.clientOrderID != 0 {
+			order, ok := x.cache.GetOpenOrder(x.hedgingAccount.ID, x.clientOrderID)
+			if ok {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Hedge order already submitted")
+				return
+			}
+			if order.OrderStatus.IsTerminal() {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Hedge order already terminal")
+				x.clientOrderID = 0
+				return
+			}
+			if !order.OrderStatus.Cancellable() {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Hedge order not cancellable")
+				return
+			}
+			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
+				x.Log().Info().Int("clientOrderID", x.clientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Hedge order price tolerance exceeded")
+				x.CancelOrder(x.clientOrderID, x.hedgingAccount.ID)
+				return
+			}
+		}
+		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
+		sellPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
+		sellQty := x.Qty
+		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit hedge order")
+		x.clientOrderID = x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
+		x.Log().Info().Int("clientOrderID", x.clientOrderID).Msg("Hedge order submitted")
 	}
-	if x.hedgingCount%50 == 0 {
-		x.Log().Info().Msgf("Hedging count: %d", x.hedgingCount)
-	}
-}
-
-// OnRespDepthSnapshot processes the response to a depth snapshot request.
-func (x *XArb) OnRespDepthSnapshot(snapshot event.RespDepthSnapshot) {
-	symbolID := snapshot.SymbolID
-	x.Log().Info().
-		Int("symbolID", symbolID).
-		Int("depthID", snapshot.DepthID).
-		Int("asks", len(snapshot.Asks)).
-		Int("bids", len(snapshot.Bids)).
-		Msg("RespDepthSnapshot received")
 }
 
 // OnExecution processes execution (fill) events.
-func (x *XArb) OnExecution(exec event.Execution) {}
-
-func (x *XArb) OnPartialFill(partialFill event.OrderPartiallyFilled) {}
+func (x *XArb) OnExecution(exec event.Execution) {
+}
 
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
 

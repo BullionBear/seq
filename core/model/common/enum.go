@@ -42,7 +42,8 @@ func (o OrderStatus) IsTerminal() bool {
 type Side int
 
 const (
-	SideBuy Side = iota
+	SideUnknown Side = iota
+	SideBuy
 	SideSell
 )
 
