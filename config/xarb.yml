@@ -72,7 +72,7 @@ node:
             hedging_account: bybit_lynxapp
             side: BUY
             profit_bps: 3
-            qty: 2
+            qty: 3.5
         # - type: xarb
         #   name: xarb-uni-sell-3bps
         #   config:

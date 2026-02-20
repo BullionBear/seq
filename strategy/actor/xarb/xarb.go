@@ -61,6 +61,7 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 			// Reconciliation data
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
+			event.TopicEventOrderFilled,
 			event.TopicEventOrderError,
 			event.TopicEventOrderRiskInvalid,
 			event.TopicEventOrderNew,
