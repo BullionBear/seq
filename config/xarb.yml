@@ -73,6 +73,7 @@ node:
             side: BUY
             profit_bps: 3
             qty: 3.5
+            min_unhedged_quote: 10
         # - type: xarb
         #   name: xarb-uni-sell-3bps
         #   config:

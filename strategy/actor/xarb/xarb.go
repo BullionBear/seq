@@ -40,6 +40,7 @@ type XArb struct {
 	ProfitBps         float64
 	Qty               float64
 	PriceToleranceBps float64
+	MinUnhedgedQuote  float64
 
 	// Algo variables
 	quotingClientOrderID int
@@ -74,11 +75,11 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 		quotingAccount: cpanel.Account{},
 		hedgingAccount: cpanel.Account{},
 
-		Side:              common.SideUnknown,
-		ProfitBps:         0.0,
-		Qty:               0.0,
-		PriceToleranceBps: 0.0000,
-
+		Side:                 common.SideUnknown,
+		ProfitBps:            0.0,
+		Qty:                  0.0,
+		PriceToleranceBps:    0.0000,
+		MinUnhedgedQuote:     0.0,
 		quotingClientOrderID: 0,
 		hedgingClientOrderID: 0,
 		unhedgedAvailable:    0.0,
@@ -135,7 +136,13 @@ func (x *XArb) OnInit(config map[string]any) {
 	x.ProfitBps = xarbConfig.ProfitBps
 	x.Qty = xarbConfig.Qty
 	x.PriceToleranceBps = xarbConfig.PriceToleranceBps
-	x.Log().Info().Str("side", x.Side.String()).Float64("profitBps", x.ProfitBps).Float64("qty", x.Qty).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("XArb config")
+	x.MinUnhedgedQuote = xarbConfig.MinUnhedgedQuote
+	x.Log().Info().Str("side", x.Side.String()).
+		Float64("profitBps", x.ProfitBps).
+		Float64("qty", x.Qty).
+		Float64("priceToleranceBps", x.PriceToleranceBps).
+		Float64("minUnhedgedQuote", x.MinUnhedgedQuote).
+		Msg("XArb config")
 	// Resolve trading accounts
 	if xarbConfig.QuotingAccount != "" {
 		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
@@ -318,8 +325,8 @@ func (x *XArb) OnExecution(exec event.Execution) {
 		x.Log().Error().Int("symbolID", exec.SymbolID).Str("side", exec.Side.String()).Msg("Invalid execution")
 		return
 	}
-	if math.Abs(x.unhedgedAvailable) < 1e-6 {
-		x.Log().Info().Msg("No unhedged available")
+	if math.Abs(x.unhedgedAvailable) < x.MinUnhedgedQuote {
+		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("minUnhedgedQuote", x.MinUnhedgedQuote).Msg("No unhedged available")
 		return
 	}
 	if x.unhedgedAvailable < 0 {
