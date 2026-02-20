@@ -133,6 +133,9 @@ func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
 }
 
 func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
+	if ev.AccountID != o.accountID {
+		return
+	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
@@ -161,6 +164,9 @@ func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
 }
 
 func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
+	if ev.AccountID != o.accountID {
+		return
+	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
@@ -173,6 +179,9 @@ func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
 }
 
 func (o *OMS) OnOrderRejected(ev event.OrderRejected) {
+	if ev.AccountID != o.accountID {
+		return
+	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
