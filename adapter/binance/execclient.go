@@ -990,11 +990,24 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 
 	commissionAsset, _ := jsonparser.GetString(data, "N")
 	tradeID, _ := jsonparser.GetInt(data, "t")
+	symbolStr, _ := jsonparser.GetString(data, "s")
+	sideStr, _ := jsonparser.GetString(data, "S")
+	symbolID := 0
+	if c.catalog != nil {
+		if sym, err := c.catalog.GetSymbolByExchangeAndName(c.account.Exchange, symbolStr); err == nil {
+			symbolID = sym.ID
+		}
+	}
+	side := parseSide(sideStr)
+	isMaker, _ := jsonparser.GetBoolean(data, "m")
 
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
+		SymbolID:      symbolID,
+		Side:          side,
+		IsMaker:       isMaker,
 		FillID:        int(tradeID),
 		FilledQty:     lastQty,
 		FilledPrice:   lastPrice,
@@ -1191,6 +1204,16 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 
 // processFills processes fill information from order responses
 func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int, orderID int) {
+	symbolStr, _ := jsonparser.GetString(data, "symbol")
+	sideStr, _ := jsonparser.GetString(data, "side")
+	symbolID := 0
+	if c.catalog != nil {
+		if sym, err := c.catalog.GetSymbolByExchangeAndName(c.account.Exchange, symbolStr); err == nil {
+			symbolID = sym.ID
+		}
+	}
+	side := parseSide(sideStr)
+
 	fillIdx := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
 		priceStr, _ := jsonparser.GetString(value, "price")
@@ -1198,11 +1221,15 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 		commissionStr, _ := jsonparser.GetString(value, "commission")
 		commissionAsset, _ := jsonparser.GetString(value, "commissionAsset")
 		tradeID, _ := jsonparser.GetInt(value, "tradeId")
+		isMaker, _ := jsonparser.GetBoolean(value, "maker")
 
 		fill := event.Execution{
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
 			AccountID:     c.accountID,
+			SymbolID:      symbolID,
+			Side:          side,
+			IsMaker:       isMaker,
 			FillID:        int(tradeID),
 			FilledQty:     parseFloat64([]byte(qtyStr)),
 			FilledPrice:   parseFloat64([]byte(priceStr)),
@@ -1315,6 +1342,18 @@ func (c *BinanceSpotExecutionClient) getTokenID(asset string) int {
 	// This would typically look up the token ID from the catalog
 	// For now, return 0 as a placeholder
 	return 0
+}
+
+// parseSide maps Binance side string ("BUY"/"SELL") to common.Side.
+func parseSide(s string) common.Side {
+	switch strings.ToUpper(s) {
+	case "BUY":
+		return common.SideBuy
+	case "SELL":
+		return common.SideSell
+	default:
+		return common.SideUnknown
+	}
 }
 
 // wsExecEventHandler implements gws.Event interface for execution WebSocket

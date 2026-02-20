@@ -118,6 +118,9 @@ type Execution struct {
 	ClientOrderID int
 	OrderID       int
 	AccountID     int
+	SymbolID      int
+	Side          common.Side
+	IsMaker       bool
 	FillID        int
 	FilledQty     float64
 	FilledPrice   float64
