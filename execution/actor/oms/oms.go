@@ -126,6 +126,9 @@ func (o *OMS) OnOrderNew(ev event.OrderNew) {
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
+	if ev.AccountID != o.accountID {
+		return
+	}
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Msg("Order accepted")
 }
 

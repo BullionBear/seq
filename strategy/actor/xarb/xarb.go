@@ -210,9 +210,10 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 // OnDepthUpdate processes depth updates.
 // Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	if update.SymbolID != x.hedgingSymbol.ID || update.SymbolID != x.quotingSymbol.ID {
+	if update.SymbolID != x.hedgingSymbol.ID && update.SymbolID != x.quotingSymbol.ID {
 		return
 	}
+	x.Log().Debug().Int("symbolID", update.SymbolID).Int("depthID", update.DepthID).Msg("DepthUpdate")
 	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.hedgingSymbol.ID {
 		x.hedgingCount += 1
 	}
@@ -222,6 +223,9 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	if x.hedgingCount == 0 || x.quotingCount == 0 {
 		x.Log().Info().Msg("XArb strategy is not ready")
 		return
+	}
+	if (x.quotingCount+x.hedgingCount)%100 == 0 {
+		x.Log().Info().Int("quotingCount", x.quotingCount).Int("hedgingCount", x.hedgingCount).Msg("XArb strategy is ready")
 	}
 	switch x.Side {
 	case common.SideBuy:
@@ -252,7 +256,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 		}
 		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
-		buyPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
+		buyPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		buyQty := x.Qty
 		x.Log().Info().Float64("buyPrice", buyPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
 		x.clientOrderID = x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
@@ -285,7 +289,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 		}
 		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
-		sellPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
+		sellPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		sellQty := x.Qty
 		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit hedge order")
 		x.clientOrderID = x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
@@ -312,13 +316,15 @@ func (x *XArb) OnExecution(exec event.Execution) {
 		return
 	}
 	if x.unhedgedAvailable < 0 {
-		x.unhedgedAvailable += x.unhedgedAvailable
-		x.unhedgedLocked -= x.unhedgedAvailable
-		x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideBuy, common.OrderTypeMarket, common.TimeInForceIOC, 0, -x.unhedgedAvailable)
+		qty := -x.unhedgedAvailable
+		x.unhedgedAvailable = 0
+		x.unhedgedLocked += qty
+		x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideBuy, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
 	} else if x.unhedgedAvailable > 0 {
-		x.unhedgedAvailable -= x.unhedgedAvailable
-		x.unhedgedLocked += x.unhedgedAvailable
-		x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, x.unhedgedAvailable)
+		qty := x.unhedgedAvailable
+		x.unhedgedAvailable = 0
+		x.unhedgedLocked += qty
+		x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
 	} else {
 		x.Log().Error().Msg("Invalid unhedged available")
 		return
@@ -336,6 +342,7 @@ func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 
 func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
 	if orderRejected.ClientOrderID == x.clientOrderID {
+		x.Log().Info().Int("clientOrderID", orderRejected.ClientOrderID).Str("msg", orderRejected.Msg).Msg("Order rejected")
 		x.clientOrderID = 0
 	} else {
 		x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Msg("Invalid client order ID")

@@ -57,6 +57,9 @@ type BinanceSpotExecutionClient struct {
 	// Request ID for WebSocket requests
 	requestID atomic.Uint64
 
+	// Pending order.place requests: requestID -> clientOrderID (for publishing OrderRejected on API error)
+	pendingOrderRequests sync.Map
+
 	// Connection state
 	connected  atomic.Bool
 	shouldStop atomic.Bool
@@ -275,6 +278,7 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 
 	// Build WebSocket request message
 	requestID := c.requestID.Add(1)
+	c.pendingOrderRequests.Store(requestID, clientOrderID)
 	msg := c.buildOrderNewRequest(symbol.Name, side, orderType, timeInForce, price, quantity, clientOrderID, timestamp, signature, requestID)
 
 	return c.sendMessage(msg)
@@ -715,11 +719,21 @@ func (c *BinanceSpotExecutionClient) handleDisconnect() {
 
 // processMessage processes incoming WebSocket messages
 func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
-	// Check for error
+	// Check for error (e.g. -2010 "Order would immediately match and take.")
 	errCode, err := jsonparser.GetInt(data, "error", "code")
 	if err == nil && errCode != 0 {
 		errMsg, _ := jsonparser.GetString(data, "error", "msg")
 		log().Error().Int64("code", errCode).Str("msg", errMsg).Msg("WebSocket API error")
+		// Publish OrderRejected when this is an order.place error (we have request id -> clientOrderID).
+		// Binance echoes "id" as string or int; parse both.
+		reqID := parseRequestID(data)
+		if reqID != 0 {
+			if v, ok := c.pendingOrderRequests.LoadAndDelete(reqID); ok {
+				clientOrderID := v.(int)
+				updatedAt := uint64(time.Now().UnixNano())
+				c.publishOrderRejected(clientOrderID, -1, errMsg, updatedAt)
+			}
+		}
 		return
 	}
 
@@ -742,6 +756,9 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 
 		// Otherwise, try to process as order response
 		c.processOrderResponse(result)
+		if reqID := parseRequestID(data); reqID != 0 {
+			c.pendingOrderRequests.Delete(reqID)
+		}
 	}
 }
 
@@ -1341,6 +1358,19 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 func (c *BinanceSpotExecutionClient) getTokenID(asset string) int {
 	// This would typically look up the token ID from the catalog
 	// For now, return 0 as a placeholder
+	return 0
+}
+
+// parseRequestID extracts the WebSocket response "id" from data.
+// Binance echoes id as string or int; parse both so we can match pending order.place requests.
+func parseRequestID(data []byte) uint64 {
+	if id, err := jsonparser.GetInt(data, "id"); err == nil {
+		return uint64(id)
+	}
+	if s, err := jsonparser.GetString(data, "id"); err == nil {
+		id, _ := strconv.ParseUint(s, 10, 64)
+		return id
+	}
 	return 0
 }
 

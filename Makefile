@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean run benchmark help install-linter escape-analysis
+.PHONY: all build test lint clean run benchmark help install-linter escape-analysis build-parser parse-event
 
 # Variables
 PACKAGE := github.com/BullionBear/seq
@@ -53,6 +53,18 @@ test-coverage:
 	@go test -v -race -coverprofile=$(COVERAGE_FILE) ./...
 	@go tool cover -html=$(COVERAGE_FILE) -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+# Build parser (deserialize event/command .dat logs to JSONL)
+build-parser:
+	@mkdir -p $(BIN_DIR)
+	@go build -o $(BIN_DIR)/parser $(CMD_DIR)/parser/main.go
+	@echo "Parser: $(BIN_DIR)/parser"
+
+# Parse event log: make parse-event i=logs/event_2026-02-20.dat [o=out.jsonl]
+parse-event:
+	@if [ -z "$(i)" ]; then echo "Usage: make parse-event i=<event_YYYY-MM-DD.dat> [o=<output.jsonl>]"; exit 1; fi
+	@$(MAKE) build-parser 2>/dev/null || true
+	@$(BIN_DIR)/parser -i "$(i)" $(if $(o),-o "$(o)",) && echo "Parsed $(i)" $(if $(o),"=> $(o)", "(stdout)")
 
 # Run benchmarks
 benchmark:
@@ -138,5 +150,7 @@ help:
 	@echo "  make vet            - Run go vet"
 	@echo "  make escape-analysis - Run escape analysis (shows heap allocations)"
 	@echo "  make escape-analysis-detail - Run detailed escape analysis"
+	@echo "  make build-parser   - Build parser binary (bin/parser)"
+	@echo "  make parse-event i=<event_*.dat> [o=<out.jsonl>] - Deserialize event log; check locally first"
 	@echo "  make help           - Show this help message"
 
