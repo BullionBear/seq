@@ -190,6 +190,10 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderRejected := event.NewOrderRejectedFromBytes(buf)
 		x.OnOrderRejected(orderRejected)
+	case event.TopicEventOrderFilled:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderFilled := event.NewOrderFilledFromBytes(buf)
+		x.OnOrderFilled(orderFilled)
 	case event.TopicEventOrderError:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderError := event.NewOrderErrorFromBytes(buf)
@@ -338,6 +342,20 @@ func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 		x.quotingClientOrderID = 0
 	} else {
 		x.Log().Error().Int("accountID", orderCanceled.AccountID).Msg("Invalid account ID")
+		return
+	}
+}
+
+func (x *XArb) OnOrderFilled(orderFilled event.OrderFilled) {
+	switch orderFilled.ClientOrderID {
+	case x.quotingClientOrderID:
+		x.quotingClientOrderID = 0
+		x.Log().Info().Int("Quoting clientOrderID", orderFilled.ClientOrderID).Float64("executedQty", orderFilled.ExecutedQty).Msg("Order filled")
+	case x.hedgingClientOrderID:
+		x.hedgingClientOrderID = 0
+		x.Log().Info().Int("Hedging clientOrderID", orderFilled.ClientOrderID).Float64("executedQty", orderFilled.ExecutedQty).Msg("Order filled")
+	default:
+		// Ignore other client order IDs
 		return
 	}
 }
