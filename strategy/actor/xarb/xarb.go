@@ -306,28 +306,57 @@ func (x *XArb) OnExecution(exec event.Execution) {
 		x.Log().Error().Int("symbolID", exec.SymbolID).Str("side", exec.Side.String()).Msg("Invalid execution")
 		return
 	}
+	if math.Abs(x.unhedgedAvailable) < 1e-6 {
+		x.Log().Info().Msg("No unhedged available")
+		return
+	}
+	if x.unhedgedAvailable < 0 {
+		x.unhedgedAvailable += x.unhedgedAvailable
+		x.unhedgedLocked -= x.unhedgedAvailable
+		x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideBuy, common.OrderTypeMarket, common.TimeInForceIOC, 0, -x.unhedgedAvailable)
+	} else if x.unhedgedAvailable > 0 {
+		x.unhedgedAvailable -= x.unhedgedAvailable
+		x.unhedgedLocked += x.unhedgedAvailable
+		x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, x.unhedgedAvailable)
+	} else {
+		x.Log().Error().Msg("Invalid unhedged available")
+		return
+	}
 }
 
-func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {}
+func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
+	if orderCanceled.AccountID == x.quotingAccount.ID {
+		x.clientOrderID = 0
+	} else {
+		x.Log().Error().Int("accountID", orderCanceled.AccountID).Msg("Invalid account ID")
+		return
+	}
+}
 
 func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
-	x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Int("orderID", orderRejected.OrderID).Int("accountID", orderRejected.AccountID).Int("errorCode", orderRejected.ErrorCode).Msg("Order rejected")
+	if orderRejected.ClientOrderID == x.clientOrderID {
+		x.clientOrderID = 0
+	} else {
+		x.Log().Error().Int("clientOrderID", orderRejected.ClientOrderID).Msg("Invalid client order ID")
+		return
+	}
 }
 
-func (x *XArb) OnOrderError(orderError event.OrderError) {}
+func (x *XArb) OnOrderError(orderError event.OrderError) {
+	x.Log().Error().Int("clientOrderID", orderError.ClientOrderID).Int("orderID", orderError.OrderID).Int("accountID", orderError.AccountID).Int("errorCode", orderError.ErrorCode).Msg("Order error")
+}
 
-func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {}
+func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {
+	if orderRiskInvalid.ClientOrderID == x.clientOrderID {
+		x.clientOrderID = 0
+	} else {
+		x.Log().Error().Int("clientOrderID", orderRiskInvalid.ClientOrderID).Msg("Invalid client order ID")
+		return
+	}
+}
 
 func (x *XArb) OnOrderNew(orderNew event.OrderNew) {
-	x.Log().Info().
-		Int("clientOrderID", orderNew.ClientOrderID).
-		Int("orderID", orderNew.OrderID).
-		Int("accountID", orderNew.AccountID).
-		Int("symbolID", orderNew.SymbolID).
-		Float64("price", orderNew.Price).
-		Float64("quantity", orderNew.Quantity).
-		Uint64("createdAt", orderNew.CreatedAt).
-		Msg("Order new")
+	x.Log().Info().Int("clientOrderID", orderNew.ClientOrderID).Int("orderID", orderNew.OrderID).Int("accountID", orderNew.AccountID).Int("symbolID", orderNew.SymbolID).Float64("price", orderNew.Price).Float64("quantity", orderNew.Quantity).Uint64("createdAt", orderNew.CreatedAt).Msg("Order new")
 }
 
 func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
