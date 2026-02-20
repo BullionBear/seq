@@ -64,12 +64,22 @@ node:
     strategy:
       actor:
         - type: xarb
-          name: xarb-uni
+          name: xarb-uni-buy-3bps
           config:
             quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
             quoting_account: lynxapp_ed25519
             hedging_account: bybit_lynxapp
             side: BUY
-            profit_bps: 10
+            profit_bps: 3
+            qty: 2
+        - type: xarb
+          name: xarb-uni-sell-3bps
+          config:
+            quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            quoting_account: lynxapp_ed25519
+            hedging_account: bybit_lynxapp
+            side: SELL
+            profit_bps: 3
             qty: 2

@@ -145,6 +145,9 @@ func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
 }
 
 func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
+	if ev.AccountID != o.accountID {
+		return
+	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
