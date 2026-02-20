@@ -132,6 +132,7 @@ func (x *XArb) OnInit(config map[string]any) {
 	x.ProfitBps = xarbConfig.ProfitBps
 	x.Qty = xarbConfig.Qty
 	x.PriceToleranceBps = xarbConfig.PriceToleranceBps
+	x.Log().Info().Str("side", x.Side.String()).Float64("profitBps", x.ProfitBps).Float64("qty", x.Qty).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("XArb config")
 	// Resolve trading accounts
 	if xarbConfig.QuotingAccount != "" {
 		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
