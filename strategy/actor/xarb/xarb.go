@@ -325,8 +325,8 @@ func (x *XArb) OnExecution(exec event.Execution) {
 		x.Log().Error().Int("symbolID", exec.SymbolID).Str("side", exec.Side.String()).Msg("Invalid execution")
 		return
 	}
-	if math.Abs(x.unhedgedAvailable) < x.MinUnhedgedQuote {
-		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("minUnhedgedQuote", x.MinUnhedgedQuote).Msg("No unhedged available")
+	if math.Abs(x.unhedgedAvailable)*exec.FilledPrice < x.MinUnhedgedQuote {
+		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("filledPrice", exec.FilledPrice).Float64("minUnhedgedQuote", x.MinUnhedgedQuote).Msg("No unhedged available")
 		return
 	}
 	if x.unhedgedAvailable < 0 {
