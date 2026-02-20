@@ -118,6 +118,7 @@ type Execution struct {
 	ClientOrderID int
 	OrderID       int
 	AccountID     int
+	SymbolID      int
 	FillID        int
 	FilledQty     float64
 	FilledPrice   float64

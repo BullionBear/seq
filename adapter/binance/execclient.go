@@ -990,11 +990,19 @@ func (c *BinanceSpotExecutionClient) publishFillFromExecutionReport(data []byte,
 
 	commissionAsset, _ := jsonparser.GetString(data, "N")
 	tradeID, _ := jsonparser.GetInt(data, "t")
+	symbolStr, _ := jsonparser.GetString(data, "s")
+	symbolID := 0
+	if c.catalog != nil {
+		if sym, err := c.catalog.GetSymbolByExchangeAndName(c.account.Exchange, symbolStr); err == nil {
+			symbolID = sym.ID
+		}
+	}
 
 	fill := event.Execution{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
+		SymbolID:      symbolID,
 		FillID:        int(tradeID),
 		FilledQty:     lastQty,
 		FilledPrice:   lastPrice,
@@ -1191,6 +1199,14 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 
 // processFills processes fill information from order responses
 func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int, orderID int) {
+	symbolStr, _ := jsonparser.GetString(data, "symbol")
+	symbolID := 0
+	if c.catalog != nil {
+		if sym, err := c.catalog.GetSymbolByExchangeAndName(c.account.Exchange, symbolStr); err == nil {
+			symbolID = sym.ID
+		}
+	}
+
 	fillIdx := 0
 	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, err error) {
 		priceStr, _ := jsonparser.GetString(value, "price")
@@ -1203,6 +1219,7 @@ func (c *BinanceSpotExecutionClient) processFills(data []byte, clientOrderID int
 			ClientOrderID: clientOrderID,
 			OrderID:       orderID,
 			AccountID:     c.accountID,
+			SymbolID:      symbolID,
 			FillID:        int(tradeID),
 			FilledQty:     parseFloat64([]byte(qtyStr)),
 			FilledPrice:   parseFloat64([]byte(priceStr)),
