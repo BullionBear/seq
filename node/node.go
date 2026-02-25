@@ -93,6 +93,7 @@ func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
 		cfg := entry.Config
 		accountName, _ := cfg["account"].(string)
 		accountID := toInt(cfg["id"])
+		apiKeyName, _ := cfg["api"].(string)
 
 		var account *cpanel.Account
 		if accountName != "" {
@@ -113,7 +114,7 @@ func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
 
 		accountIDs = append(accountIDs, account.ID)
 
-		client, err := n.createExecutionClient(account)
+		client, err := n.createExecutionClient(account, apiKeyName)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
@@ -131,12 +132,12 @@ func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
 }
 
 // createExecutionClient creates an execution client for the given account.
-func (n *Node) createExecutionClient(account *cpanel.Account) (adapter.ExecutionClient, error) {
+func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
-	case "BINANCE":
-		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID)
-	case "BYBIT":
-		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID)
+	case "BINANCE", "Binance":
+		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
+	case "BYBIT", "Bybit":
+		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", account.Exchange)
 	}

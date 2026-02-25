@@ -69,8 +69,8 @@ func TestBuildAccountStatusRequest(t *testing.T) {
 
 	client := &BinanceSpotExecutionClient{
 		privateKey: privateKey,
-		account: cpanel.Account{
-			APIKey: "test-api-key",
+		apiKey: cpanel.APIKey{
+			Key: "test-api-key",
 		},
 	}
 
@@ -101,8 +101,8 @@ func TestBuildAccountStatusRequest(t *testing.T) {
 
 func TestBuildOrderNewRequest(t *testing.T) {
 	client := &BinanceSpotExecutionClient{
-		account: cpanel.Account{
-			APIKey: "test-api-key",
+		apiKey: cpanel.APIKey{
+			Key: "test-api-key",
 		},
 	}
 
@@ -694,13 +694,11 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Load config to get cpanel credentials
 	cfg, err := loadTestConfig("../../../config/xarb.yml")
 	if err != nil {
 		t.Skipf("Skipping test: failed to load config: %v", err)
 	}
 
-	// Create cpanel client and fetch accounts
 	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -710,36 +708,46 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		t.Skipf("Skipping test: failed to get accounts: %v", err)
 	}
 
-	// Find the lynxapp_ed25519 account
+	apiKeys, err := cpanelClient.GetAPIKeys(ctx)
+	if err != nil {
+		t.Skipf("Skipping test: failed to get API keys: %v", err)
+	}
+
+	// Find a Binance account and an ED25519 API key for it
 	var targetAccount *cpanel.Account
+	var targetAPIKeyName string
 	for i := range accounts {
-		if accounts[i].Name == "lynxapp_ed25519" {
-			targetAccount = &accounts[i]
+		if accounts[i].Exchange != "Binance" {
+			continue
+		}
+		for _, key := range apiKeys {
+			if key.UID == accounts[i].UID && key.APIType == cpanel.APITypeED25519 {
+				targetAccount = &accounts[i]
+				targetAPIKeyName = key.Name
+				// Attach key to account
+				targetAccount.SetAPIKeys([]cpanel.APIKey{key})
+				break
+			}
+		}
+		if targetAccount != nil {
 			break
 		}
 	}
 
 	if targetAccount == nil {
-		t.Skip("Skipping test: lynxapp_ed25519 account not found")
+		t.Skip("Skipping test: no Binance account with ED25519 key found")
 	}
 
-	if targetAccount.APIType != cpanel.APITypeED25519 {
-		t.Skipf("Skipping test: account API type is %s, expected ED25519", targetAccount.APIType)
-	}
+	t.Logf("Found account: ID=%d, Name=%s, APIKey=%s", targetAccount.ID, targetAccount.Name, targetAPIKeyName)
 
-	t.Logf("Found account: ID=%d, Name=%s, APIType=%s", targetAccount.ID, targetAccount.Name, targetAccount.APIType)
-
-	// Create event bus and catalog
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	// Inject account into catalog (copy the account, not pointer)
 	accountsMap := make(map[int]cpanel.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
-	// Create execution client
-	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID)
+	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}
@@ -809,13 +817,11 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Load config to get cpanel credentials
 	cfg, err := loadTestConfig("../../../config/xarb.yml")
 	if err != nil {
 		t.Skipf("Skipping test: failed to load config: %v", err)
 	}
 
-	// Create cpanel client and fetch accounts
 	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -825,32 +831,44 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 		t.Skipf("Skipping test: failed to get accounts: %v", err)
 	}
 
-	// Find the lynxapp_ed25519 account
+	apiKeys, err := cpanelClient.GetAPIKeys(ctx)
+	if err != nil {
+		t.Skipf("Skipping test: failed to get API keys: %v", err)
+	}
+
 	var targetAccount *cpanel.Account
+	var targetAPIKeyName string
 	for i := range accounts {
-		if accounts[i].Name == "lynxapp_ed25519" {
-			targetAccount = &accounts[i]
+		if accounts[i].Exchange != "Binance" {
+			continue
+		}
+		for _, key := range apiKeys {
+			if key.UID == accounts[i].UID && key.APIType == cpanel.APITypeED25519 {
+				targetAccount = &accounts[i]
+				targetAPIKeyName = key.Name
+				targetAccount.SetAPIKeys([]cpanel.APIKey{key})
+				break
+			}
+		}
+		if targetAccount != nil {
 			break
 		}
 	}
 
 	if targetAccount == nil {
-		t.Skip("Skipping test: lynxapp_ed25519 account not found")
+		t.Skip("Skipping test: no Binance account with ED25519 key found")
 	}
 
 	t.Logf("Found account: ID=%d, Name=%s", targetAccount.ID, targetAccount.Name)
 
-	// Create event bus and catalog
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	// Inject account into catalog (copy the account, not pointer)
 	accountsMap := make(map[int]cpanel.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
-	// Create execution client
-	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID)
+	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}

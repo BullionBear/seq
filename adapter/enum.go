@@ -15,3 +15,14 @@ const (
 	ProductTypeSpot
 	ProductTypePerpetual
 )
+
+type WalletType int
+
+const (
+	WalletTypeUnknown  WalletType = iota
+	WalletTypeSpot                // id=1
+	WalletTypeUMargin             // id=2 (USD Margin)
+	WalletTypeCMargin             // id=3 (Coin Margin)
+	WalletTypeLeverage            // id=4
+	WalletTypeUnified             // id=5
+)

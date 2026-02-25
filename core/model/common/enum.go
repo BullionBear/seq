@@ -3,15 +3,28 @@ package common
 type Exchange int
 
 const (
-	ExchangeBinance Exchange = iota
-	ExchangeBybit
+	ExchangeUnknown Exchange = iota
+	ExchangeBinance          // id=1
+	ExchangeBybit            // id=2
 )
 
 type ProductType int
 
 const (
-	ProductTypeSpot ProductType = iota
-	ProductTypePerpetual
+	ProductTypeUnknown ProductType = iota
+	ProductTypeSpot                // id=1
+	ProductTypePerpetual           // id=2
+)
+
+type WalletType int
+
+const (
+	WalletTypeUnknown  WalletType = iota
+	WalletTypeSpot                // id=1
+	WalletTypeUMargin             // id=2 (USD Margin)
+	WalletTypeCMargin             // id=3 (Coin Margin)
+	WalletTypeLeverage            // id=4
+	WalletTypeUnified             // id=5
 )
 
 type OrderStatus int

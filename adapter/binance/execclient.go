@@ -46,6 +46,7 @@ type BinanceSpotExecutionClient struct {
 	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
+	apiKey    cpanel.APIKey
 
 	// Ed25519 private key for signing
 	privateKey ed25519.PrivateKey
@@ -81,14 +82,19 @@ type BinanceSpotExecutionClient struct {
 }
 
 // NewBinanceSpotExecutionClient creates a new Binance spot execution client
-func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BinanceSpotExecutionClient, error) {
+func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BinanceSpotExecutionClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
 	}
 
+	apiKey, err := account.GetAPI(apiKeyName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Parse Ed25519 private key (supports PEM format or raw base64)
-	privateKey, err := parseEd25519PrivateKey(account.APISecret)
+	privateKey, err := parseEd25519PrivateKey(apiKey.Secret)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +104,7 @@ func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgB
 		msgBus:     msgBus,
 		accountID:  accountID,
 		account:    *account,
+		apiKey:     *apiKey,
 		privateKey: privateKey,
 	}, nil
 }
@@ -220,7 +227,7 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 	isLimitMaker := orderType == common.OrderTypeLimit && timeInForce == common.TimeInForcePO
 
 	c.msgBuffer.WriteString("apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 
 	c.msgBuffer.WriteString("&newClientOrderId=")
 	c.msgBuffer.WriteString(strconv.Itoa(clientOrderID))
@@ -299,7 +306,7 @@ func (c *BinanceSpotExecutionClient) CancelOrder(symbolID int, orderID int) erro
 	timestamp := time.Now().UnixMilli()
 
 	c.msgBuffer.WriteString("apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString("&orderId=")
 	c.msgBuffer.WriteString(strconv.Itoa(orderID))
 	c.msgBuffer.WriteString("&recvWindow=")
@@ -332,7 +339,7 @@ func (c *BinanceSpotExecutionClient) CancelAllOrders(symbolID int) error {
 	timestamp := time.Now().UnixMilli()
 
 	c.msgBuffer.WriteString("apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString("&recvWindow=")
 	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
 	c.msgBuffer.WriteString("&symbol=")
@@ -359,7 +366,7 @@ func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot() error {
 
 	timestamp := time.Now().UnixMilli()
 	c.msgBuffer.WriteString("apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString("&recvWindow=")
 	c.msgBuffer.WriteString(strconv.Itoa(wsAPIRecvWindow))
 	c.msgBuffer.WriteString("&timestamp=")
@@ -432,7 +439,7 @@ func (c *BinanceSpotExecutionClient) ensureUserDataStreamSubscribed() error {
 
 	timestamp := time.Now().UnixMilli()
 	c.msgBuffer.WriteString("apiKey=")
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString("&timestamp=")
 	c.msgBuffer.WriteString(strconv.FormatInt(timestamp, 10))
 
@@ -461,7 +468,7 @@ func (c *BinanceSpotExecutionClient) buildUserDataStreamSubscribeRequest(timesta
 	buf.WriteString(`","method":"userDataStream.subscribe.signature","params":{`)
 
 	buf.WriteString(`"apiKey":"`)
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(`"`)
 
 	buf.WriteString(`,"timestamp":`)
@@ -486,7 +493,7 @@ func (c *BinanceSpotExecutionClient) buildAccountStatusRequest(timestamp int64, 
 	buf.WriteString(`","method":"account.status","params":{`)
 
 	buf.WriteString(`"apiKey":"`)
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(`"`)
 
 	buf.WriteString(`,"recvWindow":`)
@@ -581,7 +588,7 @@ func (c *BinanceSpotExecutionClient) buildOrderNewRequest(symbol string, side co
 	buf.WriteString(strconv.Itoa(wsAPIRecvWindow))
 
 	buf.WriteString(`,"apiKey":"`)
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(`"`)
 
 	buf.WriteString(`,"signature":"`)
@@ -616,7 +623,7 @@ func (c *BinanceSpotExecutionClient) buildOrderCancelRequest(symbol string, orde
 	buf.WriteString(strconv.Itoa(wsAPIRecvWindow))
 
 	buf.WriteString(`,"apiKey":"`)
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(`"`)
 
 	buf.WriteString(`,"signature":"`)
@@ -648,7 +655,7 @@ func (c *BinanceSpotExecutionClient) buildCancelAllOrdersRequest(symbol string, 
 	buf.WriteString(strconv.Itoa(wsAPIRecvWindow))
 
 	buf.WriteString(`,"apiKey":"`)
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(`"`)
 
 	buf.WriteString(`,"signature":"`)

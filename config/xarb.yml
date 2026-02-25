@@ -40,26 +40,34 @@ node:
         - type: oms
           name: oms-bybit
           config:
-            id: 19
-            account: bybit_lynxapp
+            id: 6
+            account: bybit-eddy
+            wallet: bybit-hephe-unified
+            api: bybit-eddy-hmac
         - type: oms
           name: oms-binance
           config:
-            id: 22
-            account: lynxapp_ed25519
+            id: 5
+            account: bn-eddy
+            wallet: bn-eddy-spot
+            api: bn-eddy-ed25519
 
     portfolio:
       actor:
         - type: balance
           name: balance-bybit
           config:
-            id: 19
-            account: bybit_lynxapp
+            id: 6
+            account: bybit-eddy
+            wallet: bybit-hephe-unified
+            api: bybit-eddy-hmac
         - type: balance
           name: balance-binance
           config:
-            id: 22
-            account: lynxapp_ed25519
+            id: 5
+            account: bn-eddy
+            wallet: bn-eddy-spot
+            api: bn-eddy-ed25519
 
     strategy:
       actor:
@@ -68,8 +76,8 @@ node:
           config:
             quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            quoting_account: lynxapp_ed25519
-            hedging_account: bybit_lynxapp
+            quoting_account: bn-eddy
+            hedging_account: bybit-eddy
             side: BUY
             profit_bps: 3
             qty: 3.5
@@ -79,8 +87,8 @@ node:
           config:
             quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            quoting_account: lynxapp_ed25519
-            hedging_account: bybit_lynxapp
+            quoting_account: bn-eddy
+            hedging_account: bybit-eddy
             side: SELL
             profit_bps: 3
             qty: 3.5
