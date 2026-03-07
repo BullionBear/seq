@@ -335,13 +335,18 @@ func (c *BinanceHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSna
 	return nil
 }
 
-func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType common.OrderType, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) error {
+func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, apiKeyName string, symbolId int, orderType common.OrderType, side common.Side, timeInForce common.TimeInForce, quantity float64, price float64) error {
 	symbol, err := c.catalog.GetSymbol(symbolId)
 	if err != nil {
 		return err
 	}
 
 	acct, err := c.catalog.GetAccount(acctID)
+	if err != nil {
+		return err
+	}
+
+	apiKey, err := acct.GetAPI(apiKeyName)
 	if err != nil {
 		return err
 	}
@@ -418,7 +423,7 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType c
 	c.buffer.WriteString("&newOrderRespType=ACK")
 
 	// Sign
-	signature := c.hmacSha256(c.buffer.Bytes()[queryStart:], acct.APISecret)
+	signature := c.hmacSha256(c.buffer.Bytes()[queryStart:], apiKey.Secret)
 	c.buffer.WriteString("&signature=")
 	c.buffer.WriteString(signature)
 
@@ -430,7 +435,7 @@ func (c *BinanceHTTPClient) ReqCreateOrder(acctID int, symbolId int, orderType c
 
 	// Method POST
 	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.Set("X-MBX-APIKEY", acct.APIKey)
+	req.Header.Set("X-MBX-APIKEY", apiKey.Key)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
 
 	// URL

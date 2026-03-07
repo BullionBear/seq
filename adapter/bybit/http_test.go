@@ -1,12 +1,10 @@
 package bybit
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
-	"time"
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
@@ -598,52 +596,21 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Load config to get cpanel credentials
-	cfg, err := loadTestConfig("../../../config/xarb.yml")
-	if err != nil {
-		t.Skipf("Skipping test: failed to load config: %v", err)
-	}
+	targetAccount, apiKeyName := loadBybitTestAccount(t)
 
-	// Create cpanel client and fetch accounts
-	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	t.Logf("Found account: ID=%d, Name=%s, Exchange=%s",
+		targetAccount.ID, targetAccount.Name, targetAccount.Exchange)
 
-	accounts, err := cpanelClient.GetAccounts(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get accounts: %v", err)
-	}
-
-	// Find the bybit_lynxapp account (id=19)
-	var targetAccount *cpanel.Account
-	for i := range accounts {
-		if accounts[i].ID == 19 || accounts[i].Name == "bybit_lynxapp" {
-			targetAccount = &accounts[i]
-			break
-		}
-	}
-
-	if targetAccount == nil {
-		t.Skip("Skipping test: bybit_lynxapp account not found")
-	}
-
-	t.Logf("Found account: ID=%d, Name=%s, APIType=%s, Exchange=%s",
-		targetAccount.ID, targetAccount.Name, targetAccount.APIType, targetAccount.Exchange)
-
-	// Create event bus and catalog
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	// Inject account into catalog
 	accountsMap := make(map[int]cpanel.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateField(cat, "accounts", accountsMap)
 
-	// Create HTTP client
 	client := NewBybitHTTPClient(cat, eb)
 
-	// Request balance snapshot (UNIFIED account type for Bybit)
-	err = client.ReqBalanceSnapshot(targetAccount.ID, "UNIFIED")
+	err := client.ReqBalanceSnapshot(targetAccount.ID, apiKeyName, "UNIFIED")
 	if err != nil {
 		t.Fatalf("Failed to request balance snapshot: %v", err)
 	}

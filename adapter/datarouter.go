@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/adapter/binance"
 	"github.com/BullionBear/seq/adapter/bybit"
+	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
 )
 
@@ -47,10 +48,10 @@ func (r *DataRouter) SubscribeDepthUpdate(symbolID int, opts *DepthOptions) erro
 		return err
 	}
 	switch {
-	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
 		binanceOpts := r.toBinanceDepthOptions(opts)
 		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, binanceOpts)
-	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
 		bybitOpts := r.toBybitDepthOptions(opts)
 		r.bybitDataClient.SubscribeDepthUpdate(symbolID, bybitOpts)
 	default:
@@ -103,9 +104,9 @@ func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 		return err
 	}
 	switch {
-	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
 		return r.binanceSpotDataClient.ReqDepthSnapshot(symbolID, 1000) // Request 1000 levels
-	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
 		return r.bybitDataClient.ReqDepthSnapshot(symbolID, 1000)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
@@ -119,10 +120,10 @@ func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
 		return err
 	}
 	switch {
-	case symbol.Exchange.ID == int(ExchangeBinance) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
 		binanceOpts := r.toBinanceTradeOptions(opts)
 		r.binanceSpotDataClient.SubscribeTrade(symbolID, binanceOpts)
-	case symbol.Exchange.ID == int(ExchangeBybit) && symbol.Product.ID == int(ProductTypeSpot):
+	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
 		r.bybitDataClient.SubscribeTrade(symbolID)
 	default:
 		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)

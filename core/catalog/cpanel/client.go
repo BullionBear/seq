@@ -102,29 +102,24 @@ func (c *CpanelClient) GetSymbol(ctx context.Context, params SymbolParams) ([]Sy
 	return result, nil
 }
 
-// GetAPIKeys fetches API keys from GET /api/v1/apikey endpoint
+// GetAccounts fetches accounts from GET /api/v2/account/acct endpoint
 // Requires Bearer token authentication
 func (c *CpanelClient) GetAccounts(ctx context.Context) ([]Account, error) {
-	// Build the URL
-	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointAPIKey)
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointV2Account)
 
-	// Acquire request and response objects from pool
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 
-	// Set request URI and method
 	req.SetRequestURI(reqURL)
 	req.Header.SetMethod(fasthttp.MethodGet)
 	req.Header.Set("Accept", "application/json")
 
-	// Set Bearer token authorization header
 	if c.apiToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
 	}
 
-	// Set timeout from context if available
 	timeout := 10 * time.Second
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)
@@ -133,20 +128,107 @@ func (c *CpanelClient) GetAccounts(ctx context.Context) ([]Account, error) {
 		}
 	}
 
-	// Execute the request
 	err := c.client.DoTimeout(req, resp, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 
-	// Check response status
 	statusCode := resp.StatusCode()
 	if statusCode != fasthttp.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", statusCode, resp.Body())
 	}
 
-	// Deserialize response using sonic
 	var result []Account
+	err = sonic.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetAPIKeys fetches API keys from GET /api/v2/account/apikey endpoint
+// Requires Bearer token authentication
+func (c *CpanelClient) GetAPIKeys(ctx context.Context) ([]APIKey, error) {
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointV2APIKey)
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(reqURL)
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	if c.apiToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
+	}
+
+	timeout := 10 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, fmt.Errorf("context deadline exceeded")
+		}
+	}
+
+	err := c.client.DoTimeout(req, resp, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	statusCode := resp.StatusCode()
+	if statusCode != fasthttp.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", statusCode, resp.Body())
+	}
+
+	var result []APIKey
+	err = sonic.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetWallets fetches wallets from GET /api/v2/account/wallet endpoint
+// Requires Bearer token authentication
+func (c *CpanelClient) GetWallets(ctx context.Context) ([]Wallet, error) {
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, EndpointV2Wallet)
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(reqURL)
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	if c.apiToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiToken))
+	}
+
+	timeout := 10 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, fmt.Errorf("context deadline exceeded")
+		}
+	}
+
+	err := c.client.DoTimeout(req, resp, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	statusCode := resp.StatusCode()
+	if statusCode != fasthttp.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", statusCode, resp.Body())
+	}
+
+	var result []Wallet
 	err = sonic.Unmarshal(resp.Body(), &result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)

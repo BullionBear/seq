@@ -39,6 +39,7 @@ type BybitPrivateStreamClient struct {
 	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
+	apiKey    cpanel.APIKey
 
 	// WebSocket connection
 	conn     *gws.Conn
@@ -63,8 +64,13 @@ type BybitPrivateStreamClient struct {
 }
 
 // NewBybitPrivateStreamClient creates a new Bybit private stream client
-func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitPrivateStreamClient, error) {
+func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BybitPrivateStreamClient, error) {
 	account, err := catalog.GetAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, err := account.GetAPI(apiKeyName)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +80,7 @@ func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus
 		msgBus:        msgBus,
 		accountID:     accountID,
 		account:       *account,
+		apiKey:        *apiKey,
 		pendingTopics: make(map[string]bool),
 	}, nil
 }
@@ -258,7 +265,7 @@ func (c *BybitPrivateStreamClient) authenticate() error {
 	// Build auth message
 	c.msgBuffer.Reset()
 	c.msgBuffer.WriteString(`{"op":"auth","args":["`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`",`)
 	c.msgBuffer.WriteString(strconv.FormatInt(expires, 10))
 	c.msgBuffer.WriteString(`,"`)
@@ -270,7 +277,7 @@ func (c *BybitPrivateStreamClient) authenticate() error {
 
 // signHMAC signs the payload with HMAC-SHA256
 func (c *BybitPrivateStreamClient) signHMAC(payload []byte) string {
-	h := hmac.New(sha256.New, []byte(c.account.APISecret))
+	h := hmac.New(sha256.New, []byte(c.apiKey.Secret))
 	h.Write(payload)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -801,6 +808,7 @@ type BybitOrderEntryClient struct {
 	msgBus    *msgbus.MsgBus
 	accountID int
 	account   cpanel.Account
+	apiKey    cpanel.APIKey
 
 	// WebSocket connection
 	conn     *gws.Conn
@@ -828,8 +836,13 @@ type BybitOrderEntryClient struct {
 }
 
 // NewBybitOrderEntryClient creates a new Bybit order entry client
-func NewBybitOrderEntryClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitOrderEntryClient, error) {
+func NewBybitOrderEntryClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BybitOrderEntryClient, error) {
 	account, err := catalog.GetAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, err := account.GetAPI(apiKeyName)
 	if err != nil {
 		return nil, err
 	}
@@ -839,6 +852,7 @@ func NewBybitOrderEntryClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, a
 		msgBus:        msgBus,
 		accountID:     accountID,
 		account:       *account,
+		apiKey:        *apiKey,
 		pendingOrders: make(map[uint64]int),
 	}, nil
 }
@@ -955,7 +969,7 @@ func (c *BybitOrderEntryClient) SubmitOrder(symbolID int, clientOrderID int, sid
 	c.msgBuffer.WriteString(`","X-BAPI-RECV-WINDOW":"`)
 	c.msgBuffer.WriteString(strconv.Itoa(wsExecRecvWindow))
 	c.msgBuffer.WriteString(`","X-BAPI-API-KEY":"`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`","X-BAPI-SIGN":"`)
 
 	// Build signature payload
@@ -1040,7 +1054,7 @@ func (c *BybitOrderEntryClient) CancelOrder(symbolID int, orderID string) error 
 	c.msgBuffer.WriteString(`","X-BAPI-RECV-WINDOW":"`)
 	c.msgBuffer.WriteString(strconv.Itoa(wsExecRecvWindow))
 	c.msgBuffer.WriteString(`","X-BAPI-API-KEY":"`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`","X-BAPI-SIGN":"`)
 
 	signPayload := c.buildSignPayload(timestamp, reqID)
@@ -1084,7 +1098,7 @@ func (c *BybitOrderEntryClient) CancelOrderByLinkID(symbolID int, orderLinkID st
 	c.msgBuffer.WriteString(`","X-BAPI-RECV-WINDOW":"`)
 	c.msgBuffer.WriteString(strconv.Itoa(wsExecRecvWindow))
 	c.msgBuffer.WriteString(`","X-BAPI-API-KEY":"`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`","X-BAPI-SIGN":"`)
 
 	signPayload := c.buildSignPayload(timestamp, reqID)
@@ -1128,7 +1142,7 @@ func (c *BybitOrderEntryClient) CancelAllOrders(symbolID int) error {
 	c.msgBuffer.WriteString(`","X-BAPI-RECV-WINDOW":"`)
 	c.msgBuffer.WriteString(strconv.Itoa(wsExecRecvWindow))
 	c.msgBuffer.WriteString(`","X-BAPI-API-KEY":"`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`","X-BAPI-SIGN":"`)
 
 	signPayload := c.buildSignPayload(timestamp, reqID)
@@ -1161,7 +1175,7 @@ func (c *BybitOrderEntryClient) authenticate() error {
 	// Build auth message
 	c.msgBuffer.Reset()
 	c.msgBuffer.WriteString(`{"op":"auth","args":["`)
-	c.msgBuffer.WriteString(c.account.APIKey)
+	c.msgBuffer.WriteString(c.apiKey.Key)
 	c.msgBuffer.WriteString(`",`)
 	c.msgBuffer.WriteString(strconv.FormatInt(expires, 10))
 	c.msgBuffer.WriteString(`,"`)
@@ -1176,7 +1190,7 @@ func (c *BybitOrderEntryClient) authenticate() error {
 func (c *BybitOrderEntryClient) buildSignPayload(timestamp int64, reqID uint64) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(strconv.FormatInt(timestamp, 10))
-	buf.WriteString(c.account.APIKey)
+	buf.WriteString(c.apiKey.Key)
 	buf.WriteString(strconv.Itoa(wsExecRecvWindow))
 	buf.WriteString("req_id=")
 	buf.WriteString(strconv.FormatUint(reqID, 10))
@@ -1185,7 +1199,7 @@ func (c *BybitOrderEntryClient) buildSignPayload(timestamp int64, reqID uint64) 
 
 // signHMAC signs the payload with HMAC-SHA256
 func (c *BybitOrderEntryClient) signHMAC(payload []byte) string {
-	h := hmac.New(sha256.New, []byte(c.account.APISecret))
+	h := hmac.New(sha256.New, []byte(c.apiKey.Secret))
 	h.Write(payload)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -1283,7 +1297,7 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 			log().Info().Int("accountID", c.accountID).Msg("Order entry authenticated")
 		} else {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
-			apiKey := c.account.APIKey
+			apiKey := c.apiKey.Key
 			log().Error().
 				Str("msg", retMsg).
 				Int64("retCode", retCode).
@@ -1305,7 +1319,7 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 
 		if retCode != 0 {
 			retMsg, _ := jsonparser.GetString(data, "retMsg")
-			apiKey := c.account.APIKey
+			apiKey := c.apiKey.Key
 			maskedKey := apiKey
 			if len(apiKey) > 6 {
 				maskedKey = apiKey[:3] + "***" + apiKey[len(apiKey)-3:]
@@ -1387,18 +1401,19 @@ type BybitExecutionClient struct {
 	httpClient    *BybitHTTPClient
 
 	// Account info for HTTP requests
-	accountID int
+	accountID  int
+	apiKeyName string
 }
 
 // NewBybitExecutionClient creates a new Bybit execution client that wraps
 // both the private stream and order entry clients
-func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int) (*BybitExecutionClient, error) {
-	privateStream, err := NewBybitPrivateStreamClient(catalog, msgBus, accountID)
+func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BybitExecutionClient, error) {
+	privateStream, err := NewBybitPrivateStreamClient(catalog, msgBus, accountID, apiKeyName)
 	if err != nil {
 		return nil, err
 	}
 
-	orderEntry, err := NewBybitOrderEntryClient(catalog, msgBus, accountID)
+	orderEntry, err := NewBybitOrderEntryClient(catalog, msgBus, accountID, apiKeyName)
 	if err != nil {
 		return nil, err
 	}
@@ -1410,6 +1425,7 @@ func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, ac
 		orderEntry:    orderEntry,
 		httpClient:    &httpClient,
 		accountID:     accountID,
+		apiKeyName:    apiKeyName,
 	}, nil
 }
 
@@ -1475,7 +1491,7 @@ func (c *BybitExecutionClient) CancelAllOrders(symbolID int) error {
 // The response will be published as a ReqBalanceSnapshot event
 func (c *BybitExecutionClient) ReqBalanceSnapshot() error {
 	// Use UNIFIED account type for Bybit unified margin
-	return c.httpClient.ReqBalanceSnapshot(c.accountID, "UNIFIED")
+	return c.httpClient.ReqBalanceSnapshot(c.accountID, c.apiKeyName, "UNIFIED")
 }
 
 // PrivateStream returns the underlying private stream client for advanced usage

@@ -81,16 +81,68 @@ func (c *Catalog) LoadAllSymbols() error {
 }
 
 func (c *Catalog) LoadAllAccounts() error {
-	accounts, err := c.cpanelClient.GetAccounts(context.Background())
+	ctx := context.Background()
+
+	// Fetch accounts
+	accounts, err := c.cpanelClient.GetAccounts(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get accounts: %w", err)
 	}
+
+	// Fetch API keys
+	apiKeys, err := c.cpanelClient.GetAPIKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get API keys: %w", err)
+	}
+
+	// Fetch wallets
+	wallets, err := c.cpanelClient.GetWallets(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get wallets: %w", err)
+	}
+
+	// Build UID -> index map for API key association
+	uidToIdx := make(map[int]int, len(accounts))
+	for i := range accounts {
+		uidToIdx[accounts[i].UID] = i
+	}
+
+	// Group API keys by account UID
+	apiKeysByUID := make(map[int][]cpanel.APIKey)
+	for _, apiKey := range apiKeys {
+		if idx, ok := uidToIdx[apiKey.UID]; ok {
+			// Set ExchID from account
+			apiKey.ExchID = accounts[idx].ExchID
+			apiKeysByUID[apiKey.UID] = append(apiKeysByUID[apiKey.UID], apiKey)
+		}
+	}
+
+	// Group wallets by account ID
+	walletsByAcctID := make(map[int][]cpanel.Wallet)
+	for _, wallet := range wallets {
+		walletsByAcctID[wallet.AcctID] = append(walletsByAcctID[wallet.AcctID], wallet)
+	}
+
+	// Associate API keys and wallets with accounts
+	for i := range accounts {
+		if keys, ok := apiKeysByUID[accounts[i].UID]; ok {
+			accounts[i].SetAPIKeys(keys)
+		}
+		if ws, ok := walletsByAcctID[accounts[i].ID]; ok {
+			accounts[i].SetWallets(ws)
+		}
+	}
+
+	// Store accounts in catalog
 	for _, account := range accounts {
 		c.accounts[account.ID] = account
 	}
+
 	log().Info().
 		Int("accounts", len(c.accounts)).
-		Msg("Loaded accounts")
+		Int("apiKeys", len(apiKeys)).
+		Int("wallets", len(wallets)).
+		Msg("Loaded accounts with API keys and wallets")
 	return nil
 }
 

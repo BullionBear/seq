@@ -181,12 +181,15 @@ func TestReqCreateOrder(t *testing.T) {
 		Name: "BTCUSDT",
 	}
 
+	acct := cpanel.Account{ID: 10}
+	acct.SetAPIKeys([]cpanel.APIKey{{
+		ID:   1,
+		Name: "test-key",
+		Key:  "test-api-key",
+		Secret: "test-secret",
+	}})
 	accounts := make(map[int]cpanel.Account)
-	accounts[10] = cpanel.Account{
-		ID:        10,
-		APIKey:    "test-api-key",
-		APISecret: "test-secret",
-	}
+	accounts[10] = acct
 
 	setPrivateField(cat, "symbols", symbols)
 	setPrivateField(cat, "accounts", accounts)
@@ -198,7 +201,7 @@ func TestReqCreateOrder(t *testing.T) {
 	setPrivateField(&client, "baseURL", server.URL)
 
 	// Execute
-	err := client.ReqCreateOrder(10, 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForceGTC, 1.5, 50000.0)
+	err := client.ReqCreateOrder(10, "test-key", 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForceGTC, 1.5, 50000.0)
 	if err != nil {
 		t.Fatalf("ReqCreateOrder failed: %v", err)
 	}
@@ -237,8 +240,15 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	symbols := make(map[int]cpanel.Symbol)
 	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
 
+	acct := cpanel.Account{ID: 10}
+	acct.SetAPIKeys([]cpanel.APIKey{{
+		ID:     1,
+		Name:   "test-key",
+		Key:    "k",
+		Secret: "s",
+	}})
 	accounts := make(map[int]cpanel.Account)
-	accounts[10] = cpanel.Account{ID: 10, APIKey: "k", APISecret: "s"}
+	accounts[10] = acct
 
 	setPrivateField(cat, "symbols", symbols)
 	setPrivateField(cat, "accounts", accounts)
@@ -247,7 +257,7 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	setPrivateField(&client, "baseURL", server.URL)
 
 	// Execute with PO
-	err := client.ReqCreateOrder(10, 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForcePO, 1.5, 50000.0)
+	err := client.ReqCreateOrder(10, "test-key", 1, common.OrderTypeLimit, common.SideBuy, common.TimeInForcePO, 1.5, 50000.0)
 	if err != nil {
 		t.Fatalf("ReqCreateOrder failed: %v", err)
 	}

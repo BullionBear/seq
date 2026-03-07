@@ -501,9 +501,14 @@ func (c *BybitHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSnaps
 //	    }]
 //	  }
 //	}
-func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, accountType string) error {
+func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, apiKeyName string, accountType string) error {
 	// Get account credentials from catalog
 	account, err := c.catalog.GetAccount(accountID)
+	if err != nil {
+		return err
+	}
+
+	apiKey, err := account.GetAPI(apiKeyName)
 	if err != nil {
 		return err
 	}
@@ -522,12 +527,12 @@ func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, accountType string) 
 	// Build signature payload: timestamp + api_key + recv_window + query_string
 	c.buffer.Reset()
 	c.buffer.WriteString(timestamp)
-	c.buffer.WriteString(account.APIKey)
+	c.buffer.WriteString(apiKey.Key)
 	c.buffer.WriteString(HTTPRecvWindow)
 	c.buffer.WriteString(queryString)
 
 	// Sign with HMAC-SHA256
-	signature := c.signHMAC(c.buffer.Bytes(), account.APISecret)
+	signature := c.signHMAC(c.buffer.Bytes(), apiKey.Secret)
 
 	// Build full URL
 	c.buffer.Reset()
@@ -548,7 +553,7 @@ func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, accountType string) 
 	req.Header.Set("Accept", "application/json")
 
 	// Set authentication headers
-	req.Header.Set("X-BAPI-API-KEY", account.APIKey)
+	req.Header.Set("X-BAPI-API-KEY", apiKey.Key)
 	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
 	req.Header.Set("X-BAPI-SIGN", signature)
 	req.Header.Set("X-BAPI-RECV-WINDOW", HTTPRecvWindow)
