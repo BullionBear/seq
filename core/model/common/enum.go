@@ -11,9 +11,9 @@ const (
 type ProductType int
 
 const (
-	ProductTypeUnknown ProductType = iota
-	ProductTypeSpot                // id=1
-	ProductTypePerpetual           // id=2
+	ProductTypeUnknown   ProductType = iota
+	ProductTypeSpot                  // id=1
+	ProductTypePerpetual             // id=2
 )
 
 type WalletType int
