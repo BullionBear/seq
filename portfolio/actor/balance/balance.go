@@ -43,9 +43,10 @@ type BalanceActor struct {
 func NewBalanceActor(handler portfolio.BalanceEngineHandler) *BalanceActor {
 	return &BalanceActor{
 		ActorBase: actor.NewActorBase("portfolio-balance", []event.Topic{
-			event.TopicEventBalanceUpdate,
 			event.TopicEventRespBalanceSnapshot,
 			event.TopicEventExecution,
+			event.TopicEventOrderCanceled,
+			event.TopicEventOrderNew,
 		}),
 		handler: handler,
 	}
