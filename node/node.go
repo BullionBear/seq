@@ -54,7 +54,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		catalog:         cat,
 		dataEngine:      data.NewEngine(cat, bus, c),
 		riskEngine:      risk.NewEngine(cat, bus, c),
-		portfolioEngine: portfolio.NewEngine(cat, bus),
+		portfolioEngine: portfolio.NewEngine(cat, bus, c),
 		executionEngine: execution.NewEngine(executionRouter, bus, c),
 		strategyEngine:  strategy.NewEngine(cat, bus, c),
 		executionRouter: executionRouter,

@@ -2,6 +2,8 @@ package balance
 
 import (
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -11,11 +13,8 @@ import (
 
 // EngineHandler defines what the balance actor needs from the portfolio engine.
 type EngineHandler interface {
-	OnBalanceUpdate(ev event.BalanceUpdate)
-	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
-	OnExecution(ev event.Execution)
-	NotifyReady()
 	ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error)
+	NotifyReady()
 }
 
 func init() {
@@ -37,14 +36,18 @@ var _ actor.Actor = (*BalanceActor)(nil)
 
 // BalanceActor is an actor owned by the portfolio Engine.
 // Each instance manages exactly one wallet, filtering incoming events by walletID.
+// It writes balance state directly to cache for other engines/strategies to read.
 type BalanceActor struct {
 	actor.ActorBase
 	handler EngineHandler
+	cache   *cache.Cache
+	catalog *catalog.Catalog
 
-	wallet     string
-	accountID  int
-	walletID   int
-	walletType common.WalletType
+	wallet           string
+	accountID        int
+	walletID         int
+	walletType       common.WalletType
+	snapshotReceived bool
 }
 
 // NewBalanceActor creates a new BalanceActor for the given engine handler.
@@ -54,6 +57,12 @@ func NewBalanceActor(handler EngineHandler) *BalanceActor {
 		handler:   handler,
 	}
 }
+
+// SetCache injects the shared cache for balance writes.
+func (b *BalanceActor) SetCache(c *cache.Cache) { b.cache = c }
+
+// SetCatalog injects the catalog for token name resolution.
+func (b *BalanceActor) SetCatalog(cat *catalog.Catalog) { b.catalog = cat }
 
 // OnInit decodes the wallet config and resolves wallet identity from the catalog.
 func (b *BalanceActor) OnInit(config map[string]any) {
@@ -94,12 +103,11 @@ func (b *BalanceActor) OnInit(config map[string]any) {
 		Msg("BalanceActor: initialized")
 }
 
-// OnStart notifies the engine to request initial balance snapshots.
 func (b *BalanceActor) OnStart() {
 	b.Log().Info().Str("wallet", b.wallet).Msg("BalanceActor: started")
 }
 
-// Handle routes events to the engine, filtering by this actor's wallet.
+// Handle processes events, filtering by this actor's wallet, and writes to cache.
 func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
@@ -108,7 +116,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		if update.WalletID != b.walletID {
 			return
 		}
-		b.handler.OnBalanceUpdate(update)
+		b.onBalanceUpdate(update)
 
 	case event.TopicEventRespBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
@@ -116,7 +124,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		if snapshot.WalletID != b.walletID {
 			return
 		}
-		b.handler.OnRespBalanceSnapshot(snapshot)
+		b.onRespBalanceSnapshot(snapshot)
 
 	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
@@ -124,6 +132,68 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		if exec.AccountID != b.accountID {
 			return
 		}
-		b.handler.OnExecution(exec)
+		b.onExecution(exec)
 	}
+}
+
+func (b *BalanceActor) onBalanceUpdate(ev event.BalanceUpdate) {
+	for _, bal := range ev.Balances {
+		b.cache.SetBalance(b.accountID, bal.TokenID, bal.Available, bal.Locked, bal.Total)
+	}
+	b.Log().Debug().
+		Int("accountID", ev.AccountID).
+		Str("walletType", b.walletType.String()).
+		Int("balanceCount", len(ev.Balances)).
+		Msg("BalanceActor: balance updated")
+}
+
+func (b *BalanceActor) onRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
+	b.cache.SetAccountBalances(b.accountID, ev.Balances)
+
+	b.Log().Info().
+		Int("accountID", ev.AccountID).
+		Str("walletType", b.walletType.String()).
+		Int("balanceCount", len(ev.Balances)).
+		Msg("BalanceActor: balance snapshot received")
+
+	for _, bal := range ev.Balances {
+		if bal.Total > 0 {
+			b.Log().Debug().
+				Int("accountID", ev.AccountID).
+				Str("walletType", b.walletType.String()).
+				Str("token", b.tokenName(bal.TokenID)).
+				Float64("available", bal.Available).
+				Float64("locked", bal.Locked).
+				Float64("total", bal.Total).
+				Msg("BalanceActor: token balance initialized")
+		}
+	}
+
+	if !b.snapshotReceived {
+		b.snapshotReceived = true
+		b.handler.NotifyReady()
+	}
+}
+
+func (b *BalanceActor) onExecution(ev event.Execution) {
+	b.Log().Debug().
+		Int("clientOrderID", ev.ClientOrderID).
+		Int("accountID", ev.AccountID).
+		Int("symbolID", ev.SymbolID).
+		Int("fillID", ev.FillID).
+		Float64("qty", ev.FilledQty).
+		Float64("price", ev.FilledPrice).
+		Float64("fee", ev.FeeQty).
+		Msg("BalanceActor: fill received")
+}
+
+func (b *BalanceActor) tokenName(tokenID int) string {
+	if b.catalog == nil {
+		return "unknown"
+	}
+	tok, err := b.catalog.GetToken(tokenID)
+	if err != nil {
+		return "unknown"
+	}
+	return tok.Name
 }

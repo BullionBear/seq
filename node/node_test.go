@@ -94,7 +94,7 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 			default:
 				allReady := true
 				for _, acctID := range accounts {
-					if n.PortfolioEngine().TokenCount(acctID) == 0 {
+					if n.Cache().GetAccountBalances(acctID) == nil {
 						allReady = false
 						break
 					}
@@ -119,21 +119,23 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 	}
 
 	for _, acctID := range n.PortfolioEngine().GetConfiguredAccounts() {
-		balances := n.PortfolioEngine().GetNonZeroBalances(acctID)
-		t.Logf("Account %d: %d non-zero token balances", acctID, len(balances))
+		balances := n.Cache().GetAccountBalances(acctID)
+		t.Logf("Account %d: %d token balances", acctID, len(balances))
 		for _, b := range balances {
-			tokenName := "unknown"
-			if tok, err := cat.GetToken(b.TokenID); err == nil {
-				tokenName = tok.Name
+			if b.Total > 0 {
+				tokenName := "unknown"
+				if tok, err := cat.GetToken(b.TokenID); err == nil {
+					tokenName = tok.Name
+				}
+				t.Logf("  %s (ID=%d): Available=%.8f, Locked=%.8f, Total=%.8f",
+					tokenName, b.TokenID, b.Available, b.Locked, b.Total)
 			}
-			t.Logf("  %s (ID=%d): Available=%.8f, Locked=%.8f, Total=%.8f",
-				tokenName, b.TokenID, b.Available, b.Locked, b.Total)
 		}
 	}
 }
 
 // TestIntegration_BalanceActorEventRouting verifies the balance actor correctly
-// routes RespBalanceSnapshot events from the MsgBus to the portfolio engine.
+// routes RespBalanceSnapshot events from the MsgBus to the cache.
 func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -159,8 +161,15 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	bus := n.MsgBus()
 	acctID := n.PortfolioEngine().GetConfiguredAccounts()[0]
 
+	// Resolve the walletID for the first configured wallet so the balance actor accepts the event
+	wallet, err := cat.GetWalletByName("bybit-hephe-unified")
+	if err != nil {
+		t.Fatalf("Failed to resolve wallet: %v", err)
+	}
+
 	fakeSnapshot := event.RespBalanceSnapshot{
 		AccountID: acctID,
+		WalletID:  wallet.ID,
 		Balances: []common.Balance{
 			{TokenID: 1, Available: 100.5, Locked: 10.0, Total: 110.5},
 			{TokenID: 2, Available: 50000.0, Locked: 0.0, Total: 50000.0},
@@ -184,13 +193,13 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 			bus.Release()
 			bus.ReleaseArenas()
 		}
-		if n.PortfolioEngine().TokenCount(acctID) > 0 {
+		if n.Cache().GetBalance(acctID, 1) != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	b1 := n.PortfolioEngine().GetBalance(acctID, 1)
+	b1 := n.Cache().GetBalance(acctID, 1)
 	if b1 == nil {
 		t.Fatal("Expected balance for tokenID=1, got nil")
 	}
@@ -199,7 +208,7 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 			b1.Available, b1.Locked, b1.Total)
 	}
 
-	b2 := n.PortfolioEngine().GetBalance(acctID, 2)
+	b2 := n.Cache().GetBalance(acctID, 2)
 	if b2 == nil {
 		t.Fatal("Expected balance for tokenID=2, got nil")
 	}
@@ -208,6 +217,6 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 			b2.Available, b2.Total)
 	}
 
-	t.Logf("Event routing verified: Account %d has %d token balances",
-		acctID, n.PortfolioEngine().TokenCount(acctID))
+	balances := n.Cache().GetAccountBalances(acctID)
+	t.Logf("Event routing verified: Account %d has %d token balances", acctID, len(balances))
 }
