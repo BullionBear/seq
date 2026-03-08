@@ -380,6 +380,14 @@ func (e *Engine) checkAllSnapshotsReceivedLocked() bool {
 	return true
 }
 
+func (e *Engine) ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error) {
+	wallet, err := e.catalog.GetWalletByName(name)
+	if err != nil {
+		return 0, 0, common.WalletTypeUnknown, err
+	}
+	return wallet.AcctID, wallet.ID, wallet.WalletType, nil
+}
+
 func (e *Engine) tokenName(tokenID int) string {
 	if e.catalog == nil {
 		return "unknown"

@@ -1,6 +1,7 @@
 package balance
 
 // BalanceConfig contains configuration for a single balance actor instance.
+// Each balance actor manages exactly one wallet.
 type BalanceConfig struct {
-	Subscription []string `yaml:"subscription"` // Event topic names to subscribe to
+	Wallet string `yaml:"wallet"` // Wallet name to track (e.g. "bn-hephe-spot")
 }

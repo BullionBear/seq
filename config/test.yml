@@ -38,14 +38,13 @@ node:
     portfolio:
       actor:
         - type: balance
-          name: balance
+          name: balance-bybit-unified
           config:
-            subscription:
-              - RespBalanceSnapshot
-              - BalanceUpdate
-              - Execution
-              - OrderCanceled
-              - OrderNew
+            wallet: bybit-hephe-unified
+        - type: balance
+          name: balance-bn-spot
+          config:
+            wallet: bn-hephe-spot
 
     strategy:
       actor:
