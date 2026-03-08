@@ -54,7 +54,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		catalog:         cat,
 		dataEngine:      data.NewEngine(cat, bus, c),
 		riskEngine:      risk.NewEngine(cat, bus, c),
-		portfolioEngine: portfolio.NewEngine(bus),
+		portfolioEngine: portfolio.NewEngine(cat, bus, c),
 		executionEngine: execution.NewEngine(executionRouter, bus, c),
 		strategyEngine:  strategy.NewEngine(cat, bus, c),
 		executionRouter: executionRouter,
@@ -63,19 +63,20 @@ func NewNode(cat *catalog.Catalog) *Node {
 }
 
 // Init initializes the node and all engines from config.
-func (n *Node) Init(config Config) {
+// execRouter and dataRouter are the top-level adapter configs parsed from YAML.
+func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRouter []adapter.DataRouterEntry) {
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
 	// Configure portfolio engine with execution router and notifier
 	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
 	n.portfolioEngine.SetNotifier(notifier)
 
-	// Set up execution clients and collect account IDs for portfolio
-	accountIDs := n.setupExecutionClients(config.Engine.Execution)
-	n.portfolioEngine.SetAccounts(accountIDs)
+	// Set up execution clients from top-level execrouter config
+	accountIDs, walletTypes := n.setupExecutionClients(execRouter)
+	n.portfolioEngine.SetAccounts(accountIDs, walletTypes)
 
 	// Initialize all engines with their configs
-	n.dataEngine.Init(config.Engine.Data)
+	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.portfolioEngine.Init(config.Engine.Portfolio)
 	n.riskEngine.Init()
@@ -84,37 +85,49 @@ func (n *Node) Init(config Config) {
 	log().Info().Msg("Node initialized")
 }
 
-// setupExecutionClients creates and registers execution clients from config.
-// Returns the list of resolved account IDs for portfolio tracking.
-func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
-	accountIDs := make([]int, 0)
+// setupExecutionClients creates and registers execution clients from
+// the top-level execrouter config entries.
+// Returns the list of resolved account IDs and a map of accountID -> WalletType.
+func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, map[int]common.WalletType) {
+	accountIDs := make([]int, 0, len(entries))
+	walletTypes := make(map[int]common.WalletType, len(entries))
 
-	for _, entry := range execConfig.Actor {
-		cfg := entry.Config
-		accountName, _ := cfg["account"].(string)
-		accountID := toInt(cfg["id"])
-		apiKeyName, _ := cfg["api"].(string)
-
+	for _, entry := range entries {
 		var account *cpanel.Account
-		if accountName != "" {
-			account = n.catalog.GetAccountByName(accountName)
-		} else if accountID > 0 {
+		if entry.Account != "" {
+			account = n.catalog.GetAccountByName(entry.Account)
+		} else if entry.ID > 0 {
 			var err error
-			account, err = n.catalog.GetAccount(accountID)
+			account, err = n.catalog.GetAccount(entry.ID)
 			if err != nil {
-				log().Error().Err(err).Int("id", accountID).Msg("Node: Failed to get account by ID")
+				log().Error().Err(err).Int("id", entry.ID).Msg("Node: Failed to get account by ID")
 				continue
 			}
 		}
 
 		if account == nil {
-			log().Warn().Str("account", accountName).Int("id", accountID).Msg("Node: Account not found")
+			log().Warn().Str("account", entry.Account).Int("id", entry.ID).Msg("Node: Account not found")
 			continue
 		}
 
-		accountIDs = append(accountIDs, account.ID)
+		// Resolve wallet name to wallet ID and wallet type
+		walletID := 0
+		walletType := common.WalletTypeUnknown
+		if entry.Wallet != "" {
+			wallet, err := account.GetWallet(entry.Wallet)
+			if err != nil {
+				log().Warn().Err(err).Str("wallet", entry.Wallet).Str("account", account.Name).
+					Msg("Node: Wallet not found, using walletID=0")
+			} else {
+				walletID = wallet.ID
+				walletType = wallet.WalletType
+			}
+		}
 
-		client, err := n.createExecutionClient(account, apiKeyName)
+		accountIDs = append(accountIDs, account.ID)
+		walletTypes[account.ID] = walletType
+
+		client, err := n.createExecutionClient(account, entry.API, walletID)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
@@ -124,48 +137,24 @@ func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
 		log().Info().
 			Str("account", account.Name).
 			Int("id", account.ID).
+			Int("walletID", walletID).
+			Str("walletType", walletType.String()).
 			Str("exchange", account.Exchange).
 			Msg("Node: Registered execution client")
 	}
 
-	return accountIDs
+	return accountIDs, walletTypes
 }
 
 // createExecutionClient creates an execution client for the given account.
-func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string) (adapter.ExecutionClient, error) {
+func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string, walletID int) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE", "Binance":
-		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
+		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
 	case "BYBIT", "Bybit":
-		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
+		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", account.Exchange)
-	}
-}
-
-// getExchangeID returns the common.Exchange ID for an exchange name.
-func getExchangeID(exchange string) int {
-	switch exchange {
-	case "BINANCE":
-		return int(common.ExchangeBinance)
-	case "BYBIT":
-		return int(common.ExchangeBybit)
-	default:
-		return -1
-	}
-}
-
-// toInt converts an interface{} to int (handles float64 from YAML/JSON).
-func toInt(v any) int {
-	switch n := v.(type) {
-	case int:
-		return n
-	case float64:
-		return int(n)
-	case int64:
-		return int(n)
-	default:
-		return 0
 	}
 }
 

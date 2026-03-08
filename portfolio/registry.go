@@ -8,8 +8,9 @@ import (
 )
 
 // Factory is a constructor function that creates a portfolio actor.
-// The handler parameter is the portfolio engine (implements BalanceEngineHandler).
-type Factory func(handler BalanceEngineHandler) actor.Actor
+// The handler parameter is the portfolio engine; each actor package
+// defines its own interface and performs a type assertion.
+type Factory func(handler any) actor.Actor
 
 var (
 	registryMu sync.RWMutex

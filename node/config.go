@@ -7,7 +7,7 @@ import (
 	"github.com/BullionBear/seq/strategy"
 )
 
-// Config contains node-level configuration.
+// Config contains node-level configuration (engines only).
 type Config struct {
 	Engine EngineConfig `yaml:"engine"`
 }

@@ -501,7 +501,7 @@ func (c *BybitHTTPClient) unmarshalRespDepthSnapshot(data []byte, respDepthSnaps
 //	    }]
 //	  }
 //	}
-func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, apiKeyName string, accountType string) error {
+func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, walletID int, apiKeyName string, accountType string) error {
 	// Get account credentials from catalog
 	account, err := c.catalog.GetAccount(accountID)
 	if err != nil {
@@ -581,7 +581,7 @@ func (c *BybitHTTPClient) ReqBalanceSnapshot(accountID int, apiKeyName string, a
 	}
 
 	// Parse and publish balance snapshot
-	return c.parseAndPublishBalanceSnapshot(jsonData, accountID)
+	return c.parseAndPublishBalanceSnapshot(jsonData, accountID, walletID)
 }
 
 // signHMAC signs the payload with HMAC-SHA256
@@ -592,7 +592,7 @@ func (c *BybitHTTPClient) signHMAC(payload []byte, secret string) string {
 }
 
 // parseAndPublishBalanceSnapshot parses wallet balance response and publishes to event bus
-func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID int) error {
+func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID int, walletID int) error {
 	// Find "list" array in result
 	const listKey = "\"list\""
 	listIdx := bytes.Index(data, []byte(listKey))
@@ -624,6 +624,9 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 	// AccountID (8 bytes)
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(accountID))
 	pos += 8
+	// WalletID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(walletID))
+	pos += 8
 	// BalancesLen (4 bytes)
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(balanceCount))
 	pos += 4
@@ -641,7 +644,7 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 		Length: size,
 	})
 
-	log().Debug().Int("accountID", accountID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
+	log().Debug().Int("accountID", accountID).Int("walletID", walletID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
 	return nil
 }
 
@@ -799,11 +802,35 @@ func (c *BybitHTTPClient) parseCoinBalance(coinObj []byte) common.Balance {
 		}
 	}
 
-	// TokenID would need to be looked up from catalog - for now use 0
-	// A proper implementation would map coin name to TokenID
-	balance.TokenID = 0
+	// Resolve coin name to token ID via catalog
+	balance.TokenID = c.parseCoinTokenID(coinObj)
 
 	return balance
+}
+
+// parseCoinTokenID extracts the "coin" field from a coin JSON object and resolves it to a token ID.
+func (c *BybitHTTPClient) parseCoinTokenID(coinObj []byte) int {
+	const key = "\"coin\""
+	idx := bytes.Index(coinObj, []byte(key))
+	if idx == -1 {
+		return 0
+	}
+	idx += len(key)
+	for idx < len(coinObj) && coinObj[idx] != '"' {
+		idx++
+	}
+	idx++ // skip opening quote
+	start := idx
+	for idx < len(coinObj) && coinObj[idx] != '"' {
+		idx++
+	}
+	name := string(coinObj[start:idx])
+	if c.catalog != nil {
+		if tokenID, err := c.catalog.GetTokenIDByName(name); err == nil {
+			return tokenID
+		}
+	}
+	return 0
 }
 
 // parseStringField parses a string field value as float64

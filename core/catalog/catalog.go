@@ -205,6 +205,16 @@ func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
 	return &account, nil
 }
 
+// GetWalletByName searches all accounts and returns the wallet with the given name.
+func (c *Catalog) GetWalletByName(name string) (*cpanel.Wallet, error) {
+	for _, account := range c.accounts {
+		if wallet, err := account.GetWallet(name); err == nil {
+			return wallet, nil
+		}
+	}
+	return nil, fmt.Errorf("wallet not found: %s", name)
+}
+
 // GetAccountByName returns the account with the given name, or nil if not found.
 func (c *Catalog) GetAccountByName(name string) *cpanel.Account {
 	for _, account := range c.accounts {

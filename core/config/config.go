@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 
+	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -12,10 +13,12 @@ import (
 
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
-	Logger  logger.Config  `yaml:"logger"`
-	Catalog catalog.Config `yaml:"catalog"`
-	MsgBus  msgbus.Config  `yaml:"msgbus"`
-	Node    node.Config    `yaml:"node"`
+	Logger     logger.Config             `yaml:"logger"`
+	Catalog    catalog.Config            `yaml:"catalog"`
+	MsgBus     msgbus.Config             `yaml:"msgbus"`
+	ExecRouter []adapter.ExecRouterEntry `yaml:"execrouter"`
+	DataRouter []adapter.DataRouterEntry `yaml:"datarouter"`
+	Node       node.Config               `yaml:"node"`
 }
 
 // LoadConfig loads configuration from a YAML file.

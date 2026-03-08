@@ -5,92 +5,78 @@ import (
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
-	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// BalanceConfigurer is an optional interface that portfolio actors can implement
-// to receive the execution router and account IDs from the engine.
-type BalanceConfigurer interface {
-	Configure(router *adapter.ExecutionRouter, accountIDs []int)
-}
-
-// Balance represents the balance for a specific token
-type Balance struct {
-	TokenID   int
-	Available float64
-	Locked    float64
-	Total     float64
-}
-
-// AccountBalance represents all balances for an account
-type AccountBalance struct {
-	AccountID int
-	Balances  map[int]*Balance // tokenID -> Balance
-	UpdatedAt uint64
-}
-
-// Engine manages portfolio state including balances for each account.
-// It constructs actors from config via the factory registry.
+// Engine manages portfolio actors and orchestrates their lifecycle.
+// Balance state is owned by individual BalanceActors which write to cache.
 type Engine struct {
 	engine.EngineBase
-	msgBus *msgbus.MsgBus
-	actors []actor.Actor
+	catalog *catalog.Catalog
+	cache   *cache.Cache
+	msgBus  *msgbus.MsgBus
+	actors  []actor.Actor
 
-	// Execution router for subscribing and requesting balance snapshots
 	execRouter *adapter.ExecutionRouter
 
-	// Configured account IDs to track
-	accountIDs []int
+	accountIDs  []int
+	walletTypes map[int]common.WalletType // accountID -> WalletType
 
-	// Balances indexed by accountID -> tokenID -> Balance
-	balances map[int]*AccountBalance
-	mu       sync.RWMutex
+	// Snapshot readiness: counts NotifyReady calls from balance actors
+	pendingCount int
+	readyCount   int
+	ready        bool
+	mu           sync.Mutex
 }
 
-// NewEngine creates a new portfolio engine
-func NewEngine(msgBus *msgbus.MsgBus) *Engine {
+// NewEngine creates a new portfolio engine.
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	return &Engine{
-		EngineBase: engine.NewEngineBase(common.EnginePortfolio),
-		msgBus:     msgBus,
-		accountIDs: make([]int, 0),
-		balances:   make(map[int]*AccountBalance),
+		EngineBase:  engine.NewEngineBase(common.EnginePortfolio),
+		catalog:     cat,
+		cache:       c,
+		msgBus:      msgBus,
+		accountIDs:  make([]int, 0),
+		walletTypes: make(map[int]common.WalletType),
 	}
 }
 
-// SetExecutionRouter sets the execution router for subscribing and requesting balance snapshots
+// SetExecutionRouter sets the execution router for subscribing and requesting balance snapshots.
 func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
 	e.execRouter = router
 }
 
-// SetAccounts sets the account IDs to track for portfolio management
-func (e *Engine) SetAccounts(accountIDs []int) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
+// SetAccounts sets the account IDs and their wallet types to track.
+func (e *Engine) SetAccounts(accountIDs []int, walletTypes map[int]common.WalletType) {
 	e.accountIDs = accountIDs
-
-	for _, acctID := range accountIDs {
-		e.ensureAccountExistsLocked(acctID)
-	}
+	e.walletTypes = walletTypes
 
 	log().Info().
 		Ints("accountIDs", accountIDs).
 		Msg("PortfolioEngine: Configured accounts")
 }
 
+// GetConfiguredAccounts returns the list of configured account IDs.
+func (e *Engine) GetConfiguredAccounts() []int {
+	return e.accountIDs
+}
+
 // ============================================================================
-// Engine Interface Implementation
+// Engine Lifecycle
 // ============================================================================
 
-// Init constructs actors from config, configures them, and registers with the EventBus.
+// Init constructs actors from config and registers with the EventBus.
 func (e *Engine) Init(config Config) {
+	balanceActorCount := 0
+
 	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
 		if err != nil {
@@ -100,16 +86,31 @@ func (e *Engine) Init(config Config) {
 
 		a := factory(e)
 		actor.ApplyName(a, entry.Name)
-		// If the actor supports balance configuration, pass router and accounts
-		if bc, ok := a.(BalanceConfigurer); ok {
-			bc.Configure(e.execRouter, e.accountIDs)
+
+		// Inject cache and catalog into actors that support it
+		type cacheSetter interface{ SetCache(*cache.Cache) }
+		if cs, ok := a.(cacheSetter); ok {
+			cs.SetCache(e.cache)
 		}
-		actor.Register(e.msgBus, a)
+		type catalogSetter interface{ SetCatalog(*catalog.Catalog) }
+		if cs, ok := a.(catalogSetter); ok {
+			cs.SetCatalog(e.catalog)
+		}
+
 		a.OnInit(entry.Config)
+		actor.Register(e.msgBus, a)
 		e.actors = append(e.actors, a)
+
+		if entry.Type == "balance" {
+			balanceActorCount++
+		}
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("PortfolioEngine: actor initialized")
 	}
+
+	e.mu.Lock()
+	e.pendingCount = balanceActorCount
+	e.mu.Unlock()
 
 	if e.execRouter == nil {
 		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
@@ -126,11 +127,27 @@ func (e *Engine) Init(config Config) {
 	log().Info().Msg("PortfolioEngine initialized")
 }
 
-// Start triggers actors to start (e.g. request initial balance snapshots).
+// Start triggers actors and requests initial balance snapshots for all accounts.
 func (e *Engine) Start() {
 	for _, a := range e.actors {
 		a.OnStart()
 	}
+
+	if e.execRouter != nil && len(e.accountIDs) > 0 {
+		for _, acctID := range e.accountIDs {
+			wt := e.walletTypes[acctID]
+			if err := e.execRouter.ReqBalanceSnapshot(acctID, wt); err != nil {
+				log().Error().Err(err).Int("accountID", acctID).Str("walletType", wt.String()).
+					Msg("PortfolioEngine: Failed to request balance snapshot")
+			} else {
+				log().Debug().Int("accountID", acctID).Str("walletType", wt.String()).
+					Msg("PortfolioEngine: Requested balance snapshot")
+			}
+		}
+	} else {
+		e.EngineBase.NotifyReady()
+	}
+
 	log().Info().Msg("PortfolioEngine started")
 }
 
@@ -144,216 +161,27 @@ func (e *Engine) Stop() {
 }
 
 // ============================================================================
-// Configuration Access
+// balance.EngineHandler implementation
 // ============================================================================
 
-// GetConfiguredAccounts returns the list of configured account IDs
-func (e *Engine) GetConfiguredAccounts() []int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.accountIDs
-}
-
-// ============================================================================
-// Balance Access
-// ============================================================================
-
-func (e *Engine) GetBalance(acctID int, tokenID int) *Balance {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	acctBalance, ok := e.balances[acctID]
-	if !ok {
-		return nil
+func (e *Engine) ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error) {
+	wallet, err := e.catalog.GetWalletByName(name)
+	if err != nil {
+		return 0, 0, common.WalletTypeUnknown, err
 	}
-	return acctBalance.Balances[tokenID]
+	return wallet.AcctID, wallet.ID, wallet.WalletType, nil
 }
 
-func (e *Engine) GetAvailable(acctID int, tokenID int) float64 {
-	balance := e.GetBalance(acctID, tokenID)
-	if balance == nil {
-		return 0
-	}
-	return balance.Available
-}
-
-func (e *Engine) GetLocked(acctID int, tokenID int) float64 {
-	balance := e.GetBalance(acctID, tokenID)
-	if balance == nil {
-		return 0
-	}
-	return balance.Locked
-}
-
-func (e *Engine) GetTotal(acctID int, tokenID int) float64 {
-	balance := e.GetBalance(acctID, tokenID)
-	if balance == nil {
-		return 0
-	}
-	return balance.Total
-}
-
-func (e *Engine) GetAccountBalances(acctID int) *AccountBalance {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.balances[acctID]
-}
-
-func (e *Engine) GetAllTokenBalances(acctID int) []*Balance {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	acctBalance, ok := e.balances[acctID]
-	if !ok {
-		return nil
-	}
-	balances := make([]*Balance, 0, len(acctBalance.Balances))
-	for _, b := range acctBalance.Balances {
-		balances = append(balances, b)
-	}
-	return balances
-}
-
-func (e *Engine) GetNonZeroBalances(acctID int) []*Balance {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	acctBalance, ok := e.balances[acctID]
-	if !ok {
-		return nil
-	}
-	balances := make([]*Balance, 0)
-	for _, b := range acctBalance.Balances {
-		if b.Total > 0 {
-			balances = append(balances, b)
-		}
-	}
-	return balances
-}
-
-func (e *Engine) HasSufficientBalance(acctID int, tokenID int, amount float64) bool {
-	return e.GetAvailable(acctID, tokenID) >= amount
-}
-
-// ============================================================================
-// Balance Updates
-// ============================================================================
-
-func (e *Engine) SetBalance(acctID int, tokenID int, available float64, locked float64) {
+// NotifyReady is called by each BalanceActor when its snapshot is received.
+// When all balance actors have reported ready, the engine notifies the system.
+func (e *Engine) NotifyReady() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.ensureAccountExistsLocked(acctID)
-	e.balances[acctID].Balances[tokenID] = &Balance{
-		TokenID:   tokenID,
-		Available: available,
-		Locked:    locked,
-		Total:     available + locked,
+
+	e.readyCount++
+	if !e.ready && e.readyCount >= e.pendingCount {
+		e.ready = true
+		log().Info().Msg("PortfolioEngine: All balance snapshots received, notifying ready")
+		e.EngineBase.NotifyReady()
 	}
-}
-
-func (e *Engine) UpdateBalance(acctID int, balance *Balance, updatedAt uint64) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.ensureAccountExistsLocked(acctID)
-	e.balances[acctID].Balances[balance.TokenID] = balance
-	e.balances[acctID].UpdatedAt = updatedAt
-}
-
-// ============================================================================
-// Event Handlers (implements BalanceEngineHandler)
-// ============================================================================
-
-func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.ensureAccountExistsLocked(ev.AccountID)
-	for _, b := range ev.Balances {
-		e.balances[ev.AccountID].Balances[b.TokenID] = &Balance{
-			TokenID:   b.TokenID,
-			Available: b.Available,
-			Locked:    b.Locked,
-			Total:     b.Total,
-		}
-	}
-	e.balances[ev.AccountID].UpdatedAt = ev.UpdatedAt
-	log().Debug().
-		Int("accountID", ev.AccountID).
-		Int("balanceCount", len(ev.Balances)).
-		Msg("Balance updated")
-}
-
-func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
-	e.mu.Lock()
-	e.ensureAccountExistsLocked(ev.AccountID)
-	e.balances[ev.AccountID].Balances = make(map[int]*Balance)
-	for _, b := range ev.Balances {
-		e.balances[ev.AccountID].Balances[b.TokenID] = &Balance{
-			TokenID:   b.TokenID,
-			Available: b.Available,
-			Locked:    b.Locked,
-			Total:     b.Total,
-		}
-	}
-	e.mu.Unlock()
-
-	log().Info().
-		Int("accountID", ev.AccountID).
-		Int("balanceCount", len(ev.Balances)).
-		Msg("PortfolioEngine: Balance snapshot received and initialized")
-
-	for _, b := range ev.Balances {
-		if b.Total > 0 {
-			log().Debug().
-				Int("accountID", ev.AccountID).
-				Int("tokenID", b.TokenID).
-				Float64("available", b.Available).
-				Float64("locked", b.Locked).
-				Float64("total", b.Total).
-				Msg("PortfolioEngine: Token balance initialized")
-		}
-	}
-}
-
-func (e *Engine) OnExecution(ev event.Execution) {
-	log().Debug().
-		Int("clientOrderID", ev.ClientOrderID).
-		Int("accountID", ev.AccountID).
-		Int("symbolID", ev.SymbolID).
-		Int("fillID", ev.FillID).
-		Float64("qty", ev.FilledQty).
-		Float64("price", ev.FilledPrice).
-		Float64("fee", ev.FeeQty).
-		Msg("Fill received in portfolio engine")
-}
-
-// ============================================================================
-// Internal Methods
-// ============================================================================
-
-func (e *Engine) ensureAccountExistsLocked(acctID int) {
-	if _, ok := e.balances[acctID]; !ok {
-		e.balances[acctID] = &AccountBalance{
-			AccountID: acctID,
-			Balances:  make(map[int]*Balance),
-		}
-	}
-}
-
-func (e *Engine) ClearAccount(acctID int) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	delete(e.balances, acctID)
-}
-
-func (e *Engine) AccountCount() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return len(e.balances)
-}
-
-func (e *Engine) TokenCount(acctID int) int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	acctBalance, ok := e.balances[acctID]
-	if !ok {
-		return 0
-	}
-	return len(acctBalance.Balances)
 }

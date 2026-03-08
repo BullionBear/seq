@@ -51,6 +51,12 @@ func (a *ActorBase) SubscribedTypes() []event.Topic {
 	return a.topics
 }
 
+// SetTopics overrides the actor's subscribed topics.
+// Typically called from OnInit when topics are configured via YAML.
+func (a *ActorBase) SetTopics(topics []event.Topic) {
+	a.topics = topics
+}
+
 // Handle is a no-op default. Concrete actors should override this.
 func (a *ActorBase) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	// Default no-op - concrete actors should override

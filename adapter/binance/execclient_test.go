@@ -747,7 +747,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
-	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName)
+	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName, 0)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}
@@ -765,7 +765,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Request balance snapshot
-	err = client.ReqBalanceSnapshot()
+	err = client.ReqBalanceSnapshot(common.WalletTypeSpot)
 	if err != nil {
 		t.Fatalf("Failed to request balance snapshot: %v", err)
 	}
@@ -868,7 +868,7 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
-	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName)
+	client, err := NewBinanceSpotExecutionClient(cat, eb, targetAccount.ID, targetAPIKeyName, 0)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}

@@ -13,6 +13,14 @@ var (
 	ErrClientNotFound  = errors.New("execution client not found for account")
 )
 
+// ExecRouterEntry configures a single execution client connection.
+type ExecRouterEntry struct {
+	ID      int    `yaml:"id"`
+	Account string `yaml:"account"`
+	Wallet  string `yaml:"wallet"`
+	API     string `yaml:"api"`
+}
+
 // ExecutionClient is the interface that execution clients must implement.
 // Each execution client handles order operations for a specific account.
 //
@@ -52,9 +60,9 @@ type ExecutionClient interface {
 	// CancelAllOrders cancels all open orders for a symbol
 	CancelAllOrders(symbolID int) error
 
-	// ReqBalanceSnapshot requests the current balance snapshot
-	// The response will be published as a ReqBalanceSnapshot event
-	ReqBalanceSnapshot() error
+	// ReqBalanceSnapshot requests the current balance snapshot for the given wallet type.
+	// The response will be published as a RespBalanceSnapshot event.
+	ReqBalanceSnapshot(walletType common.WalletType) error
 }
 
 // ExecutionRouter routes order operations to the appropriate ExecutionClient
@@ -151,13 +159,13 @@ func (r *ExecutionRouter) SubscribeBalance(acctID int) error {
 	return client.SubscribeBalance()
 }
 
-// ReqBalanceSnapshot requests the current balance snapshot for an account
-func (r *ExecutionRouter) ReqBalanceSnapshot(acctID int) error {
+// ReqBalanceSnapshot requests the current balance snapshot for an account's wallet type
+func (r *ExecutionRouter) ReqBalanceSnapshot(acctID int, walletType common.WalletType) error {
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
 	}
-	return client.ReqBalanceSnapshot()
+	return client.ReqBalanceSnapshot(walletType)
 }
 
 // Connect connects all registered execution clients

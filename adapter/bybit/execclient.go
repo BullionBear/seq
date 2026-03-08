@@ -38,6 +38,7 @@ type BybitPrivateStreamClient struct {
 	catalog   *catalog.Catalog
 	msgBus    *msgbus.MsgBus
 	accountID int
+	walletID  int
 	account   cpanel.Account
 	apiKey    cpanel.APIKey
 
@@ -64,7 +65,7 @@ type BybitPrivateStreamClient struct {
 }
 
 // NewBybitPrivateStreamClient creates a new Bybit private stream client
-func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BybitPrivateStreamClient, error) {
+func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string, walletID int) (*BybitPrivateStreamClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -79,6 +80,7 @@ func NewBybitPrivateStreamClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus
 		catalog:       catalog,
 		msgBus:        msgBus,
 		accountID:     accountID,
+		walletID:      walletID,
 		account:       *account,
 		apiKey:        *apiKey,
 		pendingTopics: make(map[string]bool),
@@ -612,6 +614,7 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 
 	balanceUpdate := event.BalanceUpdate{
 		AccountID: c.accountID,
+		WalletID:  c.walletID,
 		Balances:  balances,
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
@@ -627,6 +630,7 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 
 	log().Debug().
 		Int("accountID", c.accountID).
+		Int("walletID", c.walletID).
 		Int("balanceCount", len(balances)).
 		Msg("Published balance update from wallet topic")
 }
@@ -1402,13 +1406,14 @@ type BybitExecutionClient struct {
 
 	// Account info for HTTP requests
 	accountID  int
+	walletID   int
 	apiKeyName string
 }
 
 // NewBybitExecutionClient creates a new Bybit execution client that wraps
 // both the private stream and order entry clients
-func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BybitExecutionClient, error) {
-	privateStream, err := NewBybitPrivateStreamClient(catalog, msgBus, accountID, apiKeyName)
+func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string, walletID int) (*BybitExecutionClient, error) {
+	privateStream, err := NewBybitPrivateStreamClient(catalog, msgBus, accountID, apiKeyName, walletID)
 	if err != nil {
 		return nil, err
 	}
@@ -1425,6 +1430,7 @@ func NewBybitExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, ac
 		orderEntry:    orderEntry,
 		httpClient:    &httpClient,
 		accountID:     accountID,
+		walletID:      walletID,
 		apiKeyName:    apiKeyName,
 	}, nil
 }
@@ -1488,10 +1494,24 @@ func (c *BybitExecutionClient) CancelAllOrders(symbolID int) error {
 }
 
 // ReqBalanceSnapshot requests the current balance snapshot via HTTP API
-// The response will be published as a ReqBalanceSnapshot event
-func (c *BybitExecutionClient) ReqBalanceSnapshot() error {
-	// Use UNIFIED account type for Bybit unified margin
-	return c.httpClient.ReqBalanceSnapshot(c.accountID, c.apiKeyName, "UNIFIED")
+// The response will be published as a RespBalanceSnapshot event.
+func (c *BybitExecutionClient) ReqBalanceSnapshot(walletType common.WalletType) error {
+	accountType := walletTypeToBybitAccountType(walletType)
+	return c.httpClient.ReqBalanceSnapshot(c.accountID, c.walletID, c.apiKeyName, accountType)
+}
+
+// walletTypeToBybitAccountType converts a common.WalletType to the Bybit API accountType string.
+func walletTypeToBybitAccountType(wt common.WalletType) string {
+	switch wt {
+	case common.WalletTypeUnified:
+		return "UNIFIED"
+	case common.WalletTypeSpot:
+		return "SPOT"
+	case common.WalletTypeCMargin:
+		return "CONTRACT"
+	default:
+		return "UNIFIED"
+	}
 }
 
 // PrivateStream returns the underlying private stream client for advanced usage

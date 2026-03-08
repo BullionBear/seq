@@ -1,9 +1,7 @@
 package balance
 
 // BalanceConfig contains configuration for a single balance actor instance.
+// Each balance actor manages exactly one wallet.
 type BalanceConfig struct {
-	ID      int    `yaml:"id"`      // Account ID
-	Account string `yaml:"account"` // Account name in catalog
-	Wallet  string `yaml:"wallet"`  // Wallet name for this account
-	API     string `yaml:"api"`     // API key name for this account
+	Wallet string `yaml:"wallet"` // Wallet name to track (e.g. "bn-hephe-spot")
 }
