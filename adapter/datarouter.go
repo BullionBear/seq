@@ -31,164 +31,157 @@ type TradeConfig struct {
 	Type string `yaml:"type,omitempty"` // trade, aggTrade
 }
 
-// DepthOptions contains generic depth subscription options
-// These are translated to exchange-specific options by the router
+// DepthOptions contains generic depth subscription options.
+// These are translated to primitive parameters by the router.
 type DepthOptions struct {
 	Type     string // delta, snapshot, depth5, depth10, depth20 (binance)
 	PushRate string // 100ms, 1000ms (binance)
 	Levels   int    // 1, 50, 200, 500 (bybit)
 }
 
-// TradeOptions contains generic trade subscription options
+// TradeOptions contains generic trade subscription options.
 type TradeOptions struct {
 	Type string // trade, aggTrade
 }
 
+// DataClient is the interface for exchange-specific market data stream clients.
+// Parameters use primitives so implementations need not import this package.
+type DataClient interface {
+	HasSub() bool
+	Connect(ctx context.Context) error
+	Disconnect()
+	SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int)
+	SubscribeTrade(symbolID int, useAggTrade bool)
+	ReqDepthSnapshot(symbolID int, limit int) error
+}
+
+// DataClientFactory creates a DataClient for a specific exchange+product.
+type DataClientFactory func(cat *catalog.Catalog, bus *msgbus.MsgBus) DataClient
+
+type clientKey struct {
+	exchangeID int
+	productID  int
+}
+
 type DataRouter struct {
-	catalog *catalog.Catalog
-	msgBus  *msgbus.MsgBus
-
-	binanceSpotDataClient *binance.BinanceSpotDataClient
-	bybitDataClient       *bybit.BybitDataClient
+	cat       *catalog.Catalog
+	bus       *msgbus.MsgBus
+	factories map[clientKey]DataClientFactory
+	clients   map[clientKey]DataClient
 }
 
-func NewDataRouter(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *DataRouter {
-	return &DataRouter{
-		catalog:               catalog,
-		msgBus:                msgBus,
-		binanceSpotDataClient: binance.NewBinanceSpotDataClient(catalog, msgBus),
-		bybitDataClient:       bybit.NewBybitDataClient(catalog, msgBus),
+func NewDataRouter(cat *catalog.Catalog, bus *msgbus.MsgBus) *DataRouter {
+	r := &DataRouter{
+		cat:       cat,
+		bus:       bus,
+		factories: make(map[clientKey]DataClientFactory),
+		clients:   make(map[clientKey]DataClient),
 	}
+
+	r.RegisterFactory(int(common.ExchangeBinance), int(common.ProductTypeSpot), func(c *catalog.Catalog, m *msgbus.MsgBus) DataClient {
+		return binance.NewBinanceSpotDataClient(c, m)
+	})
+	r.RegisterFactory(int(common.ExchangeBybit), int(common.ProductTypeSpot), func(c *catalog.Catalog, m *msgbus.MsgBus) DataClient {
+		return bybit.NewBybitDataClient(c, m)
+	})
+
+	return r
 }
 
-// SubscribeDepthUpdate subscribes to depth updates for a symbol with options
+// RegisterFactory registers a factory for a given exchange+product pair.
+func (r *DataRouter) RegisterFactory(exchangeID, productID int, factory DataClientFactory) {
+	r.factories[clientKey{exchangeID, productID}] = factory
+}
+
+// getOrCreateClient lazily creates a data client for the exchange+product.
+func (r *DataRouter) getOrCreateClient(exchangeID, productID int) (DataClient, error) {
+	key := clientKey{exchangeID, productID}
+	if client, ok := r.clients[key]; ok {
+		return client, nil
+	}
+	factory, ok := r.factories[key]
+	if !ok {
+		return nil, fmt.Errorf("no data client factory for exchange=%d product=%d", exchangeID, productID)
+	}
+	client := factory(r.cat, r.bus)
+	r.clients[key] = client
+	return client, nil
+}
+
+// SubscribeDepthUpdate subscribes to depth updates for a symbol with options.
 func (r *DataRouter) SubscribeDepthUpdate(symbolID int, opts *DepthOptions) error {
-	symbol, err := r.catalog.GetSymbol(symbolID)
+	symbol, err := r.cat.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
-	switch {
-	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
-		binanceOpts := r.toBinanceDepthOptions(opts)
-		r.binanceSpotDataClient.SubscribeDepthUpdate(symbolID, binanceOpts)
-	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
-		bybitOpts := r.toBybitDepthOptions(opts)
-		r.bybitDataClient.SubscribeDepthUpdate(symbolID, bybitOpts)
-	default:
-		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
+	if err != nil {
+		return err
 	}
+
+	depthLevel := 50
+	pushRateMs := 100
+	if opts != nil {
+		if opts.Levels > 0 {
+			depthLevel = opts.Levels
+		}
+		switch opts.PushRate {
+		case "1000ms", "1s":
+			pushRateMs = 1000
+		}
+	}
+
+	client.SubscribeDepthUpdate(symbolID, depthLevel, pushRateMs)
 	return nil
 }
 
-// toBinanceDepthOptions converts generic DepthOptions to Binance-specific options
-func (r *DataRouter) toBinanceDepthOptions(opts *DepthOptions) *binance.DepthSubscriptionOptions {
-	if opts == nil {
-		return nil
+// SubscribeTrade subscribes to trade updates for a symbol with options.
+func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
+	symbol, err := r.cat.GetSymbol(symbolID)
+	if err != nil {
+		return err
 	}
-	binanceOpts := &binance.DepthSubscriptionOptions{}
-	switch opts.PushRate {
-	case "100ms":
-		binanceOpts.PushRate = binance.PushRate100ms
-	case "1000ms", "1s":
-		binanceOpts.PushRate = binance.PushRate1s
-	default:
-		binanceOpts.PushRate = binance.PushRate100ms // default
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
+	if err != nil {
+		return err
 	}
-	return binanceOpts
-}
 
-// toBybitDepthOptions converts generic DepthOptions to Bybit-specific options
-func (r *DataRouter) toBybitDepthOptions(opts *DepthOptions) *bybit.DepthSubscriptionOptions {
-	if opts == nil {
-		return nil
+	useAggTrade := false
+	if opts != nil && opts.Type == "aggTrade" {
+		useAggTrade = true
 	}
-	bybitOpts := &bybit.DepthSubscriptionOptions{}
-	switch opts.Levels {
-	case 1:
-		bybitOpts.Depth = bybit.DepthLevel1
-	case 50:
-		bybitOpts.Depth = bybit.DepthLevel50
-	case 200:
-		bybitOpts.Depth = bybit.DepthLevel200
-	case 500, 1000:
-		bybitOpts.Depth = bybit.DepthLevel1000
-	default:
-		bybitOpts.Depth = bybit.DepthLevel50 // default
-	}
-	return bybitOpts
+
+	client.SubscribeTrade(symbolID, useAggTrade)
+	return nil
 }
 
 func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
-	symbol, err := r.catalog.GetSymbol(symbolID)
+	symbol, err := r.cat.GetSymbol(symbolID)
 	if err != nil {
 		return err
 	}
-	switch {
-	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
-		return r.binanceSpotDataClient.ReqDepthSnapshot(symbolID, 1000) // Request 1000 levels
-	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
-		return r.bybitDataClient.ReqDepthSnapshot(symbolID, 1000)
-	default:
-		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
-	}
-}
-
-// SubscribeTrade subscribes to trade updates for a symbol with options
-func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
-	symbol, err := r.catalog.GetSymbol(symbolID)
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
 	if err != nil {
 		return err
 	}
-	switch {
-	case symbol.Exchange.ID == int(common.ExchangeBinance) && symbol.Product.ID == int(common.ProductTypeSpot):
-		binanceOpts := r.toBinanceTradeOptions(opts)
-		r.binanceSpotDataClient.SubscribeTrade(symbolID, binanceOpts)
-	case symbol.Exchange.ID == int(common.ExchangeBybit) && symbol.Product.ID == int(common.ProductTypeSpot):
-		r.bybitDataClient.SubscribeTrade(symbolID)
-	default:
-		return fmt.Errorf("unsupported exchange: %d", symbol.Exchange.ID)
-	}
-	return nil
-}
-
-// toBinanceTradeOptions converts generic TradeOptions to Binance-specific options
-func (r *DataRouter) toBinanceTradeOptions(opts *TradeOptions) *binance.TradeSubscriptionOptions {
-	if opts == nil {
-		return nil
-	}
-	binanceOpts := &binance.TradeSubscriptionOptions{}
-	switch opts.Type {
-	case "aggTrade":
-		binanceOpts.UseAggTrade = true
-	default:
-		binanceOpts.UseAggTrade = false
-	}
-	return binanceOpts
+	return client.ReqDepthSnapshot(symbolID, 1000)
 }
 
 func (r *DataRouter) Connect(ctx context.Context) error {
-	// Only connect clients that have subscriptions
-	if r.binanceSpotDataClient.HasSub() {
-		if err := r.binanceSpotDataClient.Connect(ctx); err != nil {
-			return fmt.Errorf("failed to connect Binance spot data client: %w", err)
+	for _, client := range r.clients {
+		if client.HasSub() {
+			if err := client.Connect(ctx); err != nil {
+				return err
+			}
 		}
 	}
-
-	if r.bybitDataClient.HasSub() {
-		if err := r.bybitDataClient.Connect(ctx); err != nil {
-			return fmt.Errorf("failed to connect Bybit data client: %w", err)
-		}
-	}
-
 	return nil
 }
 
 func (r *DataRouter) Disconnect() {
-	// Only disconnect clients that were connected
-	if r.binanceSpotDataClient.HasSub() {
-		r.binanceSpotDataClient.Disconnect()
-	}
-	if r.bybitDataClient.HasSub() {
-		r.bybitDataClient.Disconnect()
+	for _, client := range r.clients {
+		if client.HasSub() {
+			client.Disconnect()
+		}
 	}
 }

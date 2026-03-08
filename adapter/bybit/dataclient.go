@@ -97,16 +97,18 @@ func (c *BybitDataClient) HasSub() bool {
 	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0
 }
 
-// SubscribeDepthUpdate subscribes to depth update stream for a symbol
-// If options is nil, defaults to DepthLevel50
-func (c *BybitDataClient) SubscribeDepthUpdate(symbolID int, options *DepthSubscriptionOptions) {
+// SubscribeDepthUpdate subscribes to depth update stream for a symbol.
+// depthLevel maps to Bybit depth levels (1, 50, 200, 500); defaults to 50.
+// pushRateMs is ignored (Bybit determines push rate from depth level).
+func (c *BybitDataClient) SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	opts := &DepthSubscriptionOptions{Depth: DepthLevel50}
-	if options != nil {
-		opts.Depth = options.Depth
+	depth := DepthLevel(depthLevel)
+	if depth == 0 {
+		depth = DepthLevel50
 	}
+	opts := &DepthSubscriptionOptions{Depth: depth}
 	c.depthSubs[symbolID] = opts
 
 	// If already connected, send subscribe message
@@ -131,8 +133,9 @@ func (c *BybitDataClient) SubscribeDepthUpdate(symbolID int, options *DepthSubsc
 	}
 }
 
-// SubscribeTrade subscribes to trade stream for a symbol
-func (c *BybitDataClient) SubscribeTrade(symbolID int) {
+// SubscribeTrade subscribes to trade stream for a symbol.
+// useAggTrade is ignored (Bybit has a single trade stream type).
+func (c *BybitDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 

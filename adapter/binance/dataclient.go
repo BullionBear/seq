@@ -89,40 +89,37 @@ func (c *BinanceSpotDataClient) HasSub() bool {
 	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0
 }
 
-// SubscribeDepthUpdate subscribes to depth update stream for a symbol
-// If options is nil, defaults to PushRate100ms
-func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, options *DepthSubscriptionOptions) {
+// SubscribeDepthUpdate subscribes to depth update stream for a symbol.
+// depthLevel is ignored (Binance uses pushRateMs). pushRateMs selects the push rate:
+// >=1000 uses 1s, otherwise 100ms.
+func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	opts := &DepthSubscriptionOptions{PushRate: PushRate100ms}
-	if options != nil {
-		opts.PushRate = options.PushRate
+	pushRate := PushRate100ms
+	if pushRateMs >= 1000 {
+		pushRate = PushRate1s
 	}
+	opts := &DepthSubscriptionOptions{PushRate: pushRate}
 	c.depthSubs[symbolID] = opts
 
-	// If already connected, send subscribe message
 	if c.connected.Load() {
 		c.subscribeToDepthStream(symbolID, opts.PushRate)
 	}
 }
 
-// SubscribeTrade subscribes to trade stream for a symbol
-// If options is nil, defaults to regular trade stream (not aggTrade)
-func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int, options *TradeSubscriptionOptions) {
+// SubscribeTrade subscribes to trade stream for a symbol.
+// useAggTrade selects between regular trade and aggTrade streams.
+func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	opts := &TradeSubscriptionOptions{UseAggTrade: false}
-	if options != nil {
-		opts.UseAggTrade = options.UseAggTrade
-	}
+	opts := &TradeSubscriptionOptions{UseAggTrade: useAggTrade}
 	c.tradeSubs[symbolID] = opts
 
-	// If already connected, send subscribe message
 	if c.connected.Load() {
 		stream := streamTrade
-		if opts.UseAggTrade {
+		if useAggTrade {
 			stream = streamAggTrade
 		}
 		c.subscribeToStream(symbolID, stream)
