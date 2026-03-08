@@ -16,13 +16,14 @@ catalog:
 
 execrouter:
   - id: 6
-    account: bybit-eddy
+    account: bybit-hephe
     wallet: bybit-hephe-unified
-    api: bybit-eddy-hmac
+    api: bybit-hephe-hmac
   - id: 7
     account: bn-hephe
     wallet: bn-hephe-spot
     api: bn-hephe-ed25519
+
 
 datarouter:
   - symbol: BINANCE_SPOT_UNIUSDT
@@ -32,6 +33,7 @@ datarouter:
   - symbol: BYBIT_SPOT_UNIUSDT
     depth:
       levels: 50
+
 
 node:
   engine:
@@ -45,43 +47,36 @@ node:
           name: orderbook-bybit
           config:
             symbol: BYBIT_SPOT_UNIUSDT
-
+    
     execution:
       actor:
         - type: oms
           name: oms
           config:
-            subscription:
-              - OrderNew
-              - OrderAccepted
-              - OrderPartialFill
-              - OrderFilled
-              - OrderCanceled
-              - OrderRejected
-
+            
+    
     portfolio:
       actor:
         - type: balance
-          name: balance
+          name: balance-bybit-unified
           config:
-            subscription:
-              - RespBalanceSnapshot
-              - BalanceUpdate
-              - Execution
-              - OrderCanceled
-              - OrderNew
+            wallet: bybit-hephe-unified
+        - type: balance
+          name: balance-bn-spot
+          config:
+            wallet: bn-hephe-spot
 
     strategy:
       actor:
         - type: xarb
-          name: xarb-uni-buy-3bps
+          name: xarb-uni-buy-2bps
           config:
             quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            quoting_account: bn-eddy
-            hedging_account: bybit-eddy
+            quoting_wallet: bn-hephe-spot
+            hedging_wallet: bybit-hephe-unified
             side: BUY
-            profit_bps: 3
-            qty: 3.5
-            min_unhedged_quote: 10
+            profit_bps: 2
+            qty: 10
+            min_unhedged_quote: 5
 

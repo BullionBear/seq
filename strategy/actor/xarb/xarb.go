@@ -7,7 +7,6 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -27,20 +26,25 @@ var _ actor.Actor = (*XArb)(nil)
 // XArb is a cross-exchange arbitrage strategy.
 type XArb struct {
 	strategy.StrategyActorBase
-	cache         *cache.Cache
-	quotingSymbol cpanel.Symbol
-	hedgingSymbol cpanel.Symbol
+	cache *cache.Cache
 
-	// Account IDs for trading
-	quotingAccount cpanel.Account
-	hedgingAccount cpanel.Account
+	// Resolved symbols
+	quotingSymbolID       int
+	hedgingSymbolID       int
+	quotingSymbolTicker   string
+	hedgingSymbolTicker   string
+	quotingPricePrecision int
+	hedgingPricePrecision int
+
+	// Wallet-derived account IDs for order routing
+	quotingAccountID int
+	hedgingAccountID int
 
 	// Algo parameters
 	Side              common.Side
 	ProfitBps         float64
 	Qty               float64
 	PriceToleranceBps float64
-	MinUnhedgedQuote  float64
 
 	// Algo variables
 	quotingClientOrderID int
@@ -55,11 +59,8 @@ type XArb struct {
 func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache) *XArb {
 	return &XArb{
 		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, msgbus, []event.Topic{
-			// Market data
 			event.TopicEventDepthUpdate,
-			// Execution data
 			event.TopicEventExecution,
-			// Reconciliation data
 			event.TopicEventOrderCanceled,
 			event.TopicEventOrderRejected,
 			event.TopicEventOrderFilled,
@@ -68,109 +69,95 @@ func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache
 			event.TopicEventOrderNew,
 			event.TopicEventOrderAccepted,
 		}),
-		cache:         cache,
-		quotingSymbol: cpanel.Symbol{},
-		hedgingSymbol: cpanel.Symbol{},
-
-		quotingAccount: cpanel.Account{},
-		hedgingAccount: cpanel.Account{},
-
-		Side:                 common.SideUnknown,
-		ProfitBps:            0.0,
-		Qty:                  0.0,
-		PriceToleranceBps:    0.0000,
-		MinUnhedgedQuote:     0.0,
-		quotingClientOrderID: 0,
-		hedgingClientOrderID: 0,
-		unhedgedAvailable:    0.0,
-		unhedgedLocked:       0.0,
-		quotingCount:         0,
-		hedgingCount:         0,
+		cache: cache,
 	}
 }
 
 // OnInit initializes the strategy with configuration.
 func (x *XArb) OnInit(config map[string]any) {
-	// Get strategy-specific config from StrategyBase
-	var xarbConfig XArbConfig
+	var cfg XArbConfig
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:  &xarbConfig,
-		TagName: "yaml", // Use yaml tags for mapping
+		Result:  &cfg,
+		TagName: "yaml",
 	})
 	if err != nil {
 		x.Log().Panic().Msg("failed to create decoder")
 		return
 	}
-
-	err = decoder.Decode(config)
-	if err != nil {
+	if err = decoder.Decode(config); err != nil {
 		x.Log().Panic().Msg("failed to decode config")
 		return
 	}
 
 	// Resolve trading symbols
-	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.QuotingSymbolUniversalTicker)
+	quotingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(cfg.QuotingSymbolUniversalTicker)
 	if err != nil {
 		x.Log().Error().Err(err).Msg("failed to get quoting symbol")
 		return
 	}
-	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(xarbConfig.HedgingSymbolUniversalTicker)
+	hedgingSymbol, err := x.GetCatalog().GetSymbolByUniversalTicker(cfg.HedgingSymbolUniversalTicker)
 	if err != nil {
 		x.Log().Error().Err(err).Msg("failed to get hedging symbol")
 		return
 	}
-	x.quotingSymbol = *quotingSymbol
-	x.hedgingSymbol = *hedgingSymbol
-	x.Log().Info().Msgf("Quoting symbol: %s(%d)", quotingSymbol.UniversalTicker, quotingSymbol.ID)
-	x.Log().Info().Msgf("Hedging symbol: %s(%d)", hedgingSymbol.UniversalTicker, hedgingSymbol.ID)
+	x.quotingSymbolID = quotingSymbol.ID
+	x.hedgingSymbolID = hedgingSymbol.ID
+	x.quotingSymbolTicker = quotingSymbol.UniversalTicker
+	x.hedgingSymbolTicker = hedgingSymbol.UniversalTicker
+	x.quotingPricePrecision = quotingSymbol.PricePrecision
+	x.hedgingPricePrecision = hedgingSymbol.PricePrecision
+	x.Log().Info().
+		Str("quotingSymbol", x.quotingSymbolTicker).Int("quotingSymbolID", x.quotingSymbolID).
+		Str("hedgingSymbol", x.hedgingSymbolTicker).Int("hedgingSymbolID", x.hedgingSymbolID).
+		Msg("Resolved symbols")
 
 	// Resolve algo parameters
-	switch strings.ToLower(xarbConfig.Side) {
+	switch strings.ToLower(cfg.Side) {
 	case "buy", "b":
 		x.Side = common.SideBuy
 	case "sell", "s":
 		x.Side = common.SideSell
 	default:
-		x.Log().Panic().Str("side", xarbConfig.Side).Msg("invalid side")
+		x.Log().Panic().Str("side", cfg.Side).Msg("invalid side")
 	}
-	x.ProfitBps = xarbConfig.ProfitBps
-	x.Qty = xarbConfig.Qty
-	x.PriceToleranceBps = xarbConfig.PriceToleranceBps
-	x.MinUnhedgedQuote = xarbConfig.MinUnhedgedQuote
+	x.ProfitBps = cfg.ProfitBps
+	x.Qty = cfg.Qty
+	x.PriceToleranceBps = cfg.PriceToleranceBps
 	x.Log().Info().Str("side", x.Side.String()).
 		Float64("profitBps", x.ProfitBps).
 		Float64("qty", x.Qty).
 		Float64("priceToleranceBps", x.PriceToleranceBps).
-		Float64("minUnhedgedQuote", x.MinUnhedgedQuote).
-		Msg("XArb config")
-	// Resolve trading accounts
-	if xarbConfig.QuotingAccount != "" {
-		quotingAccount := x.GetCatalog().GetAccountByName(xarbConfig.QuotingAccount)
-		if quotingAccount != nil {
-			x.quotingAccount = *quotingAccount
-			x.Log().Info().Msgf("Quoting account: %s(%d)", quotingAccount.Name, quotingAccount.ID)
-		} else {
-			x.Log().Warn().Str("account", xarbConfig.QuotingAccount).Msg("quoting account not found")
+		Msg("Algo parameters")
+
+	// Resolve trading wallets
+	if cfg.QuotingWallet != "" {
+		wallet, err := x.GetCatalog().GetWalletByName(cfg.QuotingWallet)
+		if err != nil {
+			x.Log().Panic().Err(err).Str("wallet", cfg.QuotingWallet).Msg("quoting wallet not found")
+			return
 		}
+		x.quotingAccountID = wallet.AcctID
+		x.Log().Info().Str("wallet", wallet.Name).Int("accountID", wallet.AcctID).
+			Str("walletType", wallet.WalletType.String()).Msg("Quoting wallet resolved")
 	}
 
-	if xarbConfig.HedgingAccount != "" {
-		hedgingAccount := x.GetCatalog().GetAccountByName(xarbConfig.HedgingAccount)
-		if hedgingAccount != nil {
-			x.hedgingAccount = *hedgingAccount
-			x.Log().Info().Msgf("Hedging account: %s(%d)", hedgingAccount.Name, hedgingAccount.ID)
-		} else {
-			x.Log().Warn().Str("account", xarbConfig.HedgingAccount).Msg("hedging account not found")
+	if cfg.HedgingWallet != "" {
+		wallet, err := x.GetCatalog().GetWalletByName(cfg.HedgingWallet)
+		if err != nil {
+			x.Log().Panic().Err(err).Str("wallet", cfg.HedgingWallet).Msg("hedging wallet not found")
+			return
 		}
+		x.hedgingAccountID = wallet.AcctID
+		x.Log().Info().Str("wallet", wallet.Name).Int("accountID", wallet.AcctID).
+			Str("walletType", wallet.WalletType.String()).Msg("Hedging wallet resolved")
 	}
-
 }
 
-// OnStart is called when the strategy starts.
-// Note: Data subscriptions are now handled by the config - no manual Subscribe/Connect needed.
 func (x *XArb) OnStart() {
-	x.Log().Info().Msgf("XArb strategy started for symbols: %s, %s",
-		x.quotingSymbol.UniversalTicker, x.hedgingSymbol.UniversalTicker)
+	x.Log().Info().
+		Str("quotingSymbol", x.quotingSymbolTicker).
+		Str("hedgingSymbol", x.hedgingSymbolTicker).
+		Msg("XArb strategy started")
 }
 
 // OnStop is called when the strategy stops.
@@ -221,17 +208,15 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 }
 
-// OnDepthUpdate processes depth updates.
-// Note: Snapshot requests are now handled automatically by DataEngine.
 func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
-	if update.SymbolID != x.hedgingSymbol.ID && update.SymbolID != x.quotingSymbol.ID {
+	if update.SymbolID != x.hedgingSymbolID && update.SymbolID != x.quotingSymbolID {
 		return
 	}
 	x.Log().Debug().Int("symbolID", update.SymbolID).Int("depthID", update.DepthID).Msg("DepthUpdate")
-	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.hedgingSymbol.ID {
+	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.hedgingSymbolID {
 		x.hedgingCount += 1
 	}
-	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.quotingSymbol.ID {
+	if x.cache.IsSymbolReady(update.SymbolID) && update.SymbolID == x.quotingSymbolID {
 		x.quotingCount += 1
 	}
 	if x.hedgingCount == 0 || x.quotingCount == 0 {
@@ -243,13 +228,13 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 	}
 	switch x.Side {
 	case common.SideBuy:
-		refPrice, _, ok := x.cache.GetBestBid(x.hedgingSymbol.ID)
+		refPrice, _, ok := x.cache.GetBestBid(x.hedgingSymbolID)
 		if !ok {
 			x.Log().Error().Msg("failed to get best bid")
 			return
 		}
 		if x.quotingClientOrderID != 0 {
-			order, ok := x.cache.GetOpenOrder(x.quotingAccount.ID, x.quotingClientOrderID)
+			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
 			if ok {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
 				return
@@ -265,24 +250,24 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Quote order price tolerance exceeded")
-				x.CancelOrder(x.quotingClientOrderID, x.quotingAccount.ID)
+				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
 				return
 			}
 		}
-		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
+		priceDecimal := math.Pow10(x.quotingPricePrecision)
 		buyPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		buyQty := x.Qty
 		x.Log().Info().Float64("buyPrice", buyPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
-		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
+		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
 		x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order submitted")
 	case common.SideSell:
-		refPrice, _, ok := x.cache.GetBestAsk(x.quotingSymbol.ID)
+		refPrice, _, ok := x.cache.GetBestAsk(x.quotingSymbolID)
 		if !ok {
 			x.Log().Error().Msg("failed to get best ask")
 			return
 		}
 		if x.quotingClientOrderID != 0 {
-			order, ok := x.cache.GetOpenOrder(x.quotingAccount.ID, x.quotingClientOrderID)
+			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
 			if ok {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
 				return
@@ -298,47 +283,45 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Quote order price tolerance exceeded")
-				x.CancelOrder(x.quotingClientOrderID, x.quotingAccount.ID)
+				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
 				return
 			}
 		}
-		priceDecimal := math.Pow10(x.quotingSymbol.PricePrecision)
+		priceDecimal := math.Pow10(x.quotingPricePrecision)
 		sellPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		sellQty := x.Qty
-		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit hedge order")
-		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
+		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit quote order")
+		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
 		x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order submitted")
 	}
 }
 
-// OnExecution processes execution (fill) events.
 func (x *XArb) OnExecution(exec event.Execution) {
-	if exec.SymbolID == x.quotingSymbol.ID && exec.Side == common.SideBuy {
+	if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideBuy {
 		x.unhedgedAvailable += exec.FilledQty
-	} else if exec.SymbolID == x.quotingSymbol.ID && exec.Side == common.SideSell {
+	} else if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideSell {
 		x.unhedgedAvailable -= exec.FilledQty
-	} else if exec.SymbolID == x.hedgingSymbol.ID && exec.Side == common.SideBuy {
+	} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideBuy {
 		x.unhedgedLocked += exec.FilledQty
-	} else if exec.SymbolID == x.hedgingSymbol.ID && exec.Side == common.SideSell {
+	} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideSell {
 		x.unhedgedLocked -= exec.FilledQty
 	} else {
-		x.Log().Error().Int("symbolID", exec.SymbolID).Str("side", exec.Side.String()).Msg("Invalid execution")
 		return
 	}
-	if math.Abs(x.unhedgedAvailable)*exec.FilledPrice < x.MinUnhedgedQuote {
-		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("filledPrice", exec.FilledPrice).Float64("minUnhedgedQuote", x.MinUnhedgedQuote).Msg("No unhedged available")
+	if math.Abs(x.unhedgedAvailable/x.Qty-1.0) > 1e-6 {
+		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("qty", x.Qty).Msg("No unhedged available")
 		return
 	}
 	if x.unhedgedAvailable < 0 {
 		qty := -x.unhedgedAvailable
 		x.unhedgedAvailable = 0
 		x.unhedgedLocked += qty
-		x.SubmitOrder(x.hedgingAccount.ID, x.hedgingSymbol.ID, common.SideBuy, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
+		x.SubmitOrder(x.hedgingAccountID, x.hedgingSymbolID, common.SideBuy, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
 	} else if x.unhedgedAvailable > 0 {
 		qty := x.unhedgedAvailable
 		x.unhedgedAvailable = 0
 		x.unhedgedLocked += qty
-		x.SubmitOrder(x.quotingAccount.ID, x.quotingSymbol.ID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
+		x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
 	} else {
 		x.Log().Error().Msg("Invalid unhedged available")
 		return
@@ -346,10 +329,9 @@ func (x *XArb) OnExecution(exec event.Execution) {
 }
 
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
-	if orderCanceled.AccountID == x.quotingAccount.ID {
+	if orderCanceled.AccountID == x.quotingAccountID {
 		x.quotingClientOrderID = 0
 	} else {
-		x.Log().Error().Int("accountID", orderCanceled.AccountID).Msg("Invalid account ID")
 		return
 	}
 }
