@@ -1,0 +1,46 @@
+logger:
+  level: debug
+  output: stdout  # "stdout" or "file"
+  path: /root/seq/logs/test.log  # Required when output is "file"
+  max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
+  max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
+
+msgbus:
+  msglog:
+    enabled: true
+    dir: ./logs/
+
+catalog:
+  base_url: https://capi.lynxlinkage.com
+  api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
+
+execrouter:
+  - id: 6
+    account: bybit-hephe
+    wallet: bybit-hephe-unified
+    api: bybit-hephe-hmac
+
+datarouter:
+
+node:
+  engine:
+    data:
+      actor:
+    
+    execution:
+      actor:
+    
+    portfolio:
+      actor:
+        - type: balance
+          name: balance
+          config:
+            subscription:
+              - RespBalanceSnapshot
+              - BalanceUpdate
+              - Execution
+              - OrderCanceled
+              - OrderNew
+
+    strategy:
+      actor:
