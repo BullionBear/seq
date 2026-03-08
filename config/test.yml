@@ -15,14 +15,14 @@ catalog:
   api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
 
 execrouter:
-  # - id: 6
-  #   account: bybit-hephe
-  #   wallet: bybit-hephe-unified
-  #   api: bybit-hephe-hmac
-  # - id: 7
-  #   account: bn-hephe
-  #   wallet: bn-hephe-spot
-  #   api: bn-hephe-ed25519
+  - id: 6
+    account: bybit-hephe
+    wallet: bybit-hephe-unified
+    api: bybit-hephe-hmac
+  - id: 7
+    account: bn-hephe
+    wallet: bn-hephe-spot
+    api: bn-hephe-ed25519
 
 
 datarouter:
