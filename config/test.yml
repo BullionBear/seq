@@ -26,25 +26,34 @@ execrouter:
 
 
 datarouter:
+  - symbol: BINANCE_SPOT_UNIUSDT
+    depth:
+      type: delta
+      push_rate: 100ms
+
 
 node:
   engine:
     data:
       actor:
+        - type: orderbook
+          name: orderbook-binance
+          config:
+            symbol: BINANCE_SPOT_UNIUSDT
     
     execution:
       actor:
     
     portfolio:
       actor:
-        - type: balance
-          name: balance-bybit-unified
-          config:
-            wallet: bybit-hephe-unified
-        - type: balance
-          name: balance-bn-spot
-          config:
-            wallet: bn-hephe-spot
+        # - type: balance
+        #   name: balance-bybit-unified
+        #   config:
+        #     wallet: bybit-hephe-unified
+        # - type: balance
+        #   name: balance-bn-spot
+        #   config:
+        #     wallet: bn-hephe-spot
 
     strategy:
       actor:

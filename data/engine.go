@@ -28,12 +28,6 @@ type DataSubscription struct {
 	Trade    *adapter.TradeOptions // nil if no trade subscription
 }
 
-// SymbolRegistrar is an optional interface that data actors can implement
-// to receive symbol registration calls from the engine during Connect.
-type SymbolRegistrar interface {
-	RegisterSymbol(symbolID, pricePrecision, sizePrecision int)
-}
-
 // Engine manages market data processing including orderbook management.
 // It constructs actors from config via the factory registry.
 type Engine struct {
@@ -72,6 +66,20 @@ func (e *Engine) handledCommandTypes() []command.CommandType {
 func (e *Engine) Init(config Config, subscriptions []adapter.DataRouterEntry) {
 	// Parse data subscriptions from node-level datarouter config
 	e.parseSubscriptions(subscriptions)
+
+	// Prepare subscriptions on data clients (no WebSocket connection yet)
+	for _, sub := range e.dataSubs {
+		if sub.Depth != nil {
+			if err := e.router.SubscribeDepthUpdate(sub.SymbolID, sub.Depth); err != nil {
+				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare depth subscription")
+			}
+		}
+		if sub.Trade != nil {
+			if err := e.router.SubscribeTrade(sub.SymbolID, sub.Trade); err != nil {
+				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare trade subscription")
+			}
+		}
+	}
 
 	// Construct actors from config entries
 	for _, entry := range config.Actor {
@@ -178,35 +186,9 @@ func (e *Engine) parseSubscriptions(subscriptions []adapter.DataRouterEntry) {
 // Connection Methods
 // ============================================================================
 
-// Connect subscribes to all configured data streams and connects to data sources.
+// Connect establishes WebSocket connections to all data sources.
+// Subscriptions are already prepared during Init().
 func (e *Engine) Connect(ctx context.Context) {
-	for _, sub := range e.dataSubs {
-		symbol, err := e.catalog.GetSymbol(sub.SymbolID)
-		if err != nil {
-			log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to get symbol")
-			continue
-		}
-
-		if sub.Depth != nil {
-			// Notify all actors that support symbol registration
-			for _, a := range e.actors {
-				if sr, ok := a.(SymbolRegistrar); ok {
-					sr.RegisterSymbol(sub.SymbolID, symbol.PricePrecision, symbol.SizePrecision)
-				}
-			}
-
-			if err := e.router.SubscribeDepthUpdate(sub.SymbolID, sub.Depth); err != nil {
-				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to subscribe to depth")
-			}
-		}
-
-		if sub.Trade != nil {
-			if err := e.router.SubscribeTrade(sub.SymbolID, sub.Trade); err != nil {
-				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to subscribe to trade")
-			}
-		}
-	}
-
 	if err := e.router.Connect(ctx); err != nil {
 		log().Error().Err(err).Msg("DataEngine: Failed to connect to data router")
 	}
