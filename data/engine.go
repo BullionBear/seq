@@ -68,9 +68,10 @@ func (e *Engine) handledCommandTypes() []command.CommandType {
 }
 
 // Init constructs actors from config, registers them and command processors.
-func (e *Engine) Init(config Config) {
-	// Parse data subscriptions
-	e.parseSubscriptions(config)
+// subscriptions are the data router entries from the node-level datarouter config.
+func (e *Engine) Init(config Config, subscriptions []adapter.DataRouterEntry) {
+	// Parse data subscriptions from node-level datarouter config
+	e.parseSubscriptions(subscriptions)
 
 	// Construct actors from config entries
 	for _, entry := range config.Actor {
@@ -82,8 +83,8 @@ func (e *Engine) Init(config Config) {
 
 		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
-		actor.Register(e.msgBus, a)
 		a.OnInit(entry.Config)
+		actor.Register(e.msgBus, a)
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("DataEngine: actor initialized")
@@ -134,10 +135,10 @@ func (e *Engine) execReqDepthSnapshot(req command.ReqDepthSnapshot) {
 // Config Parsing
 // ============================================================================
 
-func (e *Engine) parseSubscriptions(config Config) {
-	e.dataSubs = make([]DataSubscription, 0, len(config.Subscriptions))
+func (e *Engine) parseSubscriptions(subscriptions []adapter.DataRouterEntry) {
+	e.dataSubs = make([]DataSubscription, 0, len(subscriptions))
 
-	for _, cfg := range config.Subscriptions {
+	for _, cfg := range subscriptions {
 		symbol, err := e.catalog.GetSymbolByUniversalTicker(cfg.Symbol)
 		if err != nil {
 			log().Error().Err(err).Str("symbol", cfg.Symbol).Msg("DataEngine: Failed to resolve symbol from config")

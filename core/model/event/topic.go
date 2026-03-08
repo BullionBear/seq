@@ -83,3 +83,50 @@ func (t Topic) String() string {
 		return fmt.Sprintf("Undefined(%d)", int(t))
 	}
 }
+
+// topicByName maps human-readable names (used in config) to Topic constants.
+var topicByName = map[string]Topic{
+	"Unknown":             TopicEventUnknown,
+	"Unhandled":           TopicEventUnhandled,
+	"Abnormal":            TopicEventAbnormal,
+	"Ready":               TopicEventReady,
+	"Stop":                TopicEventStop,
+	"Finished":            TopicEventFinished,
+	"DepthSnapshot":       TopicEventDepthSnapshot,
+	"RespDepthSnapshot":   TopicEventRespDepthSnapshot,
+	"DepthUpdate":         TopicEventDepthUpdate,
+	"Tick":                TopicEventTick,
+	"OrderUnknownStatus":  TopicEventOrderUnknownStatus,
+	"OrderError":          TopicEventOrderError,
+	"OrderRiskInvalid":    TopicEventOrderRiskInvalid,
+	"OrderNew":            TopicEventOrderNew,
+	"OrderAccepted":       TopicEventOrderAccepted,
+	"OrderPartialFill":    TopicEventOrderPartialFill,
+	"OrderFilled":         TopicEventOrderFilled,
+	"Execution":           TopicEventExecution,
+	"OrderCanceled":       TopicEventOrderCanceled,
+	"OrderRejected":       TopicEventOrderRejected,
+	"RespBalanceSnapshot": TopicEventRespBalanceSnapshot,
+	"BalanceUpdate":       TopicEventBalanceUpdate,
+}
+
+// ParseTopic converts a config string (e.g. "OrderNew") to its Topic constant.
+func ParseTopic(name string) (Topic, error) {
+	if t, ok := topicByName[name]; ok {
+		return t, nil
+	}
+	return TopicEventUnknown, fmt.Errorf("unknown topic name: %q", name)
+}
+
+// ParseTopics converts a slice of config strings to a slice of Topics.
+func ParseTopics(names []string) ([]Topic, error) {
+	topics := make([]Topic, 0, len(names))
+	for _, name := range names {
+		t, err := ParseTopic(name)
+		if err != nil {
+			return nil, err
+		}
+		topics = append(topics, t)
+	}
+	return topics, nil
+}

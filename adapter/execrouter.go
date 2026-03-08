@@ -13,6 +13,14 @@ var (
 	ErrClientNotFound  = errors.New("execution client not found for account")
 )
 
+// ExecRouterEntry configures a single execution client connection.
+type ExecRouterEntry struct {
+	ID      int    `yaml:"id"`
+	Account string `yaml:"account"`
+	Wallet  string `yaml:"wallet"`
+	API     string `yaml:"api"`
+}
+
 // ExecutionClient is the interface that execution clients must implement.
 // Each execution client handles order operations for a specific account.
 //

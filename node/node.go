@@ -12,7 +12,6 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
-	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
@@ -63,19 +62,20 @@ func NewNode(cat *catalog.Catalog) *Node {
 }
 
 // Init initializes the node and all engines from config.
-func (n *Node) Init(config Config) {
+// execRouter and dataRouter are the top-level adapter configs parsed from YAML.
+func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRouter []adapter.DataRouterEntry) {
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
 	// Configure portfolio engine with execution router and notifier
 	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
 	n.portfolioEngine.SetNotifier(notifier)
 
-	// Set up execution clients and collect account IDs for portfolio
-	accountIDs := n.setupExecutionClients(config.Engine.Execution)
+	// Set up execution clients from top-level execrouter config
+	accountIDs := n.setupExecutionClients(execRouter)
 	n.portfolioEngine.SetAccounts(accountIDs)
 
 	// Initialize all engines with their configs
-	n.dataEngine.Init(config.Engine.Data)
+	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.portfolioEngine.Init(config.Engine.Portfolio)
 	n.riskEngine.Init()
@@ -84,37 +84,33 @@ func (n *Node) Init(config Config) {
 	log().Info().Msg("Node initialized")
 }
 
-// setupExecutionClients creates and registers execution clients from config.
+// setupExecutionClients creates and registers execution clients from
+// the top-level execrouter config entries.
 // Returns the list of resolved account IDs for portfolio tracking.
-func (n *Node) setupExecutionClients(execConfig execution.Config) []int {
-	accountIDs := make([]int, 0)
+func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) []int {
+	accountIDs := make([]int, 0, len(entries))
 
-	for _, entry := range execConfig.Actor {
-		cfg := entry.Config
-		accountName, _ := cfg["account"].(string)
-		accountID := toInt(cfg["id"])
-		apiKeyName, _ := cfg["api"].(string)
-
+	for _, entry := range entries {
 		var account *cpanel.Account
-		if accountName != "" {
-			account = n.catalog.GetAccountByName(accountName)
-		} else if accountID > 0 {
+		if entry.Account != "" {
+			account = n.catalog.GetAccountByName(entry.Account)
+		} else if entry.ID > 0 {
 			var err error
-			account, err = n.catalog.GetAccount(accountID)
+			account, err = n.catalog.GetAccount(entry.ID)
 			if err != nil {
-				log().Error().Err(err).Int("id", accountID).Msg("Node: Failed to get account by ID")
+				log().Error().Err(err).Int("id", entry.ID).Msg("Node: Failed to get account by ID")
 				continue
 			}
 		}
 
 		if account == nil {
-			log().Warn().Str("account", accountName).Int("id", accountID).Msg("Node: Account not found")
+			log().Warn().Str("account", entry.Account).Int("id", entry.ID).Msg("Node: Account not found")
 			continue
 		}
 
 		accountIDs = append(accountIDs, account.ID)
 
-		client, err := n.createExecutionClient(account, apiKeyName)
+		client, err := n.createExecutionClient(account, entry.API)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
@@ -140,32 +136,6 @@ func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string)
 		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", account.Exchange)
-	}
-}
-
-// getExchangeID returns the common.Exchange ID for an exchange name.
-func getExchangeID(exchange string) int {
-	switch exchange {
-	case "BINANCE":
-		return int(common.ExchangeBinance)
-	case "BYBIT":
-		return int(common.ExchangeBybit)
-	default:
-		return -1
-	}
-}
-
-// toInt converts an interface{} to int (handles float64 from YAML/JSON).
-func toInt(v any) int {
-	switch n := v.(type) {
-	case int:
-		return n
-	case float64:
-		return int(n)
-	case int64:
-		return int(n)
-	default:
-		return 0
 	}
 }
 

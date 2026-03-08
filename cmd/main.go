@@ -89,7 +89,7 @@ func main() {
 	}
 
 	// Initialize, start, and run the node
-	n.Init(cfg.Node)
+	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter)
 	n.Start(ctx)
 	go n.Run(ctx)
 

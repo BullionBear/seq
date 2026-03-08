@@ -15,12 +15,6 @@ import (
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// BalanceConfigurer is an optional interface that portfolio actors can implement
-// to receive the execution router and account IDs from the engine.
-type BalanceConfigurer interface {
-	Configure(router *adapter.ExecutionRouter, accountIDs []int)
-}
-
 // Balance represents the balance for a specific token
 type Balance struct {
 	TokenID   int
@@ -48,6 +42,10 @@ type Engine struct {
 
 	// Configured account IDs to track
 	accountIDs []int
+
+	// Snapshot readiness tracking
+	pendingSnapshots map[int]bool
+	ready            bool
 
 	// Balances indexed by accountID -> tokenID -> Balance
 	balances map[int]*AccountBalance
@@ -89,7 +87,9 @@ func (e *Engine) SetAccounts(accountIDs []int) {
 // Engine Interface Implementation
 // ============================================================================
 
-// Init constructs actors from config, configures them, and registers with the EventBus.
+// Init constructs actors from config and registers with the EventBus.
+// Account IDs and execution router are set via SetAccounts/SetExecutionRouter
+// before Init is called by the node.
 func (e *Engine) Init(config Config) {
 	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
@@ -100,12 +100,8 @@ func (e *Engine) Init(config Config) {
 
 		a := factory(e)
 		actor.ApplyName(a, entry.Name)
-		// If the actor supports balance configuration, pass router and accounts
-		if bc, ok := a.(BalanceConfigurer); ok {
-			bc.Configure(e.execRouter, e.accountIDs)
-		}
-		actor.Register(e.msgBus, a)
 		a.OnInit(entry.Config)
+		actor.Register(e.msgBus, a)
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("PortfolioEngine: actor initialized")
@@ -126,11 +122,31 @@ func (e *Engine) Init(config Config) {
 	log().Info().Msg("PortfolioEngine initialized")
 }
 
-// Start triggers actors to start (e.g. request initial balance snapshots).
+// Start triggers actors and requests initial balance snapshots for all accounts.
 func (e *Engine) Start() {
 	for _, a := range e.actors {
 		a.OnStart()
 	}
+
+	if e.execRouter != nil && len(e.accountIDs) > 0 {
+		e.mu.Lock()
+		e.pendingSnapshots = make(map[int]bool, len(e.accountIDs))
+		for _, id := range e.accountIDs {
+			e.pendingSnapshots[id] = false
+		}
+		e.mu.Unlock()
+
+		for _, acctID := range e.accountIDs {
+			if err := e.execRouter.ReqBalanceSnapshot(acctID); err != nil {
+				log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to request balance snapshot")
+			} else {
+				log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Requested balance snapshot")
+			}
+		}
+	} else {
+		e.NotifyReady()
+	}
+
 	log().Info().Msg("PortfolioEngine started")
 }
 
@@ -291,6 +307,13 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 			Total:     b.Total,
 		}
 	}
+
+	// Track snapshot readiness
+	shouldNotify := false
+	if e.pendingSnapshots != nil {
+		e.pendingSnapshots[ev.AccountID] = true
+		shouldNotify = e.checkAllSnapshotsReceivedLocked()
+	}
 	e.mu.Unlock()
 
 	log().Info().
@@ -309,6 +332,11 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 				Msg("PortfolioEngine: Token balance initialized")
 		}
 	}
+
+	if shouldNotify {
+		log().Info().Msg("PortfolioEngine: All balance snapshots received, notifying ready")
+		e.NotifyReady()
+	}
 }
 
 func (e *Engine) OnExecution(ev event.Execution) {
@@ -326,6 +354,19 @@ func (e *Engine) OnExecution(ev event.Execution) {
 // ============================================================================
 // Internal Methods
 // ============================================================================
+
+func (e *Engine) checkAllSnapshotsReceivedLocked() bool {
+	if e.ready || len(e.pendingSnapshots) == 0 {
+		return false
+	}
+	for _, received := range e.pendingSnapshots {
+		if !received {
+			return false
+		}
+	}
+	e.ready = true
+	return true
+}
 
 func (e *Engine) ensureAccountExistsLocked(acctID int) {
 	if _, ok := e.balances[acctID]; !ok {

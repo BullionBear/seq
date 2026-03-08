@@ -20,22 +20,13 @@ var _ actor.Actor = (*OMS)(nil)
 
 type OMS struct {
 	actor.ActorBase
-	cache     *cache.Cache
-	accountID int
-	account   string
+	cache *cache.Cache
 }
 
 func NewOMS(c *cache.Cache) *OMS {
 	return &OMS{
-		ActorBase: actor.NewActorBase("oms", []event.Topic{
-			event.TopicEventOrderNew,
-			event.TopicEventOrderAccepted,
-			event.TopicEventOrderPartialFill,
-			event.TopicEventOrderFilled,
-			event.TopicEventOrderCanceled,
-			event.TopicEventOrderRejected,
-		}),
-		cache: c,
+		ActorBase: actor.NewActorBase("oms", nil),
+		cache:     c,
 	}
 }
 
@@ -83,9 +74,16 @@ func (o *OMS) OnInit(config map[string]any) {
 		return
 	}
 
-	o.accountID = cfg.ID
-	o.account = cfg.Account
-	o.Log().Info().Int("accountID", o.accountID).Str("account", o.account).Msg("OMS initialized")
+	if len(cfg.Subscription) > 0 {
+		topics, err := event.ParseTopics(cfg.Subscription)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to parse subscription topics")
+			return
+		}
+		o.SetTopics(topics)
+	}
+
+	o.Log().Info().Strs("subscription", cfg.Subscription).Msg("OMS initialized")
 }
 
 func (o *OMS) OnStart() {
@@ -97,9 +95,6 @@ func (o *OMS) OnStop() {
 }
 
 func (o *OMS) OnOrderNew(ev event.OrderNew) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	o.Log().Info().
 		Int("clientOrderID", ev.ClientOrderID).
 		Int("orderID", ev.OrderID).
@@ -126,16 +121,10 @@ func (o *OMS) OnOrderNew(ev event.OrderNew) {
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Msg("Order accepted")
 }
 
 func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
@@ -148,9 +137,6 @@ func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
 }
 
 func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
@@ -164,9 +150,6 @@ func (o *OMS) OnOrderFilled(ev event.OrderFilled) {
 }
 
 func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
@@ -179,9 +162,6 @@ func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
 }
 
 func (o *OMS) OnOrderRejected(ev event.OrderRejected) {
-	if ev.AccountID != o.accountID {
-		return
-	}
 	order, ok := o.cache.GetOrder(ev.ClientOrderID)
 	if !ok {
 		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
