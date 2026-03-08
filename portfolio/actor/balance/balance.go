@@ -9,9 +9,18 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+// EngineHandler defines what the balance actor needs from the portfolio engine.
+type EngineHandler interface {
+	OnBalanceUpdate(ev event.BalanceUpdate)
+	OnRespBalanceSnapshot(ev event.RespBalanceSnapshot)
+	OnExecution(ev event.Execution)
+	NotifyReady()
+	ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error)
+}
+
 func init() {
-	portfolio.Register("balance", func(handler portfolio.BalanceEngineHandler) actor.Actor {
-		return NewBalanceActor(handler)
+	portfolio.Register("balance", func(handler any) actor.Actor {
+		return NewBalanceActor(handler.(EngineHandler))
 	})
 }
 
@@ -30,7 +39,7 @@ var _ actor.Actor = (*BalanceActor)(nil)
 // Each instance manages exactly one wallet, filtering incoming events by walletID.
 type BalanceActor struct {
 	actor.ActorBase
-	handler portfolio.BalanceEngineHandler
+	handler EngineHandler
 
 	wallet     string
 	accountID  int
@@ -39,7 +48,7 @@ type BalanceActor struct {
 }
 
 // NewBalanceActor creates a new BalanceActor for the given engine handler.
-func NewBalanceActor(handler portfolio.BalanceEngineHandler) *BalanceActor {
+func NewBalanceActor(handler EngineHandler) *BalanceActor {
 	return &BalanceActor{
 		ActorBase: actor.NewActorBase("portfolio-balance", balanceTopics),
 		handler:   handler,

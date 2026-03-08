@@ -282,7 +282,7 @@ func (e *Engine) UpdateBalance(acctID int, balance *Balance, updatedAt uint64) {
 }
 
 // ============================================================================
-// Event Handlers (implements BalanceEngineHandler)
+// Event Handlers (implements balance.EngineHandler)
 // ============================================================================
 
 func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
