@@ -236,7 +236,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		if x.quotingClientOrderID != 0 {
 			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
 			if ok {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
+				x.Log().Debug().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
 				return
 			}
 			if order.OrderStatus.IsTerminal() {
