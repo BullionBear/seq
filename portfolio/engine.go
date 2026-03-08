@@ -5,6 +5,7 @@ import (
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
@@ -34,14 +35,16 @@ type AccountBalance struct {
 // It constructs actors from config via the factory registry.
 type Engine struct {
 	engine.EngineBase
-	msgBus *msgbus.MsgBus
-	actors []actor.Actor
+	catalog *catalog.Catalog
+	msgBus  *msgbus.MsgBus
+	actors  []actor.Actor
 
 	// Execution router for subscribing and requesting balance snapshots
 	execRouter *adapter.ExecutionRouter
 
-	// Configured account IDs to track
-	accountIDs []int
+	// Configured account IDs to track, with their wallet types
+	accountIDs  []int
+	walletTypes map[int]common.WalletType // accountID -> WalletType
 
 	// Snapshot readiness tracking
 	pendingSnapshots map[int]bool
@@ -53,12 +56,14 @@ type Engine struct {
 }
 
 // NewEngine creates a new portfolio engine
-func NewEngine(msgBus *msgbus.MsgBus) *Engine {
+func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus) *Engine {
 	return &Engine{
-		EngineBase: engine.NewEngineBase(common.EnginePortfolio),
-		msgBus:     msgBus,
-		accountIDs: make([]int, 0),
-		balances:   make(map[int]*AccountBalance),
+		EngineBase:  engine.NewEngineBase(common.EnginePortfolio),
+		catalog:     cat,
+		msgBus:      msgBus,
+		accountIDs:  make([]int, 0),
+		walletTypes: make(map[int]common.WalletType),
+		balances:    make(map[int]*AccountBalance),
 	}
 }
 
@@ -67,12 +72,13 @@ func (e *Engine) SetExecutionRouter(router *adapter.ExecutionRouter) {
 	e.execRouter = router
 }
 
-// SetAccounts sets the account IDs to track for portfolio management
-func (e *Engine) SetAccounts(accountIDs []int) {
+// SetAccounts sets the account IDs and their wallet types to track for portfolio management.
+func (e *Engine) SetAccounts(accountIDs []int, walletTypes map[int]common.WalletType) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	e.accountIDs = accountIDs
+	e.walletTypes = walletTypes
 
 	for _, acctID := range accountIDs {
 		e.ensureAccountExistsLocked(acctID)
@@ -137,10 +143,13 @@ func (e *Engine) Start() {
 		e.mu.Unlock()
 
 		for _, acctID := range e.accountIDs {
-			if err := e.execRouter.ReqBalanceSnapshot(acctID); err != nil {
-				log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to request balance snapshot")
+			wt := e.walletTypes[acctID]
+			if err := e.execRouter.ReqBalanceSnapshot(acctID, wt); err != nil {
+				log().Error().Err(err).Int("accountID", acctID).Str("walletType", wt.String()).
+					Msg("PortfolioEngine: Failed to request balance snapshot")
 			} else {
-				log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Requested balance snapshot")
+				log().Debug().Int("accountID", acctID).Str("walletType", wt.String()).
+					Msg("PortfolioEngine: Requested balance snapshot")
 			}
 		}
 	} else {
@@ -291,6 +300,7 @@ func (e *Engine) OnBalanceUpdate(ev event.BalanceUpdate) {
 	e.balances[ev.AccountID].UpdatedAt = ev.UpdatedAt
 	log().Debug().
 		Int("accountID", ev.AccountID).
+		Str("walletType", e.walletTypes[ev.AccountID].String()).
 		Int("balanceCount", len(ev.Balances)).
 		Msg("Balance updated")
 }
@@ -318,6 +328,7 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 
 	log().Info().
 		Int("accountID", ev.AccountID).
+		Str("walletType", e.walletTypes[ev.AccountID].String()).
 		Int("balanceCount", len(ev.Balances)).
 		Msg("PortfolioEngine: Balance snapshot received and initialized")
 
@@ -325,7 +336,8 @@ func (e *Engine) OnRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 		if b.Total > 0 {
 			log().Debug().
 				Int("accountID", ev.AccountID).
-				Int("tokenID", b.TokenID).
+				Str("walletType", e.walletTypes[ev.AccountID].String()).
+				Str("token", e.tokenName(b.TokenID)).
 				Float64("available", b.Available).
 				Float64("locked", b.Locked).
 				Float64("total", b.Total).
@@ -366,6 +378,17 @@ func (e *Engine) checkAllSnapshotsReceivedLocked() bool {
 	}
 	e.ready = true
 	return true
+}
+
+func (e *Engine) tokenName(tokenID int) string {
+	if e.catalog == nil {
+		return "unknown"
+	}
+	tok, err := e.catalog.GetToken(tokenID)
+	if err != nil {
+		return "unknown"
+	}
+	return tok.Name
 }
 
 func (e *Engine) ensureAccountExistsLocked(acctID int) {

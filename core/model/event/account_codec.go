@@ -10,11 +10,11 @@ import (
 const (
 	BalanceSize = int(unsafe.Sizeof(common.Balance{}))
 
-	// RespBalanceSnapshotHeaderSize is the header: AccountID(8) + BalancesLen(4) + padding(4) = 16 bytes
-	RespBalanceSnapshotHeaderSize = 16
+	// RespBalanceSnapshotHeaderSize is the header: AccountID(8) + WalletID(8) + BalancesLen(4) + padding(4) = 24 bytes
+	RespBalanceSnapshotHeaderSize = 24
 
-	// BalanceUpdateHeaderSize is the header: AccountID(8) + UpdatedAt(8) + BalancesLen(4) + padding(4) = 24 bytes
-	BalanceUpdateHeaderSize = 24
+	// BalanceUpdateHeaderSize is the header: AccountID(8) + WalletID(8) + UpdatedAt(8) + BalancesLen(4) + padding(4) = 32 bytes
+	BalanceUpdateHeaderSize = 32
 )
 
 // ============================================================================
@@ -27,7 +27,7 @@ func (r RespBalanceSnapshot) GetBufferLength() int {
 }
 
 // Encode writes the RespBalanceSnapshot into buf.
-// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Layout: [AccountID(8)][WalletID(8)][BalancesLen(4)][Padding(4)][Balances...]
 func (r RespBalanceSnapshot) Encode(buf []byte) error {
 	needed := r.GetBufferLength()
 	if len(buf) < needed {
@@ -37,6 +37,8 @@ func (r RespBalanceSnapshot) Encode(buf []byte) error {
 	pos := 0
 
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(r.AccountID))
+	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(r.WalletID))
 	pos += 8
 	binary.LittleEndian.PutUint32(buf[pos:], balancesLen)
 	pos += 4
@@ -57,6 +59,8 @@ func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
 
 	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	walletID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
 	pos += 4
 	pos += 4 // skip padding
@@ -68,6 +72,7 @@ func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
 
 	return RespBalanceSnapshot{
 		AccountID: accountID,
+		WalletID:  walletID,
 		Balances:  balances,
 	}
 }
@@ -82,7 +87,7 @@ func (b BalanceUpdate) GetBufferLength() int {
 }
 
 // Encode writes the BalanceUpdate into buf.
-// Layout: [AccountID(8)][UpdatedAt(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Layout: [AccountID(8)][WalletID(8)][UpdatedAt(8)][BalancesLen(4)][Padding(4)][Balances...]
 func (b BalanceUpdate) Encode(buf []byte) error {
 	needed := b.GetBufferLength()
 	if len(buf) < needed {
@@ -92,6 +97,8 @@ func (b BalanceUpdate) Encode(buf []byte) error {
 	pos := 0
 
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(b.AccountID))
+	pos += 8
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(b.WalletID))
 	pos += 8
 	binary.LittleEndian.PutUint64(buf[pos:], b.UpdatedAt)
 	pos += 8
@@ -114,6 +121,8 @@ func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
 
 	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
+	walletID := int(binary.LittleEndian.Uint64(buf[pos:]))
+	pos += 8
 	updatedAt := binary.LittleEndian.Uint64(buf[pos:])
 	pos += 8
 	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
@@ -127,6 +136,7 @@ func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
 
 	return BalanceUpdate{
 		AccountID: accountID,
+		WalletID:  walletID,
 		Balances:  balances,
 		UpdatedAt: updatedAt,
 	}

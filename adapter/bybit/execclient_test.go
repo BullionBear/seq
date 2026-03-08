@@ -112,7 +112,7 @@ func TestIntegration_BybitPrivateStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := NewBybitPrivateStreamClient(cat, eb, targetAccount.ID, apiKeyName)
+	client, err := NewBybitPrivateStreamClient(cat, eb, targetAccount.ID, apiKeyName, 0)
 	if err != nil {
 		t.Fatalf("Failed to create private stream client: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestIntegration_BybitExecutionClient(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := NewBybitExecutionClient(cat, eb, targetAccount.ID, apiKeyName)
+	client, err := NewBybitExecutionClient(cat, eb, targetAccount.ID, apiKeyName, 0)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestIntegration_BybitWalletUpdate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	client, err := NewBybitExecutionClient(cat, eb, targetAccount.ID, apiKeyName)
+	client, err := NewBybitExecutionClient(cat, eb, targetAccount.ID, apiKeyName, 0)
 	if err != nil {
 		t.Fatalf("Failed to create execution client: %v", err)
 	}

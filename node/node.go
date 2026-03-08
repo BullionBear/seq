@@ -12,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
@@ -53,7 +54,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		catalog:         cat,
 		dataEngine:      data.NewEngine(cat, bus, c),
 		riskEngine:      risk.NewEngine(cat, bus, c),
-		portfolioEngine: portfolio.NewEngine(bus),
+		portfolioEngine: portfolio.NewEngine(cat, bus),
 		executionEngine: execution.NewEngine(executionRouter, bus, c),
 		strategyEngine:  strategy.NewEngine(cat, bus, c),
 		executionRouter: executionRouter,
@@ -71,8 +72,8 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.portfolioEngine.SetNotifier(notifier)
 
 	// Set up execution clients from top-level execrouter config
-	accountIDs := n.setupExecutionClients(execRouter)
-	n.portfolioEngine.SetAccounts(accountIDs)
+	accountIDs, walletTypes := n.setupExecutionClients(execRouter)
+	n.portfolioEngine.SetAccounts(accountIDs, walletTypes)
 
 	// Initialize all engines with their configs
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
@@ -86,9 +87,10 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 
 // setupExecutionClients creates and registers execution clients from
 // the top-level execrouter config entries.
-// Returns the list of resolved account IDs for portfolio tracking.
-func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) []int {
+// Returns the list of resolved account IDs and a map of accountID -> WalletType.
+func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, map[int]common.WalletType) {
 	accountIDs := make([]int, 0, len(entries))
+	walletTypes := make(map[int]common.WalletType, len(entries))
 
 	for _, entry := range entries {
 		var account *cpanel.Account
@@ -108,9 +110,24 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) []int {
 			continue
 		}
 
-		accountIDs = append(accountIDs, account.ID)
+		// Resolve wallet name to wallet ID and wallet type
+		walletID := 0
+		walletType := common.WalletTypeUnknown
+		if entry.Wallet != "" {
+			wallet, err := account.GetWallet(entry.Wallet)
+			if err != nil {
+				log().Warn().Err(err).Str("wallet", entry.Wallet).Str("account", account.Name).
+					Msg("Node: Wallet not found, using walletID=0")
+			} else {
+				walletID = wallet.ID
+				walletType = wallet.WalletType
+			}
+		}
 
-		client, err := n.createExecutionClient(account, entry.API)
+		accountIDs = append(accountIDs, account.ID)
+		walletTypes[account.ID] = walletType
+
+		client, err := n.createExecutionClient(account, entry.API, walletID)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
@@ -120,20 +137,22 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) []int {
 		log().Info().
 			Str("account", account.Name).
 			Int("id", account.ID).
+			Int("walletID", walletID).
+			Str("walletType", walletType.String()).
 			Str("exchange", account.Exchange).
 			Msg("Node: Registered execution client")
 	}
 
-	return accountIDs
+	return accountIDs, walletTypes
 }
 
 // createExecutionClient creates an execution client for the given account.
-func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string) (adapter.ExecutionClient, error) {
+func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string, walletID int) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE", "Binance":
-		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
+		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
 	case "BYBIT", "Bybit":
-		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName)
+		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", account.Exchange)
 	}

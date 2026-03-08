@@ -27,6 +27,23 @@ const (
 	WalletTypeUnified             // id=5
 )
 
+func (w WalletType) String() string {
+	switch w {
+	case WalletTypeSpot:
+		return "Spot"
+	case WalletTypeUMargin:
+		return "UMargin"
+	case WalletTypeCMargin:
+		return "CMargin"
+	case WalletTypeLeverage:
+		return "Leverage"
+	case WalletTypeUnified:
+		return "Unified"
+	default:
+		return "Unknown"
+	}
+}
+
 type OrderStatus int
 
 const (

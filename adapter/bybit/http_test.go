@@ -610,7 +610,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 
 	client := NewBybitHTTPClient(cat, eb)
 
-	err := client.ReqBalanceSnapshot(targetAccount.ID, apiKeyName, "UNIFIED")
+	err := client.ReqBalanceSnapshot(targetAccount.ID, 0, apiKeyName, "UNIFIED")
 	if err != nil {
 		t.Fatalf("Failed to request balance snapshot: %v", err)
 	}

@@ -45,6 +45,7 @@ type BinanceSpotExecutionClient struct {
 	catalog   *catalog.Catalog
 	msgBus    *msgbus.MsgBus
 	accountID int
+	walletID  int
 	account   cpanel.Account
 	apiKey    cpanel.APIKey
 
@@ -82,7 +83,7 @@ type BinanceSpotExecutionClient struct {
 }
 
 // NewBinanceSpotExecutionClient creates a new Binance spot execution client
-func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string) (*BinanceSpotExecutionClient, error) {
+func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus, accountID int, apiKeyName string, walletID int) (*BinanceSpotExecutionClient, error) {
 	account, err := catalog.GetAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -103,6 +104,7 @@ func NewBinanceSpotExecutionClient(catalog *catalog.Catalog, msgBus *msgbus.MsgB
 		catalog:    catalog,
 		msgBus:     msgBus,
 		accountID:  accountID,
+		walletID:   walletID,
 		account:    *account,
 		apiKey:     *apiKey,
 		privateKey: privateKey,
@@ -355,9 +357,9 @@ func (c *BinanceSpotExecutionClient) CancelAllOrders(symbolID int) error {
 	return c.sendMessage(msg)
 }
 
-// ReqBalanceSnapshot requests account balance snapshot via WebSocket
-// The response will be published as a ReqBalanceSnapshot event to the event bus
-func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot() error {
+// ReqBalanceSnapshot requests account balance snapshot via WebSocket.
+// walletType is accepted for interface compatibility; Binance spot always queries the spot account.
+func (c *BinanceSpotExecutionClient) ReqBalanceSnapshot(walletType common.WalletType) error {
 	c.bufLock.Lock()
 	defer c.bufLock.Unlock()
 
@@ -876,6 +878,7 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 	// Create and publish BalanceUpdate event
 	balanceUpdate := event.BalanceUpdate{
 		AccountID: c.accountID,
+		WalletID:  c.walletID,
 		Balances:  balances,
 		UpdatedAt: uint64(updateTime) * 1_000_000, // Convert ms to ns
 	}
@@ -891,6 +894,7 @@ func (c *BinanceSpotExecutionClient) processOutboundAccountPosition(data []byte)
 
 	log().Debug().
 		Int("accountID", c.accountID).
+		Int("walletID", c.walletID).
 		Int("balanceCount", len(balances)).
 		Msg("Published balance update from user data stream")
 }
@@ -1313,7 +1317,7 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 	}
 
 	// Calculate size and allocate directly from event bus
-	// Layout: [AccountID(8)][BalancesLen(4)][Padding(4)][Balance1][Balance2]...[BalanceN]
+	// Layout: [AccountID(8)][WalletID(8)][BalancesLen(4)][Padding(4)][Balance1][Balance2]...[BalanceN]
 	size := uint64(event.RespBalanceSnapshotHeaderSize) + uint64(balanceCount)*uint64(event.BalanceSize)
 	offset, buf := c.msgBus.Allocate(size)
 
@@ -1321,6 +1325,9 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 	pos := 0
 	// AccountID (8 bytes)
 	binary.LittleEndian.PutUint64(buf[pos:], uint64(c.accountID))
+	pos += 8
+	// WalletID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[pos:], uint64(c.walletID))
 	pos += 8
 	// BalancesLen (4 bytes)
 	binary.LittleEndian.PutUint32(buf[pos:], uint32(balanceCount))
@@ -1357,14 +1364,17 @@ func (c *BinanceSpotExecutionClient) processAccountStatusResponse(data []byte) {
 		Length: size,
 	})
 
-	log().Debug().Int("accountID", c.accountID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
+	log().Debug().Int("accountID", c.accountID).Int("walletID", c.walletID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
 }
 
 // parseOrderStatus converts Binance order status string to common.OrderStatus
 // getTokenID gets the token ID from the catalog by asset name
 func (c *BinanceSpotExecutionClient) getTokenID(asset string) int {
-	// This would typically look up the token ID from the catalog
-	// For now, return 0 as a placeholder
+	if c.catalog != nil {
+		if tokenID, err := c.catalog.GetTokenIDByName(asset); err == nil {
+			return tokenID
+		}
+	}
 	return 0
 }
 
