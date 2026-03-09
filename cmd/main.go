@@ -88,12 +88,8 @@ func main() {
 		log.Info().Str("dir", cfg.MsgBus.MsgLog.Dir).Msg("MsgLogger enabled")
 	}
 
-	// Initialize, start, and run the node
+	// Initialize, start, and run the node (Run blocks until graceful shutdown completes)
 	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter)
 	n.Start(ctx)
-	go n.Run(ctx)
-
-	// Wait for context cancellation (signal)
-	<-ctx.Done()
-	log.Info().Msg("Node stopped")
+	n.Run(ctx)
 }

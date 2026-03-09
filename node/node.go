@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/adapter/binance"
@@ -177,12 +178,15 @@ func (n *Node) Start(ctx context.Context) {
 	log().Info().Msg("Node started")
 }
 
-// Run starts the event loop and processes events until context is cancelled.
+// Run starts the event loop and blocks until context is cancelled,
+// then performs graceful shutdown.
 func (n *Node) Run(ctx context.Context) {
+	done := make(chan struct{})
+
 	go func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-done:
 				return
 			default:
 				hasWork := n.msgBus.Dispatch()
@@ -198,14 +202,58 @@ func (n *Node) Run(ctx context.Context) {
 
 	<-ctx.Done()
 	n.stop()
+	close(done)
 }
 
-// stop performs graceful shutdown of all engines.
+// stop performs graceful shutdown in the correct order:
+//  1. Strategy actors stop (send cancel-order commands to msgbus)
+//  2. Data clients disconnect (stop incoming market data)
+//  3. Drain msgbus (dispatch loop processes pending cancel commands
+//     and receives exchange cancel confirmations)
+//  4. Execution/portfolio engines stop their actors
+//  5. Execution clients disconnect
 func (n *Node) stop() {
+	log().Info().Msg("Node: shutting down...")
+
 	n.strategyEngine.Stop()
+	log().Info().Msg("Node: strategy engine stopped")
+
 	n.dataEngine.Disconnect()
+	log().Info().Msg("Node: data clients disconnected")
+
+	n.drainMsgBus()
+
+	n.executionEngine.Stop()
+	n.portfolioEngine.Stop()
+	log().Info().Msg("Node: engines stopped")
+
 	n.executionEngine.Disconnect()
+	log().Info().Msg("Node: execution clients disconnected")
+
 	log().Info().Msg("Node stopped")
+}
+
+// drainMsgBus runs the dispatch loop until no work remains,
+// with a timeout to avoid hanging indefinitely.
+func (n *Node) drainMsgBus() {
+	deadline := time.Now().Add(3 * time.Second)
+	idleRounds := 0
+	const maxIdleRounds = 100
+
+	for time.Now().Before(deadline) {
+		hasWork := n.msgBus.Dispatch()
+		if hasWork {
+			n.msgBus.Release()
+			n.msgBus.ReleaseArenas()
+			idleRounds = 0
+		} else {
+			idleRounds++
+			if idleRounds >= maxIdleRounds {
+				break
+			}
+			runtime.Gosched()
+		}
+	}
 }
 
 // MsgBus returns the node's MsgBus.
