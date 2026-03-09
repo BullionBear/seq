@@ -224,7 +224,15 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		return
 	}
 	if (x.quotingCount+x.hedgingCount)%100 == 0 {
-		x.Log().Info().Int("quotingCount", x.quotingCount).Int("hedgingCount", x.hedgingCount).Msg("XArb strategy is ready")
+		quoteBid, _, _ := x.cache.GetBestBid(x.quotingSymbolID)
+		quoteAsk, _, _ := x.cache.GetBestAsk(x.quotingSymbolID)
+		hedgeBid, _, _ := x.cache.GetBestBid(x.hedgingSymbolID)
+		hedgeAsk, _, _ := x.cache.GetBestAsk(x.hedgingSymbolID)
+		x.Log().Info().
+			Int("quotingCount", x.quotingCount).Int("hedgingCount", x.hedgingCount).
+			Float64("quoteBid", quoteBid).Float64("quoteAsk", quoteAsk).
+			Float64("hedgeBid", hedgeBid).Float64("hedgeAsk", hedgeAsk).
+			Msg("XArb strategy is ready")
 	}
 	switch x.Side {
 	case common.SideBuy:
@@ -233,29 +241,27 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			x.Log().Error().Msg("failed to get best bid")
 			return
 		}
+		priceDecimal := math.Pow10(x.quotingPricePrecision)
+		buyPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		if x.quotingClientOrderID != 0 {
 			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
-			if ok {
-				x.Log().Debug().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
-				return
-			}
-			if order.OrderStatus.IsTerminal() {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already terminal")
+			if !ok {
+				x.quotingClientOrderID = 0
+			} else if order.OrderStatus.IsTerminal() {
 				x.quotingClientOrderID = 0
 				return
-			}
-			if !order.OrderStatus.Cancellable() {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order not cancellable")
+			} else if !order.OrderStatus.Cancellable() {
 				return
-			}
-			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Quote order price tolerance exceeded")
+			} else if math.Abs((order.Price-buyPrice)/buyPrice) > x.PriceToleranceBps/10000.0 {
+				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).
+					Float64("orderPrice", order.Price).Float64("targetPrice", buyPrice).
+					Msg("Quote order price tolerance exceeded, cancelling")
 				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
+				return
+			} else {
 				return
 			}
 		}
-		priceDecimal := math.Pow10(x.quotingPricePrecision)
-		buyPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		buyQty := x.Qty
 		x.Log().Info().Float64("buyPrice", buyPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
 		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
@@ -266,29 +272,27 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			x.Log().Error().Msg("failed to get best ask")
 			return
 		}
+		priceDecimal := math.Pow10(x.quotingPricePrecision)
+		sellPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		if x.quotingClientOrderID != 0 {
 			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
-			if ok {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already submitted")
-				return
-			}
-			if order.OrderStatus.IsTerminal() {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order already terminal")
+			if !ok {
+				x.quotingClientOrderID = 0
+			} else if order.OrderStatus.IsTerminal() {
 				x.quotingClientOrderID = 0
 				return
-			}
-			if !order.OrderStatus.Cancellable() {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order not cancellable")
+			} else if !order.OrderStatus.Cancellable() {
 				return
-			}
-			if math.Abs((order.Price-refPrice)/refPrice) > x.PriceToleranceBps/10000.0 {
-				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Float64("priceToleranceBps", x.PriceToleranceBps).Msg("Quote order price tolerance exceeded")
+			} else if math.Abs((order.Price-sellPrice)/sellPrice) > x.PriceToleranceBps/10000.0 {
+				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).
+					Float64("orderPrice", order.Price).Float64("targetPrice", sellPrice).
+					Msg("Quote order price tolerance exceeded, cancelling")
 				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
+				return
+			} else {
 				return
 			}
 		}
-		priceDecimal := math.Pow10(x.quotingPricePrecision)
-		sellPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		sellQty := x.Qty
 		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit quote order")
 		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
@@ -308,8 +312,8 @@ func (x *XArb) OnExecution(exec event.Execution) {
 	} else {
 		return
 	}
-	if math.Abs(x.unhedgedAvailable/x.Qty-1.0) > 1e-6 {
-		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("qty", x.Qty).Msg("No unhedged available")
+	if math.Abs(x.unhedgedAvailable) < x.Qty*(1.0-1e-6) {
+		x.Log().Info().Float64("unhedgedAvailable", x.unhedgedAvailable).Float64("qty", x.Qty).Msg("Unhedged below threshold, waiting")
 		return
 	}
 	if x.unhedgedAvailable < 0 {
@@ -321,7 +325,7 @@ func (x *XArb) OnExecution(exec event.Execution) {
 		qty := x.unhedgedAvailable
 		x.unhedgedAvailable = 0
 		x.unhedgedLocked += qty
-		x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
+		x.SubmitOrder(x.hedgingAccountID, x.hedgingSymbolID, common.SideSell, common.OrderTypeMarket, common.TimeInForceIOC, 0, qty)
 	} else {
 		x.Log().Error().Msg("Invalid unhedged available")
 		return

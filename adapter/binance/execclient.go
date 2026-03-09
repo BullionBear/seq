@@ -942,6 +942,10 @@ func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
 	orderID, _ := jsonparser.GetInt(data, "i")
 	clientOrderIDStr, _ := jsonparser.GetString(data, "c")
 	clientOrderID, _ := strconv.Atoi(clientOrderIDStr)
+	if clientOrderID == 0 {
+		origStr, _ := jsonparser.GetString(data, "C")
+		clientOrderID, _ = strconv.Atoi(origStr)
+	}
 	status, _ := jsonparser.GetString(data, "X")
 	transactTime, _ := jsonparser.GetInt(data, "T")
 	updatedAt := uint64(transactTime) * 1_000_000 // Convert ms to ns

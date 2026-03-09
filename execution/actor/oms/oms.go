@@ -121,7 +121,16 @@ func (o *OMS) OnOrderNew(ev event.OrderNew) {
 }
 
 func (o *OMS) OnOrderAccepted(ev event.OrderAccepted) {
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Msg("Order accepted")
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found")
+		return
+	}
+	order.OrderID = ev.OrderID
+	order.OrderStatus = common.OrderStatusAccepted
+	order.UpdatedAt = ev.CreatedAt
+	o.cache.UpdateOrder(&order)
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Msg("Order accepted")
 }
 
 func (o *OMS) OnOrderPartiallyFilled(ev event.OrderPartiallyFilled) {
