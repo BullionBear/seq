@@ -69,6 +69,16 @@ func (e *Engine) Init(config Config) {
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
 
+	// Prepare subscriptions on execution clients (deferred until Connect)
+	for _, acctID := range e.router.AccountIDs() {
+		if err := e.router.SubscribeOrderUpdate(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to prepare order update subscription")
+		}
+		if err := e.router.SubscribeFill(acctID); err != nil {
+			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to prepare fill subscription")
+		}
+	}
+
 	log().Info().Msg("ExecutionEngine initialized")
 }
 
@@ -111,23 +121,10 @@ func (e *Engine) Stop() {
 // Connection Methods
 // ============================================================================
 
-// Connect connects the execution router and subscribes to order/fill events
+// Connect establishes WebSocket connections to all execution clients.
+// Subscriptions are already prepared during Init().
 func (e *Engine) Connect(ctx context.Context) error {
-	if err := e.router.Connect(ctx); err != nil {
-		return err
-	}
-
-	// Subscribe to order updates and fills for all accounts
-	for _, acctID := range e.router.AccountIDs() {
-		if err := e.router.SubscribeOrderUpdate(acctID); err != nil {
-			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to subscribe to order updates")
-		}
-		if err := e.router.SubscribeFill(acctID); err != nil {
-			log().Error().Err(err).Int("accountID", acctID).Msg("ExecutionEngine: Failed to subscribe to fills")
-		}
-	}
-
-	return nil
+	return e.router.Connect(ctx)
 }
 
 // Disconnect disconnects the execution router

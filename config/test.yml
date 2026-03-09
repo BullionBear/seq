@@ -1,9 +1,8 @@
 logger:
   level: debug
-  output: stdout  # "stdout" or "file"
-  path: /root/seq/logs/test.log  # Required when output is "file"
-  max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
-  max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
+  path: /root/seq/logs/test.log
+  max_byte_size: 10485760
+  max_backup_files: 5
 
 msgbus:
   msglog:
@@ -26,25 +25,45 @@ execrouter:
 
 
 datarouter:
+  - symbol: BINANCE_SPOT_UNIUSDT
+    depth:
+      type: delta
+      push_rate: 100ms
+  - symbol: BYBIT_SPOT_UNIUSDT
+    depth:
+      levels: 50
+
 
 node:
   engine:
     data:
       actor:
+        - type: orderbook
+          name: orderbook-binance
+          config:
+            symbol: BINANCE_SPOT_UNIUSDT
+        - type: orderbook
+          name: orderbook-bybit
+          config:
+            symbol: BYBIT_SPOT_UNIUSDT
     
     execution:
       actor:
+        - type: oms
+          name: oms
+          config:
+            
     
     portfolio:
       actor:
-        - type: balance
-          name: balance-bybit-unified
-          config:
-            wallet: bybit-hephe-unified
-        - type: balance
-          name: balance-bn-spot
-          config:
-            wallet: bn-hephe-spot
+        # - type: balance
+        #   name: balance-bybit-unified
+        #   config:
+        #     wallet: bybit-hephe-unified
+        # - type: balance
+        #   name: balance-bn-spot
+        #   config:
+        #     wallet: bn-hephe-spot
 
     strategy:
       actor:

@@ -28,11 +28,11 @@ const (
 	EnvLogFile = "SEQ_LOG_FILE"
 )
 
-// Options contains configuration options for the logger
+// Options contains configuration options for the logger.
+// Logs always go to stdout. If Path is set, logs are also written to a file.
 type Options struct {
 	Level          string // Log level: trace, debug, info, warn, error, fatal, panic
-	Output         string // Output type: "stdout" or "file"
-	Path           string // Log file path (required when Output is "file")
+	Path           string // If set, also write logs to this file
 	MaxByteSize    int    // Max size in bytes before rotation (0 = no rotation)
 	MaxBackupFiles int    // Max number of backup files to keep (0 = keep all)
 }
@@ -142,51 +142,27 @@ func createFileWriter(path string, maxByteSize int, maxBackupFiles int) (io.Writ
 	}, nil
 }
 
-// Init initializes the global singleton logger with the provided options
-// This should be called once at application startup
+// Init initializes the global singleton logger with the provided options.
+// Logs always go to stdout. If Path is set, logs are additionally written to a file.
 func Init(opts Options) error {
 	globalLoggerMutex.Lock()
 	defer globalLoggerMutex.Unlock()
 
-	// Set log level
 	level := parseLogLevel(opts.Level)
 	zerolog.SetGlobalLevel(level)
 
-	// Determine output type (default to stdout if not specified)
-	output := strings.ToLower(opts.Output)
-	if output == "" {
-		output = "stdout"
-	}
+	var writer io.Writer = consoleWriter
 
-	var writer io.Writer
-
-	switch output {
-	case "stdout", "console":
-		// Use console writer for stdout
-		writer = consoleWriter
-	case "file":
-		// Validate that path is provided
-		path := opts.Path
-		if path == "" {
-			// Fall back to default path or environment variable
-			path = os.Getenv(EnvLogFile)
-			if path == "" {
-				path = DefaultLogFile
-			}
-		}
-
-		// Create file writer with rotation support
-		fileWriter, err := createFileWriter(path, opts.MaxByteSize, opts.MaxBackupFiles)
+	if opts.Path != "" {
+		fileWriter, err := createFileWriter(opts.Path, opts.MaxByteSize, opts.MaxBackupFiles)
 		if err != nil {
 			return err
 		}
+		logFile = opts.Path
+		writer = io.MultiWriter(consoleWriter, fileWriter)
 
-		writer = fileWriter
-		logFile = path
-
-		// Also update the file logger for backward compatibility
 		fileLoggerMutex.Lock()
-		fileLogger = zerolog.New(writer).
+		fileLogger = zerolog.New(fileWriter).
 			With().
 			Timestamp().
 			Caller().
@@ -194,12 +170,8 @@ func Init(opts Options) error {
 			Level(level)
 		fileLoggerInitialized = true
 		fileLoggerMutex.Unlock()
-	default:
-		// Unknown output type, default to stdout
-		writer = consoleWriter
 	}
 
-	// Create global logger with the selected writer
 	globalLogger = zerolog.New(writer).
 		With().
 		Timestamp().

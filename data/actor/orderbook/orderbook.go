@@ -399,9 +399,6 @@ func (a *Actor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshot) {
 	book, exists := a.books[snapshot.SymbolID]
 	if !exists {
-		a.Log().Warn().
-			Int("symbolID", snapshot.SymbolID).
-			Msg("OrderBook Actor: Received snapshot for unregistered symbol")
 		return
 	}
 	book.onDepthSnapshot(snapshot, a.cache)
@@ -410,9 +407,6 @@ func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshot) {
 func (a *Actor) onRespDepthSnapshot(resp event.RespDepthSnapshot) {
 	book, exists := a.books[resp.SymbolID]
 	if !exists {
-		a.Log().Warn().
-			Int("symbolID", resp.SymbolID).
-			Msg("OrderBook Actor: Received RespDepthSnapshot for unregistered symbol")
 		return
 	}
 	book.onRespDepthSnapshot(resp, a.cache)
@@ -421,9 +415,6 @@ func (a *Actor) onRespDepthSnapshot(resp event.RespDepthSnapshot) {
 func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
 	book, exists := a.books[update.SymbolID]
 	if !exists {
-		a.Log().Debug().
-			Int("symbolID", update.SymbolID).
-			Msg("OrderBook Actor: Received update for unregistered symbol")
 		return
 	}
 	book.onDepthUpdate(update, a.cache, bus)

@@ -374,7 +374,7 @@ func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
 	client := NewBybitDataClient(cat, eb)
 
 	// Test subscription
-	client.SubscribeDepthUpdate(1, &DepthSubscriptionOptions{Depth: DepthLevel50})
+	client.SubscribeDepthUpdate(1, 50, 0)
 
 	if !client.HasSub() {
 		t.Error("Expected HasSub to return true after subscription")

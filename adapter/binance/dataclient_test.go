@@ -485,8 +485,8 @@ func TestSubscribeDepthUpdate(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
-	client.SubscribeDepthUpdate(1, nil)
-	client.SubscribeDepthUpdate(2, &DepthSubscriptionOptions{PushRate: PushRate1s})
+	client.SubscribeDepthUpdate(1, 0, 100)
+	client.SubscribeDepthUpdate(2, 0, 1000)
 
 	if len(client.depthSubs) != 2 {
 		t.Errorf("Expected 2 depth subscriptions, got %d", len(client.depthSubs))
@@ -511,7 +511,7 @@ func TestSubscribeTrade(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
-	client.SubscribeTrade(1, nil)
+	client.SubscribeTrade(1, false)
 
 	if len(client.tradeSubs) != 1 {
 		t.Errorf("Expected 1 trade subscription, got %d", len(client.tradeSubs))
@@ -533,8 +533,8 @@ func TestBuildStreamList(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
-	client.SubscribeDepthUpdate(1, nil)
-	client.SubscribeTrade(2, nil)
+	client.SubscribeDepthUpdate(1, 0, 100)
+	client.SubscribeTrade(2, false)
 
 	streams := client.buildStreamList()
 
@@ -591,11 +591,11 @@ func TestConcurrentSubscriptions(t *testing.T) {
 		wg.Add(2)
 		go func(id int) {
 			defer wg.Done()
-			client.SubscribeDepthUpdate(id, nil)
+			client.SubscribeDepthUpdate(id, 0, 100)
 		}(i)
 		go func(id int) {
 			defer wg.Done()
-			client.SubscribeTrade(id, nil)
+			client.SubscribeTrade(id, false)
 		}(i)
 	}
 	wg.Wait()
@@ -669,7 +669,7 @@ func TestIntegration_RealConnection(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to trade stream
-	client.SubscribeTrade(1, nil)
+	client.SubscribeTrade(1, false)
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -734,7 +734,7 @@ func TestIntegration_DepthUpdates(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to depth stream
-	client.SubscribeDepthUpdate(1, nil)
+	client.SubscribeDepthUpdate(1, 0, 100)
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -799,9 +799,9 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to multiple streams
-	client.SubscribeTrade(1, nil)
-	client.SubscribeTrade(2, nil)
-	client.SubscribeDepthUpdate(1, nil)
+	client.SubscribeTrade(1, false)
+	client.SubscribeTrade(2, false)
+	client.SubscribeDepthUpdate(1, 0, 100)
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
