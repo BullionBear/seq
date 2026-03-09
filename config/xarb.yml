@@ -75,7 +75,7 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: BUY
-            profit_bps: 15
+            profit_bps: 5
             qty: 10
             price_tolerance_bps: 10
 
@@ -87,7 +87,7 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: SELL
-            profit_bps: 15
+            profit_bps: 5
             qty: 10
             price_tolerance_bps: 10
 
