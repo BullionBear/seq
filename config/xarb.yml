@@ -68,14 +68,26 @@ node:
     strategy:
       actor:
         - type: xarb
-          name: xarb-uni-buy-2bps
+          name: xarb-uni-buy-15bps
           config:
             quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: BUY
-            profit_bps: 3
+            profit_bps: 15
             qty: 10
-            price_tolerance_bps: 5
+            price_tolerance_bps: 10
+
+        - type: xarb
+          name: xarb-uni-sell-15bps
+          config:
+            quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            quoting_wallet: bn-hephe-spot
+            hedging_wallet: bybit-hephe-unified
+            side: SELL
+            profit_bps: 15
+            qty: 10
+            price_tolerance_bps: 10
 
