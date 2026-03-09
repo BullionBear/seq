@@ -163,6 +163,9 @@ func (x *XArb) OnStart() {
 // OnStop is called when the strategy stops.
 func (x *XArb) OnStop() {
 	x.Log().Info().Msg("XArb strategy stopped")
+	if x.quotingClientOrderID != 0 {
+		x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
+	}
 }
 
 // Handle overrides StrategyBase.Handle to dispatch events to XArb's typed callbacks.
