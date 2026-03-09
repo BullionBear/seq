@@ -1001,6 +1001,10 @@ func (c *BybitOrderEntryClient) SubmitOrder(symbolID int, clientOrderID int, sid
 	c.msgBuffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
 	c.msgBuffer.WriteString(`"`)
 
+	if orderType == common.OrderTypeMarket && category == CategorySpot {
+		c.msgBuffer.WriteString(`,"marketUnit":"baseCoin"`)
+	}
+
 	// Price only for limit orders
 	if orderType == common.OrderTypeLimit {
 		c.msgBuffer.WriteString(`,"price":"`)
