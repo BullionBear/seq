@@ -255,6 +255,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			} else if math.Abs((order.Price-buyPrice)/buyPrice) > x.PriceToleranceBps/10000.0 {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).
 					Float64("orderPrice", order.Price).Float64("targetPrice", buyPrice).
+					Float64("bpsGap", math.Abs((order.Price-buyPrice)/buyPrice)*10000.0).
 					Msg("Quote order price tolerance exceeded, cancelling")
 				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
 				return
@@ -263,7 +264,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 		}
 		buyQty := x.Qty
-		x.Log().Info().Float64("buyPrice", buyPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
+		x.Log().Info().Float64("buyPrice", buyPrice).Float64("refPrice", refPrice).Float64("buyQty", buyQty).Str("side", "buy").Msg("Submit quote order")
 		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
 		x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order submitted")
 	case common.SideSell:
@@ -286,6 +287,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			} else if math.Abs((order.Price-sellPrice)/sellPrice) > x.PriceToleranceBps/10000.0 {
 				x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).
 					Float64("orderPrice", order.Price).Float64("targetPrice", sellPrice).
+					Float64("bpsGap", math.Abs((order.Price-sellPrice)/sellPrice)*10000.0).
 					Msg("Quote order price tolerance exceeded, cancelling")
 				x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
 				return
@@ -294,7 +296,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 			}
 		}
 		sellQty := x.Qty
-		x.Log().Info().Float64("sellPrice", sellPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit quote order")
+		x.Log().Info().Float64("sellPrice", sellPrice).Float64("refPrice", refPrice).Float64("sellQty", sellQty).Str("side", "sell").Msg("Submit quote order")
 		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideSell, common.OrderTypeLimit, common.TimeInForcePO, sellPrice, sellQty)
 		x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order submitted")
 	}
@@ -333,9 +335,14 @@ func (x *XArb) OnExecution(exec event.Execution) {
 }
 
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
-	if orderCanceled.AccountID == x.quotingAccountID {
+	switch orderCanceled.ClientOrderID {
+	case x.quotingClientOrderID:
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Quote order cancelled")
 		x.quotingClientOrderID = 0
-	} else {
+	case x.hedgingClientOrderID:
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Hedge order cancelled")
+		x.hedgingClientOrderID = 0
+	default:
 		return
 	}
 }
