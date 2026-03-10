@@ -94,6 +94,7 @@ type OrderCanceled struct {
 	ClientOrderID int
 	OrderID       int
 	AccountID     int
+	ErrorCode     int // 0 = success, non-zero = exchange error code
 	UpdatedAt     uint64
 }
 

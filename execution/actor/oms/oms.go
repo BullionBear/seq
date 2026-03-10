@@ -167,7 +167,7 @@ func (o *OMS) OnOrderCanceled(ev event.OrderCanceled) {
 	order.OrderStatus = common.OrderStatusCanceled
 	order.UpdatedAt = ev.UpdatedAt
 	o.cache.UpdateOrder(&order)
-	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order canceled")
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Int("errorCode", ev.ErrorCode).Msg("Order canceled")
 }
 
 func (o *OMS) OnOrderRejected(ev event.OrderRejected) {

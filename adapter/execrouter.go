@@ -54,8 +54,8 @@ type ExecutionClient interface {
 	// SubmitOrder submits a new order with the given client order ID
 	SubmitOrder(clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error
 
-	// CancelOrder cancels an order by orderID
-	CancelOrder(symbolID int, orderID int) error
+	// CancelOrder cancels an order by orderID, with clientOrderID for response correlation
+	CancelOrder(symbolID int, orderID int, clientOrderID int) error
 
 	// CancelAllOrders cancels all open orders for a symbol
 	CancelAllOrders(symbolID int) error
@@ -115,12 +115,12 @@ func (r *ExecutionRouter) SubmitOrder(acctID int, clientOrderID int, symbolID in
 }
 
 // CancelOrder routes the order cancellation to the appropriate client
-func (r *ExecutionRouter) CancelOrder(acctID int, symbolID int, orderID int) error {
+func (r *ExecutionRouter) CancelOrder(acctID int, symbolID int, orderID int, clientOrderID int) error {
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
 	}
-	return client.CancelOrder(symbolID, orderID)
+	return client.CancelOrder(symbolID, orderID, clientOrderID)
 }
 
 // CancelAllOrders routes the cancel all orders request to the appropriate client

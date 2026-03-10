@@ -351,10 +351,10 @@ func (x *XArb) OnExecution(exec event.Execution) {
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 	switch orderCanceled.ClientOrderID {
 	case x.quotingClientOrderID:
-		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Quote order cancelled")
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Quote order cancelled")
 		x.quotingClientOrderID = 0
 	case x.hedgingClientOrderID:
-		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Hedge order cancelled")
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Hedge order cancelled")
 		x.hedgingClientOrderID = 0
 	default:
 		return

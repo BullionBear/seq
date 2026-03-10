@@ -54,6 +54,7 @@ const (
 	OrderStatusFilled
 	OrderStatusCanceled
 	OrderStatusRejected
+	OrderStatusCancelling
 	OrderStatusUnknown
 )
 
@@ -62,7 +63,7 @@ func (o OrderStatus) Cancellable() bool {
 }
 
 func (o OrderStatus) IsOpen() bool {
-	return o == OrderStatusAccepted || o == OrderStatusPartiallyFilled || o == OrderStatusInitialized
+	return o == OrderStatusAccepted || o == OrderStatusPartiallyFilled || o == OrderStatusInitialized || o == OrderStatusCancelling
 }
 
 func (o OrderStatus) IsTerminal() bool {
