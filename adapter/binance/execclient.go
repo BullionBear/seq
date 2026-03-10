@@ -62,6 +62,9 @@ type BinanceSpotExecutionClient struct {
 	// Pending order.place requests: requestID -> clientOrderID (for publishing OrderRejected on API error)
 	pendingOrderRequests sync.Map
 
+	// Pending order.cancel requests: requestID -> clientOrderID (for publishing OrderCanceled on API error)
+	pendingCancelRequests sync.Map
+
 	// Connection state
 	connected  atomic.Bool
 	shouldStop atomic.Bool
@@ -294,7 +297,7 @@ func (c *BinanceSpotExecutionClient) SubmitOrder(clientOrderID int, symbolID int
 }
 
 // CancelOrder cancels an order by orderID via WebSocket
-func (c *BinanceSpotExecutionClient) CancelOrder(symbolID int, orderID int) error {
+func (c *BinanceSpotExecutionClient) CancelOrder(symbolID int, orderID int, clientOrderID int) error {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -321,6 +324,7 @@ func (c *BinanceSpotExecutionClient) CancelOrder(symbolID int, orderID int) erro
 	signature := c.signEd25519(c.msgBuffer.Bytes())
 
 	requestID := c.requestID.Add(1)
+	c.pendingCancelRequests.Store(requestID, clientOrderID)
 	msg := c.buildOrderCancelRequest(symbol.Name, orderID, timestamp, signature, requestID)
 
 	return c.sendMessage(msg)
@@ -741,6 +745,10 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 				clientOrderID := v.(int)
 				updatedAt := uint64(time.Now().UnixNano())
 				c.publishOrderRejected(clientOrderID, -1, errMsg, updatedAt)
+			} else if v, ok := c.pendingCancelRequests.LoadAndDelete(reqID); ok {
+				clientOrderID := v.(int)
+				updatedAt := uint64(time.Now().UnixNano())
+				c.publishOrderCanceled(clientOrderID, -1, int(errCode), updatedAt)
 			}
 		}
 		return
@@ -767,6 +775,7 @@ func (c *BinanceSpotExecutionClient) processMessage(data []byte) {
 		c.processOrderResponse(result)
 		if reqID := parseRequestID(data); reqID != 0 {
 			c.pendingOrderRequests.Delete(reqID)
+			c.pendingCancelRequests.Delete(reqID)
 		}
 	}
 }
@@ -981,7 +990,7 @@ func (c *BinanceSpotExecutionClient) processExecutionReport(data []byte) {
 
 	case "CANCELED", "EXPIRED":
 		if subOrderUpdate {
-			c.publishOrderCanceled(clientOrderID, int(orderID), updatedAt)
+			c.publishOrderCanceled(clientOrderID, int(orderID), 0, updatedAt)
 		}
 
 	case "REJECTED":
@@ -1122,11 +1131,12 @@ func (c *BinanceSpotExecutionClient) publishOrderFilled(clientOrderID, orderID i
 }
 
 // publishOrderCanceled publishes an OrderCanceled event
-func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID int, updatedAt uint64) {
+func (c *BinanceSpotExecutionClient) publishOrderCanceled(clientOrderID, orderID int, errorCode int, updatedAt uint64) {
 	e := event.OrderCanceled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
+		ErrorCode:     errorCode,
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1224,7 +1234,7 @@ func (c *BinanceSpotExecutionClient) processOrderResponse(data []byte) {
 		}
 
 	case "CANCELED", "EXPIRED":
-		c.publishOrderCanceled(clientOrderID, int(orderIDInt), updatedAt)
+		c.publishOrderCanceled(clientOrderID, int(orderIDInt), 0, updatedAt)
 
 	case "REJECTED":
 		c.publishOrderRejected(clientOrderID, int(orderIDInt), "Order rejected", updatedAt)

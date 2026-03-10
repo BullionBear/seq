@@ -70,24 +70,24 @@ node:
         - type: xarb
           name: xarb-uni-buy-15bps
           config:
-            quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-            hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            quoting_wallet: bn-hephe-spot
-            hedging_wallet: bybit-hephe-unified
+            quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            quoting_wallet: bybit-hephe-unified
+            hedging_wallet: bn-hephe-spot
             side: BUY
             profit_bps: 5
             qty: 10
             price_tolerance_bps: 10
 
-        - type: xarb
-          name: xarb-uni-sell-15bps
-          config:
-            quoting_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-            hedging_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-            quoting_wallet: bn-hephe-spot
-            hedging_wallet: bybit-hephe-unified
-            side: SELL
-            profit_bps: 5
-            qty: 10
-            price_tolerance_bps: 10
+        # - type: xarb
+        #   name: xarb-uni-sell-15bps
+        #   config:
+        #     quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+        #     hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+        #     quoting_wallet: bybit-hephe-unified
+        #     hedging_wallet: bn-hephe-spot
+        #     side: SELL
+        #     profit_bps: 5
+        #     qty: 10
+        #     price_tolerance_bps: 10
 

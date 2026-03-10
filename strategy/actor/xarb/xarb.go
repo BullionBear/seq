@@ -306,15 +306,26 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 }
 
 func (x *XArb) OnExecution(exec event.Execution) {
-	if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideBuy {
-		x.unhedgedAvailable += exec.FilledQty
-	} else if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideSell {
-		x.unhedgedAvailable -= exec.FilledQty
-	} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideBuy {
-		x.unhedgedLocked += exec.FilledQty
-	} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideSell {
-		x.unhedgedLocked -= exec.FilledQty
-	} else {
+	switch x.Side {
+	case common.SideBuy:
+		if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideBuy {
+			x.unhedgedAvailable += exec.FilledQty
+		} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideSell {
+			x.unhedgedLocked -= exec.FilledQty
+			return
+		} else {
+			return
+		}
+	case common.SideSell:
+		if exec.SymbolID == x.quotingSymbolID && exec.Side == common.SideSell {
+			x.unhedgedAvailable -= exec.FilledQty
+		} else if exec.SymbolID == x.hedgingSymbolID && exec.Side == common.SideBuy {
+			x.unhedgedLocked += exec.FilledQty
+			return
+		} else {
+			return
+		}
+	default:
 		return
 	}
 	if math.Abs(x.unhedgedAvailable) < x.Qty*(1.0-1e-6) {
@@ -340,10 +351,10 @@ func (x *XArb) OnExecution(exec event.Execution) {
 func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 	switch orderCanceled.ClientOrderID {
 	case x.quotingClientOrderID:
-		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Quote order cancelled")
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Quote order cancelled")
 		x.quotingClientOrderID = 0
 	case x.hedgingClientOrderID:
-		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Msg("Hedge order cancelled")
+		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Hedge order cancelled")
 		x.hedgingClientOrderID = 0
 	default:
 		return

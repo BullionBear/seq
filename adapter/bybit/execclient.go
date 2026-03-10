@@ -452,7 +452,7 @@ func (c *BybitPrivateStreamClient) processOrderItem(data []byte) {
 		c.publishOrderFilled(clientOrderID, orderID, cumExecQty, updatedAt)
 
 	case "Cancelled", "PartiallyFilledCanceled":
-		c.publishOrderCanceled(clientOrderID, orderID, updatedAt)
+		c.publishOrderCanceled(clientOrderID, orderID, 0, updatedAt)
 
 	case "Rejected":
 		rejectReason, _ := jsonparser.GetString(data, "rejectReason")
@@ -692,11 +692,12 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 }
 
 // publishOrderCanceled publishes an OrderCanceled event
-func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID int, updatedAt uint64) {
+func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID int, errorCode int, updatedAt uint64) {
 	e := event.OrderCanceled{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     c.accountID,
+		ErrorCode:     errorCode,
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
@@ -1001,6 +1002,10 @@ func (c *BybitOrderEntryClient) SubmitOrder(symbolID int, clientOrderID int, sid
 	c.msgBuffer.WriteString(strconv.FormatFloat(quantity, 'f', -1, 64))
 	c.msgBuffer.WriteString(`"`)
 
+	if orderType == common.OrderTypeMarket && category == CategorySpot {
+		c.msgBuffer.WriteString(`,"marketUnit":"baseCoin"`)
+	}
+
 	// Price only for limit orders
 	if orderType == common.OrderTypeLimit {
 		c.msgBuffer.WriteString(`,"price":"`)
@@ -1033,7 +1038,7 @@ func (c *BybitOrderEntryClient) SubmitOrder(symbolID int, clientOrderID int, sid
 }
 
 // CancelOrder cancels an order by orderID via WebSocket
-func (c *BybitOrderEntryClient) CancelOrder(symbolID int, orderID string) error {
+func (c *BybitOrderEntryClient) CancelOrder(symbolID int, orderID string, clientOrderID int) error {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -1049,6 +1054,10 @@ func (c *BybitOrderEntryClient) CancelOrder(symbolID int, orderID string) error 
 
 	timestamp := time.Now().UnixMilli()
 	reqID := c.requestID.Add(1)
+
+	c.pendingMu.Lock()
+	c.pendingOrders[reqID] = clientOrderID
+	c.pendingMu.Unlock()
 
 	c.msgBuffer.Reset()
 	c.msgBuffer.WriteString(`{"reqId":"`)
@@ -1338,7 +1347,6 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 				Int("clientOrderID", clientOrderID).
 				Msg("Order operation failed")
 
-			// Publish OrderRejected event so strategy is notified (no exchange timestamp; use received time)
 			if found && op == "order.create" {
 				ev := event.OrderRejected{
 					ClientOrderID: clientOrderID,
@@ -1356,8 +1364,30 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 					Length: uint64(ev.GetBufferLength()),
 				})
 			}
+
+			if found && op == "order.cancel" {
+				c.publishOrderCanceled(clientOrderID, -1, int(retCode), uint64(time.Now().UnixNano()))
+			}
 		}
 	}
+}
+
+func (c *BybitOrderEntryClient) publishOrderCanceled(clientOrderID, orderID, errorCode int, updatedAt uint64) {
+	e := event.OrderCanceled{
+		ClientOrderID: clientOrderID,
+		OrderID:       orderID,
+		AccountID:     c.accountID,
+		ErrorCode:     errorCode,
+		UpdatedAt:     updatedAt,
+	}
+	size := uint64(e.GetBufferLength())
+	offset, buf := c.msgBus.Allocate(size)
+	e.Encode(buf)
+	c.msgBus.Publish(msgbus.EventRef{
+		Topic:  event.TopicEventOrderCanceled,
+		Index:  offset,
+		Length: size,
+	})
 }
 
 // wsOrderEntryHandler implements gws.Event interface for order entry WebSocket
@@ -1484,8 +1514,8 @@ func (c *BybitExecutionClient) SubmitOrder(clientOrderID int, symbolID int, side
 
 // CancelOrder cancels an order by orderID via the order entry WebSocket
 // Note: Bybit uses string orderIDs, so we convert int to string
-func (c *BybitExecutionClient) CancelOrder(symbolID int, orderID int) error {
-	return c.orderEntry.CancelOrder(symbolID, strconv.Itoa(orderID))
+func (c *BybitExecutionClient) CancelOrder(symbolID int, orderID int, clientOrderID int) error {
+	return c.orderEntry.CancelOrder(symbolID, strconv.Itoa(orderID), clientOrderID)
 }
 
 // CancelAllOrders cancels all open orders for a symbol via the order entry WebSocket

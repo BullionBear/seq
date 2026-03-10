@@ -146,7 +146,10 @@ func (e *Engine) execOrderCancel(cmd command.CancelOrder) {
 		log().Error().Int("accountID", cmd.AccountID).Int("clientOrderID", cmd.ClientOrderID).Msg("Order not found")
 		return
 	}
-	e.router.CancelOrder(cmd.AccountID, order.SymbolID, order.OrderID)
+	order.OrderStatus = common.OrderStatusCancelling
+	e.cache.UpdateOrder(&order)
+	log().Info().Int("accountID", cmd.AccountID).Int("clientOrderID", cmd.ClientOrderID).Msg("Order status set to Cancelling (optimistic)")
+	e.router.CancelOrder(cmd.AccountID, order.SymbolID, order.OrderID, cmd.ClientOrderID)
 }
 
 func (e *Engine) execOrderCancelAll(cmd command.CancelAll) {
