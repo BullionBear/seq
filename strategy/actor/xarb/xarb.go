@@ -58,7 +58,7 @@ type XArb struct {
 // NewXArb creates a new XArb strategy.
 func NewXArb(catalog *catalog.Catalog, msgbus *msgbus.MsgBus, cache *cache.Cache) *XArb {
 	return &XArb{
-		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, msgbus, []event.Topic{
+		StrategyActorBase: strategy.NewStrategyActorBase("xarb", catalog, cache, msgbus, []event.Topic{
 			event.TopicEventDepthUpdate,
 			event.TopicEventExecution,
 			event.TopicEventOrderCanceled,
@@ -247,7 +247,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		priceDecimal := math.Pow10(x.quotingPricePrecision)
 		buyPrice := math.Floor(refPrice*(1.0-x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		if x.quotingClientOrderID != 0 {
-			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
+			order, ok := x.cache.GetOrder(x.quotingClientOrderID)
 			if !ok {
 				x.quotingClientOrderID = 0
 			} else if order.OrderStatus.IsTerminal() {
@@ -271,7 +271,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		x.quotingClientOrderID = x.SubmitOrder(x.quotingAccountID, x.quotingSymbolID, common.SideBuy, common.OrderTypeLimit, common.TimeInForcePO, buyPrice, buyQty)
 		x.Log().Info().Int("clientOrderID", x.quotingClientOrderID).Msg("Quote order submitted")
 	case common.SideSell:
-		refPrice, _, ok := x.cache.GetBestAsk(x.quotingSymbolID)
+		refPrice, _, ok := x.cache.GetBestAsk(x.hedgingSymbolID)
 		if !ok {
 			x.Log().Error().Msg("failed to get best ask")
 			return
@@ -279,7 +279,7 @@ func (x *XArb) OnDepthUpdate(update event.DepthUpdate) {
 		priceDecimal := math.Pow10(x.quotingPricePrecision)
 		sellPrice := math.Ceil(refPrice*(1.0+x.ProfitBps/10000.0)*priceDecimal) / priceDecimal
 		if x.quotingClientOrderID != 0 {
-			order, ok := x.cache.GetOpenOrder(x.quotingAccountID, x.quotingClientOrderID)
+			order, ok := x.cache.GetOrder(x.quotingClientOrderID)
 			if !ok {
 				x.quotingClientOrderID = 0
 			} else if order.OrderStatus.IsTerminal() {

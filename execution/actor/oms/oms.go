@@ -56,6 +56,10 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderRejected := event.NewOrderRejectedFromBytes(buf)
 		o.OnOrderRejected(orderRejected)
+	case event.TopicEventOrderRiskInvalid:
+		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
+		orderRiskInvalid := event.NewOrderRiskInvalidFromBytes(buf)
+		o.OnOrderRiskInvalid(orderRiskInvalid)
 	}
 }
 
@@ -180,4 +184,15 @@ func (o *OMS) OnOrderRejected(ev event.OrderRejected) {
 	order.UpdatedAt = ev.UpdatedAt
 	o.cache.UpdateOrder(&order)
 	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("orderID", ev.OrderID).Int("accountID", ev.AccountID).Msg("Order rejected")
+}
+
+func (o *OMS) OnOrderRiskInvalid(ev event.OrderRiskInvalid) {
+	order, ok := o.cache.GetOrder(ev.ClientOrderID)
+	if !ok {
+		o.Log().Error().Int("clientOrderID", ev.ClientOrderID).Msg("Order not found for risk invalid")
+		return
+	}
+	order.OrderStatus = common.OrderStatusRejected
+	o.cache.UpdateOrder(&order)
+	o.Log().Info().Int("clientOrderID", ev.ClientOrderID).Int("accountID", ev.AccountID).Msg("Order risk invalid, marked rejected")
 }

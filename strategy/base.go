@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/actor"
+	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/common"
@@ -16,13 +17,15 @@ var _ actor.Actor = (*StrategyActorBase)(nil)
 type StrategyActorBase struct {
 	actor.ActorBase
 	catalog *catalog.Catalog
+	cache   *cache.Cache
 	msgbus  *msgbus.MsgBus
 }
 
-func NewStrategyActorBase(name string, catalog *catalog.Catalog, msgbus *msgbus.MsgBus, topics []event.Topic) StrategyActorBase {
+func NewStrategyActorBase(name string, catalog *catalog.Catalog, cache *cache.Cache, msgbus *msgbus.MsgBus, topics []event.Topic) StrategyActorBase {
 	return StrategyActorBase{
 		ActorBase: actor.NewActorBase(name, topics),
 		catalog:   catalog,
+		cache:     cache,
 		msgbus:    msgbus,
 	}
 }
@@ -32,7 +35,22 @@ func (s *StrategyActorBase) GetCatalog() *catalog.Catalog {
 }
 
 func (s *StrategyActorBase) SubmitOrder(accountID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) int {
-	clientOrderId := int(time.Now().UnixNano() % 1000000)
+	now := time.Now().UnixNano()
+	clientOrderId := int(now % 1000000)
+
+	s.cache.InsertOrder(&common.Order{
+		ClientOrderID: clientOrderId,
+		AccountID:     accountID,
+		SymbolID:      symbolID,
+		Side:          side,
+		OrderType:     orderType,
+		TimeInForce:   timeInForce,
+		OrderStatus:   common.OrderStatusInitialized,
+		Quantity:      quantity,
+		Price:         price,
+		CreatedAt:     uint64(now),
+	})
+
 	riskCmd := command.RiskCheck{
 		ClientOrderID: clientOrderId,
 		AccountID:     accountID,
@@ -42,7 +60,7 @@ func (s *StrategyActorBase) SubmitOrder(accountID int, symbolID int, side common
 		TimeInForce:   timeInForce,
 		Price:         price,
 		Quantity:      quantity,
-		Timestamp:     uint64(time.Now().UnixNano()),
+		Timestamp:     uint64(now),
 	}
 	size := uint64(riskCmd.GetBufferLength())
 	offset, buf := s.msgbus.AllocateCmd(size)
