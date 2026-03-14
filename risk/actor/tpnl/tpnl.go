@@ -28,7 +28,9 @@ type tradeRecord struct {
 	side     common.Side
 	qty      float64
 	price    float64
-	filledAt uint64 // unix nanoseconds
+	feeCcyID int     // token ID of the fee currency
+	feeQty   float64 // fee amount (always positive)
+	filledAt uint64  // unix nanoseconds
 }
 
 // symbolExposure tracks the net base-currency and quote-currency changes
@@ -36,6 +38,13 @@ type tradeRecord struct {
 type symbolExposure struct {
 	baseQty     float64 // net base-currency quantity (positive = long)
 	quoteChange float64 // cumulative quote-currency change
+	totalFee    float64 // cumulative fee cost in quote terms
+}
+
+// symbolTokens caches the base/quote token IDs for a symbol.
+type symbolTokens struct {
+	baseTokenID  int
+	quoteTokenID int
 }
 
 // Tpnl computes a sliding-window trading PnL and writes the result to the
@@ -51,6 +60,7 @@ type Tpnl struct {
 
 	trades   []tradeRecord
 	exposure map[int]*symbolExposure
+	tokens   map[int]*symbolTokens // symbolID -> base/quote token IDs
 }
 
 // NewTpnl creates an uninitialised Tpnl actor.
@@ -63,6 +73,7 @@ func NewTpnl(cat *catalog.Catalog, _ *msgbus.MsgBus, c *cache.Cache) *Tpnl {
 		catalog:  cat,
 		cache:    c,
 		exposure: make(map[int]*symbolExposure),
+		tokens:   make(map[int]*symbolTokens),
 	}
 }
 
@@ -132,24 +143,63 @@ func (t *Tpnl) onExecution(exec event.Execution) {
 		return
 	}
 
+	t.ensureTokens(exec.SymbolID)
+
 	rec := tradeRecord{
 		symbolID: exec.SymbolID,
 		side:     exec.Side,
 		qty:      exec.FilledQty,
 		price:    exec.FilledPrice,
+		feeCcyID: exec.FeeCcyID,
+		feeQty:   exec.FeeQty,
 		filledAt: exec.FilledAt,
 	}
 	t.trades = append(t.trades, rec)
 	t.applyTrade(rec, 1)
 
-	t.purgeAndRecalc()
+	tpnl := t.purgeAndRecalc()
+
+	exp := t.exposure[exec.SymbolID]
+	mid, _ := t.cache.GetMidPrice(exec.SymbolID)
+	t.Log().Info().
+		Int("symbol_id", exec.SymbolID).
+		Int("account_id", exec.AccountID).
+		Str("side", exec.Side.String()).
+		Float64("filled_qty", exec.FilledQty).
+		Float64("filled_price", exec.FilledPrice).
+		Float64("fee_qty", exec.FeeQty).
+		Int("fee_ccy_id", exec.FeeCcyID).
+		Float64("base_exposure", exp.baseQty).
+		Float64("quote_change", exp.quoteChange).
+		Float64("total_fee", exp.totalFee).
+		Float64("mid_price", mid).
+		Float64("tpnl", tpnl).
+		Int("active_trades", len(t.trades)).
+		Msg("Tpnl: execution")
 }
 
 func (t *Tpnl) onDepthUpdate(update event.DepthUpdate) {
 	if _, ok := t.exposure[update.SymbolID]; !ok {
 		return
 	}
-	t.purgeAndRecalc()
+	_ = t.purgeAndRecalc()
+}
+
+// ensureTokens lazily resolves and caches the base/quote token IDs for a symbol.
+func (t *Tpnl) ensureTokens(symbolID int) {
+	if _, ok := t.tokens[symbolID]; ok {
+		return
+	}
+	sym, err := t.catalog.GetSymbol(symbolID)
+	if err != nil {
+		t.Log().Warn().Int("symbol_id", symbolID).Err(err).Msg("Tpnl: symbol not found, fee attribution may be inaccurate")
+		t.tokens[symbolID] = &symbolTokens{}
+		return
+	}
+	t.tokens[symbolID] = &symbolTokens{
+		baseTokenID:  sym.BaseToken.ID,
+		quoteTokenID: sym.QuoteToken.ID,
+	}
 }
 
 // applyTrade adjusts exposure for a single trade. direction=1 to apply,
@@ -168,11 +218,27 @@ func (t *Tpnl) applyTrade(rec tradeRecord, direction float64) {
 		exp.baseQty -= direction * rec.qty
 		exp.quoteChange += direction * rec.qty * rec.price
 	}
+
+	if rec.feeQty == 0 {
+		return
+	}
+	tok := t.tokens[rec.symbolID]
+	switch rec.feeCcyID {
+	case tok.baseTokenID:
+		exp.baseQty -= direction * rec.feeQty
+	case tok.quoteTokenID:
+		exp.quoteChange -= direction * rec.feeQty
+	default:
+		// Third-party fee currency (e.g. BNB): approximate as quote cost
+		// using the fill price of this trade.
+		exp.quoteChange -= direction * rec.feeQty * rec.price
+	}
+	exp.totalFee += direction * rec.feeQty
 }
 
 // purgeAndRecalc removes expired trades from the front of the window, reverts
-// their effect on exposure, and writes the updated TPNL to the cache.
-func (t *Tpnl) purgeAndRecalc() {
+// their effect on exposure, writes the updated TPNL to the cache, and returns it.
+func (t *Tpnl) purgeAndRecalc() float64 {
 	now := uint64(time.Now().UnixNano())
 	cutoff := now - t.windowNs
 
@@ -199,5 +265,7 @@ func (t *Tpnl) purgeAndRecalc() {
 		Float64("tpnl", tpnl).
 		Int("trades", len(t.trades)).
 		Int("purged", purged).
-		Msg("Tpnl: updated")
+		Msg("Tpnl: recalc")
+
+	return tpnl
 }
