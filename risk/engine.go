@@ -52,7 +52,7 @@ func (e *Engine) Init(config Config) {
 			continue
 		}
 
-		a := factory(e.msgBus, e.cache)
+		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
 		actor.Register(e.msgBus, a)
@@ -63,7 +63,7 @@ func (e *Engine) Init(config Config) {
 
 	builder := NewCheckerBuilder()
 	for _, entry := range config.Checker {
-		r, err := RuleFactory(entry.Type, e.cache, entry.Config)
+		r, err := RuleFactory(entry.Type, e.catalog, e.cache, entry.Config)
 		if err != nil {
 			log().Error().Err(err).Str("type", entry.Type).Msg("RiskEngine: skipping unknown rule type")
 			continue

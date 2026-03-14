@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/risk/rule"
 )
@@ -47,10 +48,10 @@ func (b *CheckerBuilder) Build() *Checker {
 }
 
 // RuleFactory creates a Rule from a type name and config map.
-func RuleFactory(typeName string, c *cache.Cache, config map[string]any) (rule.Rule, error) {
+func RuleFactory(typeName string, cat *catalog.Catalog, c *cache.Cache, config map[string]any) (rule.Rule, error) {
 	switch typeName {
 	case "ratelimit":
-		return rule.NewRateLimit(c, config)
+		return rule.NewRateLimit(cat, c, config)
 	default:
 		return nil, fmt.Errorf("risk: unknown rule type %q", typeName)
 	}

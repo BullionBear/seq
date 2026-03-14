@@ -15,7 +15,6 @@ var (
 
 // ExecRouterEntry configures a single execution client connection.
 type ExecRouterEntry struct {
-	ID      int    `yaml:"id"`
 	Account string `yaml:"account"`
 	Wallet  string `yaml:"wallet"`
 	API     string `yaml:"api"`

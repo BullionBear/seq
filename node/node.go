@@ -94,20 +94,9 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, 
 	walletTypes := make(map[int]common.WalletType, len(entries))
 
 	for _, entry := range entries {
-		var account *cpanel.Account
-		if entry.Account != "" {
-			account = n.catalog.GetAccountByName(entry.Account)
-		} else if entry.ID > 0 {
-			var err error
-			account, err = n.catalog.GetAccount(entry.ID)
-			if err != nil {
-				log().Error().Err(err).Int("id", entry.ID).Msg("Node: Failed to get account by ID")
-				continue
-			}
-		}
-
+		account := n.catalog.GetAccountByName(entry.Account)
 		if account == nil {
-			log().Warn().Str("account", entry.Account).Int("id", entry.ID).Msg("Node: Account not found")
+			log().Warn().Str("account", entry.Account).Msg("Node: Account not found")
 			continue
 		}
 

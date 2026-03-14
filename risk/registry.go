@@ -6,11 +6,12 @@ import (
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
+	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/msgbus"
 )
 
 // Factory is a constructor function that creates a risk actor.
-type Factory func(bus *msgbus.MsgBus, c *cache.Cache) actor.Actor
+type Factory func(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) actor.Actor
 
 var (
 	registryMu sync.RWMutex
