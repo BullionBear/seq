@@ -176,8 +176,10 @@ func (n *Node) Start(ctx context.Context) {
 // then performs graceful shutdown.
 func (n *Node) Run(ctx context.Context) {
 	done := make(chan struct{})
+	exited := make(chan struct{})
 
 	go func() {
+		defer close(exited)
 		for {
 			select {
 			case <-done:
@@ -198,8 +200,9 @@ func (n *Node) Run(ctx context.Context) {
 	}()
 
 	<-ctx.Done()
-	n.stop()
 	close(done)
+	<-exited
+	n.stop()
 }
 
 // stop performs graceful shutdown in the correct order:
