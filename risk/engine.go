@@ -1,9 +1,9 @@
 package risk
 
 import (
-	"errors"
 	"time"
 
+	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/engine"
@@ -21,13 +21,15 @@ var _ engine.Engine = (*Engine)(nil)
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Engine manages risk calculations and limits.
-// This is a stub implementation for future development.
+// It constructs actors from config via the factory registry and builds a
+// Checker from configured rules to gate order flow.
 type Engine struct {
-	// Future: risk limits, position tracking, margin calculations
 	engine.EngineBase
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
 	cache   *cache.Cache
+	actors  []actor.Actor
+	checker *Checker
 }
 
 // NewEngine creates a new risk engine.
@@ -40,24 +42,58 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 	}
 }
 
-// Init initializes the risk engine.
-func (e *Engine) Init() {
-	log().Debug().Msg("RiskEngine initialized (stub)")
+// Init initializes the risk engine: constructs actors from config, builds the
+// checker from configured rules, and registers command handlers.
+func (e *Engine) Init(config Config) {
+	for _, entry := range config.Actor {
+		factory, err := lookupFactory(entry.Type)
+		if err != nil {
+			log().Error().Err(err).Str("type", entry.Type).Msg("RiskEngine: skipping unknown actor type")
+			continue
+		}
+
+		a := factory(e.catalog, e.msgBus, e.cache)
+		actor.ApplyName(a, entry.Name)
+		a.OnInit(entry.Config)
+		actor.Register(e.msgBus, a)
+		e.actors = append(e.actors, a)
+
+		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("RiskEngine: actor initialized")
+	}
+
+	builder := NewCheckerBuilder()
+	for _, entry := range config.Checker {
+		r, err := RuleFactory(entry.Type, e.catalog, e.cache, entry.Config)
+		if err != nil {
+			log().Error().Err(err).Str("type", entry.Type).Msg("RiskEngine: skipping unknown rule type")
+			continue
+		}
+		builder.AddRule(r)
+		log().Info().Str("type", entry.Type).Msg("RiskEngine: rule added")
+	}
+	e.checker = builder.Build()
+
 	for _, cmdType := range e.handledCommandTypes() {
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
-	log().Debug().Msg("RiskEngine initialized")
+	log().Info().Msg("RiskEngine initialized")
 }
 
-// Start starts the risk engine.
+// Start starts the risk engine and all its actors.
 func (e *Engine) Start() {
-	log().Debug().Msg("RiskEngine started (stub)")
+	for _, a := range e.actors {
+		a.OnStart()
+	}
+	log().Info().Msg("RiskEngine started")
 	e.NotifyReady()
 }
 
-// Stop stops the risk engine.
+// Stop stops the risk engine and all its actors.
 func (e *Engine) Stop() {
-	log().Debug().Msg("RiskEngine stopped (stub)")
+	for _, a := range e.actors {
+		a.OnStop()
+	}
+	log().Info().Msg("RiskEngine stopped")
 	e.NotifyStop()
 }
 
@@ -68,9 +104,8 @@ func (e *Engine) handledCommandTypes() []command.CommandType {
 	}
 }
 
-// Execute executes a command.
+// Execute routes commands to the appropriate handler.
 func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
-	log().Debug().Msg("RiskEngine executing command (stub)")
 	switch cmd.Ref.CommandType {
 	case command.CommandTypeOrderRiskCheck:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
@@ -80,7 +115,6 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 }
 
 func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
-	log().Debug().Msg("RiskEngine executing order risk check (stub)")
 	if err := e.riskCheck(cmd); err != nil {
 		log().Error().Err(err).Msg("RiskEngine: Order risk check failed")
 		ev := event.OrderRiskInvalid{
@@ -140,8 +174,8 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 }
 
 func (e *Engine) riskCheck(cmd command.RiskCheck) error {
-	if cmd.ClientOrderID < 0 {
-		return errors.New("client order ID is negative")
+	if e.checker == nil {
+		return nil
 	}
-	return nil
+	return e.checker.Check(cmd)
 }

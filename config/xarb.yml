@@ -14,12 +14,10 @@ catalog:
   api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
 
 execrouter:
-  - id: 6
-    account: bybit-hephe
+  - account: bybit-hephe
     wallet: bybit-hephe-unified
     api: bybit-hephe-hmac
-  - id: 7
-    account: bn-hephe
+  - account: bn-hephe
     wallet: bn-hephe-spot
     api: bn-hephe-ed25519
 
@@ -65,10 +63,23 @@ node:
           config:
             wallet: bn-hephe-spot
 
+    risk:
+      actor:
+        - type: leakybucket
+          name: rate-limiter-bybit
+          config:
+            leak_rate: 2.0
+            capacity: 2
+            account: bybit-hephe
+      checker:
+        - type: ratelimit
+          config:
+            account: bybit-hephe
+
     strategy:
       actor:
         - type: xarb
-          name: xarb-uni-buy-15bps
+          name: xarb-uni-buy-5bps
           config:
             quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
             hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
@@ -76,18 +87,18 @@ node:
             hedging_wallet: bn-hephe-spot
             side: BUY
             profit_bps: 5
-            qty: 10
+            qty: 5
             price_tolerance_bps: 10
 
-        # - type: xarb
-        #   name: xarb-uni-sell-15bps
-        #   config:
-        #     quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
-        #     hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
-        #     quoting_wallet: bybit-hephe-unified
-        #     hedging_wallet: bn-hephe-spot
-        #     side: SELL
-        #     profit_bps: 5
-        #     qty: 10
-        #     price_tolerance_bps: 10
+        - type: xarb
+          name: xarb-uni-sell-5bps
+          config:
+            quoting_symbol_universal_ticker: BYBIT_SPOT_UNIUSDT
+            hedging_symbol_universal_ticker: BINANCE_SPOT_UNIUSDT
+            quoting_wallet: bybit-hephe-unified
+            hedging_wallet: bn-hephe-spot
+            side: SELL
+            profit_bps: 5
+            qty: 5
+            price_tolerance_bps: 10
 

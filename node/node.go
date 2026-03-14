@@ -80,7 +80,7 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.portfolioEngine.Init(config.Engine.Portfolio)
-	n.riskEngine.Init()
+	n.riskEngine.Init(config.Engine.Risk)
 	n.strategyEngine.Init(config.Engine.Strategy)
 
 	log().Info().Msg("Node initialized")
@@ -94,20 +94,9 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, 
 	walletTypes := make(map[int]common.WalletType, len(entries))
 
 	for _, entry := range entries {
-		var account *cpanel.Account
-		if entry.Account != "" {
-			account = n.catalog.GetAccountByName(entry.Account)
-		} else if entry.ID > 0 {
-			var err error
-			account, err = n.catalog.GetAccount(entry.ID)
-			if err != nil {
-				log().Error().Err(err).Int("id", entry.ID).Msg("Node: Failed to get account by ID")
-				continue
-			}
-		}
-
+		account := n.catalog.GetAccountByName(entry.Account)
 		if account == nil {
-			log().Warn().Str("account", entry.Account).Int("id", entry.ID).Msg("Node: Account not found")
+			log().Warn().Str("account", entry.Account).Msg("Node: Account not found")
 			continue
 		}
 
@@ -174,6 +163,9 @@ func (n *Node) Start(ctx context.Context) {
 	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
+	n.riskEngine.Start()
+	log().Info().Msg("Node: RiskEngine started")
+
 	n.strategyEngine.Start()
 	log().Info().Msg("Node started")
 }
@@ -223,6 +215,7 @@ func (n *Node) stop() {
 
 	n.drainMsgBus()
 
+	n.riskEngine.Stop()
 	n.executionEngine.Stop()
 	n.portfolioEngine.Stop()
 	log().Info().Msg("Node: engines stopped")
