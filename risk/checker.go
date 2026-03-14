@@ -52,6 +52,8 @@ func RuleFactory(typeName string, cat *catalog.Catalog, c *cache.Cache, config m
 	switch typeName {
 	case "ratelimit":
 		return rule.NewRateLimit(cat, c, config)
+	case "tpnl":
+		return rule.NewTpnlStop(cat, c, config)
 	default:
 		return nil, fmt.Errorf("risk: unknown rule type %q", typeName)
 	}

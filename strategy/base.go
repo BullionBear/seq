@@ -42,6 +42,7 @@ func (s *StrategyActorBase) SubmitOrder(accountID int, symbolID int, side common
 		TimeInForce:   timeInForce,
 		Price:         price,
 		Quantity:      quantity,
+		Timestamp:     uint64(time.Now().UnixNano()),
 	}
 	size := uint64(riskCmd.GetBufferLength())
 	offset, buf := s.msgbus.AllocateCmd(size)

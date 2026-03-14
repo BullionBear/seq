@@ -37,6 +37,9 @@ type Cache struct {
 
 	// Risk metadata: accountID -> RiskMeta (use -1 for global)
 	riskMeta *haxmap.Map[int, *RiskMeta]
+
+	// TPNL states: TpnlCacheKey -> shared TpnlState
+	tpnlStates *haxmap.Map[string, *TpnlState]
 }
 
 // NewCache creates a new empty Cache.
@@ -46,6 +49,7 @@ func NewCache() *Cache {
 		orderCache: NewOrderCache(),
 		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
 		riskMeta:   haxmap.New[int, *RiskMeta](),
+		tpnlStates: haxmap.New[string, *TpnlState](),
 	}
 }
 
@@ -377,6 +381,28 @@ func (c *Cache) SetRiskNextAcceptedTime(accountID int, t uint64) {
 		return &RiskMeta{}
 	})
 	meta.NextAcceptedTime.Store(t)
+}
+
+// ============================================================================
+// TPNL State Methods
+// ============================================================================
+
+// GetOrCreateTpnlState returns the TpnlState for the given cache key,
+// creating it with the given parameters if it doesn't exist yet.
+func (c *Cache) GetOrCreateTpnlState(key string, windowNs, capacity uint64) *TpnlState {
+	state, _ := c.tpnlStates.GetOrCompute(key, func() *TpnlState {
+		return NewTpnlState(windowNs, capacity)
+	})
+	return state
+}
+
+// GetTpnlState returns the TpnlState for the given cache key, or nil.
+func (c *Cache) GetTpnlState(key string) *TpnlState {
+	state, ok := c.tpnlStates.Get(key)
+	if !ok {
+		return nil
+	}
+	return state
 }
 
 // ============================================================================
