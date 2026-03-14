@@ -22,6 +22,12 @@ const (
 	DefaultCommandArenaCapacity = 256 * 1024
 )
 
+// Ticker is the interface for a periodic timer that is driven by the
+// dispatch loop. Implemented by core/clock.Clock.
+type Ticker interface {
+	Tick(nowNs uint64)
+}
+
 // MsgBus is the central message distribution system that supports both
 // pub-sub events and point-to-point commands.
 //
@@ -52,6 +58,9 @@ type MsgBus struct {
 
 	// Optional binary logger for persisting commands to .dat files
 	msgLogger *MsgLogger
+
+	// Optional ticker driven by the dispatch loop (set via SetTicker)
+	ticker Ticker
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -81,6 +90,17 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 func (m *MsgBus) SetMsgLogger(l *MsgLogger) {
 	m.msgLogger = l
 	m.eventBus.SetMsgLogger(l)
+}
+
+// SetTicker attaches a Ticker (e.g. core/clock.Clock) to the MsgBus.
+// The ticker is driven by the dispatch loop via GetTicker().Tick(nowNs).
+func (m *MsgBus) SetTicker(t Ticker) {
+	m.ticker = t
+}
+
+// GetTicker returns the attached Ticker, or nil if none is set.
+func (m *MsgBus) GetTicker() Ticker {
+	return m.ticker
 }
 
 // =============================================================================

@@ -12,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -47,6 +48,7 @@ type Node struct {
 // NewNode creates a new Node with the given catalog.
 func NewNode(cat *catalog.Catalog) *Node {
 	bus := msgbus.NewMsgBus()
+	bus.SetTicker(clock.NewClock(bus))
 	executionRouter := adapter.NewExecutionRouter()
 	c := cache.NewCache()
 
@@ -181,6 +183,9 @@ func (n *Node) Run(ctx context.Context) {
 			case <-done:
 				return
 			default:
+				if t := n.msgBus.GetTicker(); t != nil {
+					t.Tick(uint64(time.Now().UnixNano()))
+				}
 				hasWork := n.msgBus.Dispatch()
 				if hasWork {
 					n.msgBus.Release()
@@ -234,6 +239,9 @@ func (n *Node) drainMsgBus() {
 	const maxIdleRounds = 100
 
 	for time.Now().Before(deadline) {
+		if t := n.msgBus.GetTicker(); t != nil {
+			t.Tick(uint64(time.Now().UnixNano()))
+		}
 		hasWork := n.msgBus.Dispatch()
 		if hasWork {
 			n.msgBus.Release()
