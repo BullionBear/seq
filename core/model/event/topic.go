@@ -31,6 +31,8 @@ const (
 	// Reconciliation Data
 	TopicEventRespBalanceSnapshot
 	TopicEventBalanceUpdate
+	// Timer
+	TopicEventTimer
 )
 
 func (t Topic) String() string {
@@ -79,6 +81,8 @@ func (t Topic) String() string {
 		return "RespBalanceSnapshot"
 	case TopicEventBalanceUpdate:
 		return "BalanceUpdate"
+	case TopicEventTimer:
+		return "Timer"
 	default:
 		return fmt.Sprintf("Undefined(%d)", int(t))
 	}
@@ -108,6 +112,7 @@ var topicByName = map[string]Topic{
 	"OrderRejected":       TopicEventOrderRejected,
 	"RespBalanceSnapshot": TopicEventRespBalanceSnapshot,
 	"BalanceUpdate":       TopicEventBalanceUpdate,
+	"Timer":               TopicEventTimer,
 }
 
 // ParseTopic converts a config string (e.g. "OrderNew") to its Topic constant.

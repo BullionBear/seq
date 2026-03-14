@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 )
@@ -41,11 +42,21 @@ type Actor interface {
 
 // Register is a helper function that registers an Actor with the MsgBus.
 // It creates a handler that calls the actor's Handle method with the MsgBus reference.
-func Register(bus *msgbus.MsgBus, actor Actor) {
-	handler := func(ev msgbus.Event) {
-		actor.Handle(ev, bus)
+// If a Clock is attached to the MsgBus via SetTicker, it is automatically injected
+// into the actor (available via ActorBase.Clock() in OnStart and Handle).
+func Register(bus *msgbus.MsgBus, a Actor) {
+	if t := bus.GetTicker(); t != nil {
+		if clk, ok := t.(*clock.Clock); ok {
+			type clockSetter interface{ SetClock(*clock.Clock) }
+			if cs, ok := a.(clockSetter); ok {
+				cs.SetClock(clk)
+			}
+		}
 	}
-	bus.Register(actor.Name(), actor.SubscribedTypes(), handler)
+	handler := func(ev msgbus.Event) {
+		a.Handle(ev, bus)
+	}
+	bus.Register(a.Name(), a.SubscribedTypes(), handler)
 }
 
 // ApplyName sets the actor's name from the config entry. If name is empty,

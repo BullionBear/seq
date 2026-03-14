@@ -12,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/catalog/cpanel"
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -47,6 +48,7 @@ type Node struct {
 // NewNode creates a new Node with the given catalog.
 func NewNode(cat *catalog.Catalog) *Node {
 	bus := msgbus.NewMsgBus()
+	bus.SetTicker(clock.NewClock(bus))
 	executionRouter := adapter.NewExecutionRouter()
 	c := cache.NewCache()
 
@@ -174,13 +176,18 @@ func (n *Node) Start(ctx context.Context) {
 // then performs graceful shutdown.
 func (n *Node) Run(ctx context.Context) {
 	done := make(chan struct{})
+	exited := make(chan struct{})
 
 	go func() {
+		defer close(exited)
 		for {
 			select {
 			case <-done:
 				return
 			default:
+				if t := n.msgBus.GetTicker(); t != nil {
+					t.Tick(uint64(time.Now().UnixNano()))
+				}
 				hasWork := n.msgBus.Dispatch()
 				if hasWork {
 					n.msgBus.Release()
@@ -193,8 +200,9 @@ func (n *Node) Run(ctx context.Context) {
 	}()
 
 	<-ctx.Done()
-	n.stop()
 	close(done)
+	<-exited
+	n.stop()
 }
 
 // stop performs graceful shutdown in the correct order:
@@ -234,6 +242,9 @@ func (n *Node) drainMsgBus() {
 	const maxIdleRounds = 100
 
 	for time.Now().Before(deadline) {
+		if t := n.msgBus.GetTicker(); t != nil {
+			t.Tick(uint64(time.Now().UnixNano()))
+		}
 		hasWork := n.msgBus.Dispatch()
 		if hasWork {
 			n.msgBus.Release()

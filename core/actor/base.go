@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -14,6 +15,7 @@ type ActorBase struct {
 	name   string
 	topics []event.Topic
 	logger zerolog.Logger
+	clk    *clock.Clock
 }
 
 // NewActorBase creates a new ActorBase with the given name and subscribed topics.
@@ -55,6 +57,16 @@ func (a *ActorBase) SubscribedTypes() []event.Topic {
 // Typically called from OnInit when topics are configured via YAML.
 func (a *ActorBase) SetTopics(topics []event.Topic) {
 	a.topics = topics
+}
+
+// Clock returns the injected Clock instance. Available after actor.Register().
+func (a *ActorBase) Clock() *clock.Clock {
+	return a.clk
+}
+
+// SetClock sets the clock on this actor. Called automatically by actor.Register().
+func (a *ActorBase) SetClock(c *clock.Clock) {
+	a.clk = c
 }
 
 // Handle is a no-op default. Concrete actors should override this.
