@@ -12,8 +12,8 @@ import (
 )
 
 func init() {
-	strategy.Register("obtest", func(cat *catalog.Catalog, bus *msgbus.MsgBus, _ *cache.Cache) actor.Actor {
-		return NewOBTest(cat, bus)
+	strategy.Register("obtest", func(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) actor.Actor {
+		return NewOBTest(cat, c, bus)
 	})
 }
 
@@ -35,9 +35,9 @@ type OBTest struct {
 }
 
 // NewOBTest creates a new OBTest strategy.
-func NewOBTest(catalog *catalog.Catalog, msgbus *msgbus.MsgBus) *OBTest {
+func NewOBTest(catalog *catalog.Catalog, cache *cache.Cache, msgbus *msgbus.MsgBus) *OBTest {
 	return &OBTest{
-		StrategyActorBase: strategy.NewStrategyActorBase("obtest", catalog, msgbus, []event.Topic{
+		StrategyActorBase: strategy.NewStrategyActorBase("obtest", catalog, cache, msgbus, []event.Topic{
 			event.TopicEventDepthSnapshot,
 			event.TopicEventDepthUpdate,
 			event.TopicEventRespDepthSnapshot,
