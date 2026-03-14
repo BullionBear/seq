@@ -80,7 +80,7 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.portfolioEngine.Init(config.Engine.Portfolio)
-	n.riskEngine.Init()
+	n.riskEngine.Init(config.Engine.Risk)
 	n.strategyEngine.Init(config.Engine.Strategy)
 
 	log().Info().Msg("Node initialized")
@@ -174,6 +174,9 @@ func (n *Node) Start(ctx context.Context) {
 	n.portfolioEngine.Start()
 	log().Info().Msg("Node: PortfolioEngine started")
 
+	n.riskEngine.Start()
+	log().Info().Msg("Node: RiskEngine started")
+
 	n.strategyEngine.Start()
 	log().Info().Msg("Node started")
 }
@@ -223,6 +226,7 @@ func (n *Node) stop() {
 
 	n.drainMsgBus()
 
+	n.riskEngine.Stop()
 	n.executionEngine.Stop()
 	n.portfolioEngine.Stop()
 	log().Info().Msg("Node: engines stopped")

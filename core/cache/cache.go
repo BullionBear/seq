@@ -1,11 +1,18 @@
 package cache
 
 import (
+	"sync/atomic"
+
 	"github.com/alphadose/haxmap"
 
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/tidwall/btree"
 )
+
+// RiskMeta holds risk-related metadata for an account (or global key -1).
+type RiskMeta struct {
+	NextAcceptedTime atomic.Uint64 // unix nanoseconds
+}
 
 // OrderBook holds the orderbook state for a single symbol.
 // Uses PriceTick as btree key; QuantityTick==0 indicates a deleted level.
@@ -27,6 +34,9 @@ type Cache struct {
 
 	// Balances: acctID -> (tokenID -> Balance)
 	balances *haxmap.Map[int, *haxmap.Map[int, *common.Balance]]
+
+	// Risk metadata: accountID -> RiskMeta (use -1 for global)
+	riskMeta *haxmap.Map[int, *RiskMeta]
 }
 
 // NewCache creates a new empty Cache.
@@ -35,6 +45,7 @@ func NewCache() *Cache {
 		books:      haxmap.New[int, *OrderBook](),
 		orderCache: NewOrderCache(),
 		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
+		riskMeta:   haxmap.New[int, *RiskMeta](),
 	}
 }
 
@@ -333,6 +344,39 @@ func (c *Cache) SetAccountBalances(acctID int, balances []common.Balance) {
 		acctBalances.Set(b.TokenID, &b)
 	}
 	c.balances.Set(acctID, acctBalances)
+}
+
+// ============================================================================
+// Risk Metadata Read Methods
+// ============================================================================
+
+// GetRiskMeta returns the risk metadata for the given account ID.
+// Use accountID -1 for the global bucket.
+func (c *Cache) GetRiskMeta(accountID int) (*RiskMeta, bool) {
+	return c.riskMeta.Get(accountID)
+}
+
+// GetRiskNextAcceptedTime returns the next accepted time (unix nanos) for the
+// given account, or 0 if no metadata exists yet.
+func (c *Cache) GetRiskNextAcceptedTime(accountID int) uint64 {
+	meta, ok := c.riskMeta.Get(accountID)
+	if !ok {
+		return 0
+	}
+	return meta.NextAcceptedTime.Load()
+}
+
+// ============================================================================
+// Risk Metadata Write Methods
+// ============================================================================
+
+// SetRiskNextAcceptedTime atomically sets the next accepted time for the given
+// account. The RiskMeta entry is lazily created if it doesn't exist.
+func (c *Cache) SetRiskNextAcceptedTime(accountID int, t uint64) {
+	meta, _ := c.riskMeta.GetOrCompute(accountID, func() *RiskMeta {
+		return &RiskMeta{}
+	})
+	meta.NextAcceptedTime.Store(t)
 }
 
 // ============================================================================
