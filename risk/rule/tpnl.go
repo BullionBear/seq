@@ -11,22 +11,23 @@ import (
 )
 
 // TpnlStop rejects orders when the trading PnL for a given (account, window)
-// pair drops below the configured stop-loss threshold. The corresponding TPNL
-// actor must be running with matching account and window parameters.
+// pair drops below the configured stop-loss threshold. At check time it purges
+// expired trades from the shared TpnlState, reads per-symbol exposures, and
+// applies current mid-prices to compute the live PnL.
 type TpnlStop struct {
 	cache     *cache.Cache
-	accountID int     // -1 = all accounts
-	cacheKey  string  // links to the matching TPNL actor
-	stopLoss  float64 // must be < 0
+	state     *cache.TpnlState
+	accountID int
+	cacheKey  string
+	stopLoss  float64
 }
 
 type tpnlStopConfig struct {
-	Account  string  `yaml:"account"`   // account name, empty = all
-	Window   string  `yaml:"window"`    // must match the actor's window
-	StopLoss float64 `yaml:"stop_loss"` // must be < 0
+	Account  string  `yaml:"account"`
+	Window   string  `yaml:"window"`
+	StopLoss float64 `yaml:"stop_loss"`
 }
 
-// NewTpnlStop creates a TpnlStop rule from config.
 func NewTpnlStop(cat *catalog.Catalog, c *cache.Cache, config map[string]any) (Rule, error) {
 	var cfg tpnlStopConfig
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -63,10 +64,13 @@ func NewTpnlStop(cat *catalog.Catalog, c *cache.Cache, config map[string]any) (R
 		accountID = acct.ID
 	}
 
+	cacheKey := cache.TpnlCacheKey(accountID, uint64(dur))
+
 	return &TpnlStop{
 		cache:     c,
+		state:     c.GetOrCreateTpnlState(cacheKey, uint64(dur), cache.DefaultTpnlCapacity),
 		accountID: accountID,
-		cacheKey:  cache.TpnlCacheKey(accountID, uint64(dur)),
+		cacheKey:  cacheKey,
 		stopLoss:  cfg.StopLoss,
 	}, nil
 }
@@ -76,7 +80,19 @@ func (r *TpnlStop) Check(cmd command.RiskCheck) error {
 		return nil
 	}
 
-	tpnl := r.cache.GetTpnl(r.cacheKey)
+	r.state.AdvanceClock(cmd.Timestamp)
+	r.state.Purge()
+
+	exposures := r.state.Exposures()
+
+	tpnl := 0.0
+	for _, exp := range exposures {
+		mid, ok := r.cache.GetMidPrice(exp.SymbolID)
+		if !ok {
+			continue
+		}
+		tpnl += exp.BaseQty*mid + exp.QuoteChange
+	}
 
 	if tpnl < r.stopLoss {
 		log().Warn().

@@ -1,8 +1,6 @@
 package cache
 
 import (
-	"fmt"
-	"math"
 	"sync/atomic"
 
 	"github.com/alphadose/haxmap"
@@ -14,21 +12,6 @@ import (
 // RiskMeta holds risk-related metadata for an account (or global key -1).
 type RiskMeta struct {
 	NextAcceptedTime atomic.Uint64 // unix nanoseconds
-}
-
-// TpnlMeta holds a trading-PnL value that is written by a TPNL actor and
-// read by the corresponding TPNL risk rule. The float64 is stored as its
-// raw bits inside an atomic.Uint64 so the value can be shared safely.
-type TpnlMeta struct {
-	bits atomic.Uint64
-}
-
-func (m *TpnlMeta) Store(v float64) { m.bits.Store(math.Float64bits(v)) }
-func (m *TpnlMeta) Load() float64   { return math.Float64frombits(m.bits.Load()) }
-
-// TpnlCacheKey builds the cache key that links a TPNL actor to its checker.
-func TpnlCacheKey(accountID int, windowNs uint64) string {
-	return fmt.Sprintf("tpnl:%d:%d", accountID, windowNs)
 }
 
 // OrderBook holds the orderbook state for a single symbol.
@@ -55,8 +38,8 @@ type Cache struct {
 	// Risk metadata: accountID -> RiskMeta (use -1 for global)
 	riskMeta *haxmap.Map[int, *RiskMeta]
 
-	// TPNL metadata: TpnlCacheKey -> TpnlMeta
-	tpnlMeta *haxmap.Map[string, *TpnlMeta]
+	// TPNL states: TpnlCacheKey -> shared TpnlState
+	tpnlStates *haxmap.Map[string, *TpnlState]
 }
 
 // NewCache creates a new empty Cache.
@@ -66,7 +49,7 @@ func NewCache() *Cache {
 		orderCache: NewOrderCache(),
 		balances:   haxmap.New[int, *haxmap.Map[int, *common.Balance]](),
 		riskMeta:   haxmap.New[int, *RiskMeta](),
-		tpnlMeta:   haxmap.New[string, *TpnlMeta](),
+		tpnlStates: haxmap.New[string, *TpnlState](),
 	}
 }
 
@@ -401,30 +384,25 @@ func (c *Cache) SetRiskNextAcceptedTime(accountID int, t uint64) {
 }
 
 // ============================================================================
-// TPNL Read Methods
+// TPNL State Methods
 // ============================================================================
 
-// GetTpnl returns the current trading PnL for the given cache key, or 0 if
-// no TPNL actor has written a value yet.
-func (c *Cache) GetTpnl(key string) float64 {
-	meta, ok := c.tpnlMeta.Get(key)
-	if !ok {
-		return 0
-	}
-	return meta.Load()
+// GetOrCreateTpnlState returns the TpnlState for the given cache key,
+// creating it with the given parameters if it doesn't exist yet.
+func (c *Cache) GetOrCreateTpnlState(key string, windowNs, capacity uint64) *TpnlState {
+	state, _ := c.tpnlStates.GetOrCompute(key, func() *TpnlState {
+		return NewTpnlState(windowNs, capacity)
+	})
+	return state
 }
 
-// ============================================================================
-// TPNL Write Methods
-// ============================================================================
-
-// SetTpnl atomically sets the trading PnL for the given cache key.
-// The TpnlMeta entry is lazily created if it doesn't exist.
-func (c *Cache) SetTpnl(key string, val float64) {
-	meta, _ := c.tpnlMeta.GetOrCompute(key, func() *TpnlMeta {
-		return &TpnlMeta{}
-	})
-	meta.Store(val)
+// GetTpnlState returns the TpnlState for the given cache key, or nil.
+func (c *Cache) GetTpnlState(key string) *TpnlState {
+	state, ok := c.tpnlStates.Get(key)
+	if !ok {
+		return nil
+	}
+	return state
 }
 
 // ============================================================================

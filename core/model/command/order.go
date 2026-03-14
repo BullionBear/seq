@@ -11,6 +11,7 @@ type RiskCheck struct {
 	TimeInForce   common.TimeInForce
 	Price         float64
 	Quantity      float64
+	Timestamp     uint64 // unix nanoseconds, set by the submitter
 }
 
 func (r RiskCheck) CommandType() CommandType {
