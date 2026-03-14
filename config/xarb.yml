@@ -97,6 +97,7 @@ node:
             profit_bps: 7
             qty: 5
             price_tolerance_bps: 2
+            order_ttl: 200ms
 
         - type: xarb
           name: xarb-uni-sell-5bps
@@ -109,4 +110,5 @@ node:
             profit_bps: 7
             qty: 5
             price_tolerance_bps: 2
+            order_ttl: 200ms
 

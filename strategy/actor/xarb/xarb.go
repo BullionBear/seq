@@ -3,10 +3,12 @@ package xarb
 import (
 	"math"
 	"strings"
+	"time"
 
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -45,10 +47,12 @@ type XArb struct {
 	ProfitBps         float64
 	Qty               float64
 	PriceToleranceBps float64
+	OrderTTLNs        uint64
 
 	// Algo variables
 	quotingClientOrderID int
 	hedgingClientOrderID int
+	quotingTTLCancel     *clock.CancelToken
 	quotingCount         int
 	hedgingCount         int
 	unhedgedAvailable    float64
@@ -123,10 +127,19 @@ func (x *XArb) OnInit(config map[string]any) {
 	x.ProfitBps = cfg.ProfitBps
 	x.Qty = cfg.Qty
 	x.PriceToleranceBps = cfg.PriceToleranceBps
+	if cfg.OrderTTL != "" {
+		ttl, err := time.ParseDuration(cfg.OrderTTL)
+		if err != nil {
+			x.Log().Panic().Err(err).Str("order_ttl", cfg.OrderTTL).Msg("invalid order_ttl")
+			return
+		}
+		x.OrderTTLNs = uint64(ttl.Nanoseconds())
+	}
 	x.Log().Info().Str("side", x.Side.String()).
 		Float64("profitBps", x.ProfitBps).
 		Float64("qty", x.Qty).
 		Float64("priceToleranceBps", x.PriceToleranceBps).
+		Uint64("orderTTLNs", x.OrderTTLNs).
 		Msg("Algo parameters")
 
 	// Resolve trading wallets
@@ -165,6 +178,13 @@ func (x *XArb) OnStop() {
 	x.Log().Info().Msg("XArb strategy stopped")
 	if x.quotingClientOrderID != 0 {
 		x.CancelOrder(x.quotingClientOrderID, x.quotingAccountID)
+	}
+}
+
+func (x *XArb) cancelQuotingTTL() {
+	if x.quotingTTLCancel != nil {
+		x.quotingTTLCancel.Cancel()
+		x.quotingTTLCancel = nil
 	}
 }
 
@@ -352,6 +372,7 @@ func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 	switch orderCanceled.ClientOrderID {
 	case x.quotingClientOrderID:
 		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Quote order cancelled")
+		x.cancelQuotingTTL()
 		x.quotingClientOrderID = 0
 	case x.hedgingClientOrderID:
 		x.Log().Info().Int("clientOrderID", orderCanceled.ClientOrderID).Int("errorCode", orderCanceled.ErrorCode).Msg("Hedge order cancelled")
@@ -364,6 +385,7 @@ func (x *XArb) OnOrderCanceled(orderCanceled event.OrderCanceled) {
 func (x *XArb) OnOrderFilled(orderFilled event.OrderFilled) {
 	switch orderFilled.ClientOrderID {
 	case x.quotingClientOrderID:
+		x.cancelQuotingTTL()
 		x.quotingClientOrderID = 0
 		x.Log().Info().Int("Quoting clientOrderID", orderFilled.ClientOrderID).Float64("executedQty", orderFilled.ExecutedQty).Msg("Order filled")
 	case x.hedgingClientOrderID:
@@ -378,6 +400,7 @@ func (x *XArb) OnOrderFilled(orderFilled event.OrderFilled) {
 func (x *XArb) OnOrderRejected(orderRejected event.OrderRejected) {
 	switch orderRejected.ClientOrderID {
 	case x.quotingClientOrderID:
+		x.cancelQuotingTTL()
 		x.quotingClientOrderID = 0
 		x.Log().Info().Int("Quoting clientOrderID", orderRejected.ClientOrderID).Str("msg", orderRejected.Msg).Msg("Order rejected")
 	case x.hedgingClientOrderID:
@@ -396,6 +419,7 @@ func (x *XArb) OnOrderError(orderError event.OrderError) {
 func (x *XArb) OnOrderRiskInvalid(orderRiskInvalid event.OrderRiskInvalid) {
 	switch orderRiskInvalid.ClientOrderID {
 	case x.quotingClientOrderID:
+		x.cancelQuotingTTL()
 		x.quotingClientOrderID = 0
 		x.Log().Info().Int("Quoting clientOrderID", orderRiskInvalid.ClientOrderID).Msg("Order risk invalid")
 	case x.hedgingClientOrderID:
@@ -426,11 +450,21 @@ func (x *XArb) OnOrderAccepted(orderAccepted event.OrderAccepted) {
 	case x.quotingClientOrderID:
 		x.quotingClientOrderID = orderAccepted.ClientOrderID
 		x.Log().Info().Int("Quoting clientOrderID", orderAccepted.ClientOrderID).Msg("Order accepted")
+		if x.OrderTTLNs > 0 {
+			now := uint64(time.Now().UnixNano())
+			coid := x.quotingClientOrderID
+			x.quotingTTLCancel = x.Clock().Register(now+x.OrderTTLNs, 1<<63-1, func(_ event.TimeEvent) {
+				if x.quotingClientOrderID == coid {
+					x.Log().Info().Int("clientOrderID", coid).Msg("TTL expired, cancelling quote order")
+					x.CancelOrder(coid, x.quotingAccountID)
+					x.cancelQuotingTTL()
+				}
+			})
+		}
 	case x.hedgingClientOrderID:
 		x.hedgingClientOrderID = orderAccepted.ClientOrderID
 		x.Log().Info().Int("Hedging clientOrderID", orderAccepted.ClientOrderID).Msg("Order accepted")
 	default:
-		// Ignore other client order IDs
 		return
 	}
 }
