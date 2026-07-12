@@ -1,237 +1,233 @@
 # Seq
 
-A trading backend system responsible for event handling, market data, risk management, and API connectivity.
+In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/BullionBear/seq`).
+
+A single Go binary boots a `node.Node` that owns market data, execution, portfolio, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
+
+For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`architecture.md`](./architecture.md).
 
 ## Overview
 
-Seq is a high-performance Go-based trading system backend that provides essential services for trading operations including portfolio management, event management, secret management, and instrument catalog services.
+| Concern | Owner |
+| --- | --- |
+| Shared pub/sub + command bus | `core/msgbus` |
+| Shared read model | `core/cache` |
+| Instrument / account metadata | `core/catalog` (+ remote cpanel API) |
+| Market data | `data` engine + `adapter` data clients |
+| Order lifecycle | `execution` engine + OMS actor |
+| Balances | `portfolio` engine + balance actors |
+| Pre-trade gates | `risk` engine + rules/actors |
+| Trading logic | `strategy` engine + strategy actors |
+| Venue I/O | `adapter/binance`, `adapter/bybit` |
+
+There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional binary msgbus logging (`.dat` files) plus the remote catalog. The legacy `docker-compose.yml` Postgres service is not part of this runtime.
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │                 Node                      │
+                    │  event loop: Tick → Dispatch → Release   │
+                    └─────────────────────────────────────────┘
+           msgbus (events MPSC + commands SPSC)     cache (shared)
+                    │                                      ▲
+     ┌──────────────┼──────────────┬───────────┬───────────┼────────┐
+     ▼              ▼              ▼           ▼           ▼        │
+  DataEngine   ExecEngine    Portfolio    RiskEngine  StrategyEngine │
+  orderbook      OMS          balance     ratelimit/     xarb/obtest │
+  + DataRouter + ExecRouter   actors      tpnl+Checker      │        │
+     │              │              │           ▲            │        │
+     ▼              ▼              ▼           │            │        │
+  Binance/Bybit  Binance/Bybit  private WS     │     SubmitOrder()───┘
+  public WS/HTTP private WS/HTTP               │     → OrderRiskCheck
+                                               └── pass → OrderSubmit
+```
 
 ## Features
 
-- **Portfolio Management System (PMS)**: Manages trading portfolios and instrument catalogs
-- **Event Management System (EMS)**: Handles trading events and order processing
-- **Secret Management System (SMS)**: Securely manages API keys and credentials
-- **Instrument Catalog**: Provides access to trading instruments and market data
-- **Structured Logging**: Comprehensive logging with rotation support (stdout or file)
-- **PostgreSQL Integration**: Uses GORM ORM with PostgreSQL for data persistence
-- **Configuration Management**: YAML-based configuration with environment variable support
+- **In-process Node** — single consumer loop: clock tick → command-before-event dispatch → arena release
+- **Dual-channel msgbus** — MPSC events (topic fan-out) and SPSC commands (point-to-point, higher priority)
+- **Shared cache** — order books, open orders, balances, and risk metadata as the cross-engine read model
+- **Mandatory risk gate** — strategies call `SubmitOrder` → `OrderRiskCheck`; venue submit only on pass
+- **Venue adapters** — Binance/Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
+- **Config-driven actors** — YAML factories for orderbook, OMS, balance, ratelimiter, tpnl, `xarb`, `obtest`
+- **Optional msglog** — binary event/command audit trail; offline decode via `cmd/parser`
+- **Structured logging** — zerolog with optional lumberjack rotation
 
-## Architecture
-
-### Services
-
-- **PMS (Portfolio Management System)**: Manages portfolios and instruments
-- **EMS (Event Management System)**: Handles trading events and order flow
-- **SMS (Secret Management System)**: Manages API credentials and secrets
-- **Catalog**: Provides instrument catalog services
-
-### Key Components
-
-- **Logger**: Singleton logger with support for stdout/file output and log rotation
-- **Database**: PostgreSQL connection pool with GORM
-- **Config**: YAML-based configuration system
-
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Go 1.25.1 or later
-- PostgreSQL 16 or later
+- Go **1.25.1** or later
 - Make (for build automation)
+- Access to a catalog/cpanel endpoint and venue credentials for live scenarios (not required to build or unit-test)
 
-### Installation
+### Install and build
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/BullionBear/seq.git
 cd seq
-```
 
-2. Install dependencies:
-```bash
 make deps
+make build-local          # → bin/seq
 # or
-go mod download
+make build                # → bin/seq-linux-amd64
 ```
 
-3. Set up PostgreSQL (using Docker):
+### Configure
+
+Copy a scenario under `config/` (e.g. `obtest.yml`, `xarb.yml`, `test.yml`) and fill in **your own** secrets. Do not commit tokens or API keys.
+
 ```bash
-docker-compose up -d
+cp config/obtest.yml config/myconfig.yml
+# Edit catalog.base_url, catalog.api_token, execrouter credentials, symbols, etc.
 ```
 
-4. Configure the application:
-```bash
-cp config/local.yml config/myconfig.yml
-# Edit config/myconfig.yml with your database credentials
-```
+### Run
 
-5. Build and run:
 ```bash
-make run CONFIG=config/myconfig.yml
-# or
 ./bin/seq -c config/myconfig.yml
+# or
+CONFIG=config/myconfig.yml ./bin/seq
+```
+
+`make run` builds `bin/seq` but does not pass a config path; always supply `-c` or `CONFIG`.
+
+### Parse msglog (audit / research)
+
+```bash
+make parse-event i=logs/event_YYYY-MM-DD.dat o=out.jsonl
 ```
 
 ## Configuration
 
-Configuration is managed through YAML files. The system supports two ways to specify the config file:
-
-1. Command-line flag: `./bin/seq -c config/prod.yml`
-2. Environment variable: `CONFIG=./config/prod.yml ./bin/seq`
-
-### Configuration File Structure
+Top-level YAML (`core/config.AppConfig`). Actor entries are uniformly `{ type, name?, config: map }`.
 
 ```yaml
 logger:
   level: debug              # trace, debug, info, warn, error, fatal, panic
   output: stdout            # "stdout" or "file"
-  path: logs/seq.log        # Required when output is "file"
-  max_byte_size: 10485760   # Max file size in bytes before rotation (0 = no rotation)
-  max_backup_files: 5       # Max number of backup files to keep (0 = keep all)
+  path: logs/seq.log        # required when output is "file"
+  max_byte_size: 10485760
+  max_backup_files: 5
 
-ems:
-  url: http://localhost:8080
+msgbus:
+  msglog:
+    enabled: true
+    dir: ./logs/
 
-pms:
-  url: http://localhost:8081
-  database:
-    host: localhost
-    port: 5432
-    user: postgres
-    password: postgres
-    dbname: seq
-    sslmode: disable        # disable, allow, prefer, require, verify-ca, verify-full
+catalog:
+  base_url: https://your-cpanel.example
+  api_token: <REDACTED>     # never commit real tokens
+
+execrouter:
+  - account: <account_name>
+    wallet: <wallet_name>
+    api: <api_key_name>
+
+datarouter:
+  - symbol: BINANCE_SPOT_BTCUSDT
+    depth:
+      levels: 50
+    # trade: ...
+    # endpoint: ...
+
+node:
+  engine:
+    data:
+      actor:
+        - type: orderbook
+          config:
+            symbol: BINANCE_SPOT_BTCUSDT
+    execution:
+      actor:
+        - type: oms
+          config: {}
+    portfolio:
+      actor:
+        - type: balance
+          config: {}
+    risk:
+      actor:
+        - type: ratelimiter
+          config: {}
+        - type: tpnl
+          config: {}
+      checker:
+        - type: ratelimit
+        - type: tpnl
+    strategy:
+      actor:
+        - type: obtest   # or xarb
+          config:
+            symbol_universal_ticker: BINANCE_SPOT_BTCUSDT
 ```
 
-### Logger Configuration
+Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/test.yml`.
 
-- **level**: Logging level (trace, debug, info, warn, error, fatal, panic)
-- **output**: Output destination - `stdout` for console output or `file` for file output
-- **path**: Log file path (required when `output` is `file`)
-- **max_byte_size**: Maximum log file size in bytes before rotation. Set to `0` to disable rotation
-- **max_backup_files**: Maximum number of rotated log files to keep. Set to `0` to keep all backups
+**Security:** some in-tree sample configs may contain live-looking catalog tokens. Treat them as secrets; rotate if exposed and keep tokens out of git.
 
-### Database Configuration
+## Critical runtime flows
 
-- **host**: PostgreSQL server hostname
-- **port**: PostgreSQL server port (default: 5432)
-- **user**: Database username
-- **password**: Database password
-- **dbname**: Database name
-- **sslmode**: SSL connection mode (disable, allow, prefer, require, verify-ca, verify-full)
+### Market data → strategy
 
-## Development
+1. Data WS callback encodes depth/tick → publish event on msgbus
+2. Dispatch delivers to subscribed actors (`orderbook`, strategies)
+3. Orderbook updates `cache`; strategies read best bid/ask / depth from cache
 
-### Building
+### Order intent → venue
 
-```bash
-# Build for local platform
-make build-local
+1. Strategy `SubmitOrder` → cache insert (`Initialized`) + `OrderRiskCheck` command
+2. Risk `Checker` runs ordered rules (`ratelimit`, `tpnl`, …)
+3. Pass → `OrderNew` event + `OrderSubmit` command; fail → `OrderRiskInvalid` (no submit)
+4. OMS updates cache; execution engine submits via `ExecutionRouter`
+5. Venue private stream → accept / fill / cancel / reject → OMS → strategies
 
-# Build for Linux AMD64
-make build
+Strategies never talk to venues directly; risk sits on the mandatory path between intent and submit.
 
-# Build everything
-go build ./...
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-make test
-
-# Run tests with coverage
-make test-coverage
-
-# Run benchmarks
-make benchmark
-```
-
-### Code Quality
-
-```bash
-# Format code
-make fmt
-
-# Run linter
-make lint
-
-# Run go vet
-make vet
-```
-
-### Available Make Targets
-
-- `make` or `make all` - Build and run all tests (default)
-- `make build` - Build for linux/amd64
-- `make build-local` - Build for local platform
-- `make run` - Build and run the application
-- `make test` - Run tests
-- `make test-coverage` - Run tests with coverage report
-- `make benchmark` - Run benchmarks
-- `make lint` - Run golangci-lint
-- `make clean` - Remove build artifacts
-- `make deps` - Download and tidy dependencies
-- `make fmt` - Format code
-- `make vet` - Run go vet
-- `make help` - Show all available targets
-
-## Project Structure
+## Project structure
 
 ```
 seq/
-├── cmd/
-│   └── main.go              # Main application entry point
-├── config/
-│   └── local.yml            # Example configuration file
-├── internal/
-│   ├── config/              # Configuration management
-│   ├── db/                  # Database connection utilities
-│   └── srv/                 # Service implementations
-│       ├── catalog/         # Instrument catalog service (PMS)
-│       ├── ems/             # Event management service
-│       └── sms/             # Secret management service
-├── pkg/
-│   └── logger/              # Logging package
-├── bin/                     # Build output directory
-├── logs/                    # Log files (if file logging enabled)
-├── docker-compose.yml       # Docker Compose configuration
-├── Makefile                 # Build automation
-└── README.md                # This file
+├── cmd/                 # seq binary + event log parser
+├── config/              # YAML scenarios
+├── node/                # composition root + event loop
+├── core/
+│   ├── actor|engine|msgbus|mem|clock|cache|catalog|config|logger|env|model
+├── adapter/             # DataRouter, ExecutionRouter, binance/, bybit/
+├── data/                # market-data engine + orderbook actor
+├── execution/           # order engine + oms actor
+├── portfolio/           # balance engine + balance actor
+├── risk/                # risk engine, checker, rules, ratelimiter/tpnl actors
+└── strategy/            # strategy engine + xarb/obtest (+ StrategyActorBase)
 ```
 
-## Logging
+## Development
 
-The logger is a singleton that can be accessed from anywhere in the codebase:
-
-```go
-import "github.com/BullionBear/seq/pkg/logger"
-
-// Get the singleton logger
-log := logger.Get()
-
-// Use it
-log.Info().Msg("Application started")
-log.Error().Err(err).Msg("Failed to process request")
-log.Debug().Str("key", "value").Int("count", 42).Msg("Debug message")
+```bash
+make build-local      # local platform binary
+make build            # linux/amd64 binary
+make test             # go test -race ./...
+make test-coverage    # coverage HTML
+make benchmark
+make fmt
+make vet
+make lint             # golangci-lint
+make clean
+make help
 ```
 
-Logger features:
-- Singleton pattern - initialized once, accessible everywhere
-- Support for stdout (human-readable) or file (JSON) output
-- Automatic log rotation based on file size
-- Configurable log levels
-- Structured logging with fields
+CI: `.github/workflows/go.yml`.
 
-## Database
+## Observability
 
-The system uses PostgreSQL with GORM as the ORM. Database connections are managed through the `internal/db` package and configured via the config file.
+| Mechanism | Coverage |
+| --- | --- |
+| Zerolog structured logs | Ops / debug |
+| Msgbus msglog (`.dat`) | Binary event + command audit trail |
+| `cmd/parser` | Offline decode to JSONL |
+| Engine state events | Ready / stop / abnormal fan-out |
 
-Connection pooling:
-- Max idle connections: 10
-- Max open connections: 100
+Not yet first-class: metrics/latency dashboards, paper-vs-live execution gate, kill-switch service, deterministic backtest harness. See `architecture.md` §9 and §13 for gaps and suggested follow-ups.
 
 ## License
 
-See LICENSE file for details.
+See [LICENSE](./LICENSE).
