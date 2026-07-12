@@ -3,7 +3,27 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/BullionBear/seq/core/tradingmode"
 )
+
+func TestLoadConfigFromBytes_DefaultTradingModeIsPaper(t *testing.T) {
+	yaml := `
+catalog:
+  base_url: https://cpanel.example.test
+  api_token: ""
+logger:
+  level: info
+  output: stdout
+`
+	cfg, err := LoadConfigFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfigFromBytes: %v", err)
+	}
+	if cfg.TradingMode != string(tradingmode.ModePaper) {
+		t.Fatalf("TradingMode = %q, want %q", cfg.TradingMode, tradingmode.ModePaper)
+	}
+}
 
 func TestLoadConfigFromBytes_ExpandsCatalogTokenPlaceholder(t *testing.T) {
 	t.Setenv("CATALOG_API_TOKEN", "test-token-from-env")
@@ -63,21 +83,5 @@ logger:
 	}
 	if cfg.Catalog.APIToken != "" {
 		t.Fatalf("APIToken = %q, want empty when env unset", cfg.Catalog.APIToken)
-	}
-}
-
-func TestLoadConfigFromBytes_DefaultsTradingModeToPaper(t *testing.T) {
-	cfg, err := LoadConfigFromBytes([]byte(`
-catalog:
-  base_url: https://example.test
-logger:
-  level: info
-  output: stdout
-`))
-	if err != nil {
-		t.Fatalf("LoadConfigFromBytes: %v", err)
-	}
-	if cfg.TradingMode != "paper" {
-		t.Fatalf("TradingMode = %q, want paper", cfg.TradingMode)
 	}
 }
