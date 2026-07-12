@@ -16,6 +16,7 @@ import (
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
 	"github.com/BullionBear/seq/portfolio"
@@ -67,7 +68,17 @@ func NewNode(cat *catalog.Catalog) *Node {
 
 // Init initializes the node and all engines from config.
 // execRouter and dataRouter are the top-level adapter configs parsed from YAML.
-func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRouter []adapter.DataRouterEntry) {
+// tradingMode gates venue order mutations on the execution router (default paper).
+func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRouter []adapter.DataRouterEntry, tradingMode tradingmode.Mode) {
+	if tradingMode == "" {
+		tradingMode = tradingmode.ModePaper
+	}
+	n.executionRouter.SetTradingMode(tradingMode)
+	log().Info().
+		Str("trading_mode", tradingMode.String()).
+		Bool("live_orders_enabled", tradingMode.IsLive()).
+		Msg("Trading mode active: venue order submit/cancel require live mode")
+
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
 	// Configure portfolio engine with execution router and notifier
@@ -85,7 +96,7 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.riskEngine.Init(config.Engine.Risk)
 	n.strategyEngine.Init(config.Engine.Strategy)
 
-	log().Info().Msg("Node initialized")
+	log().Info().Str("trading_mode", tradingMode.String()).Msg("Node initialized")
 }
 
 // setupExecutionClients creates and registers execution clients from

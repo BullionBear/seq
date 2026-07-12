@@ -1,3 +1,5 @@
+trading_mode: paper  # live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval)
+
 logger:
   level: debug
   path: /root/seq/logs/xarb-uni-usdt.log

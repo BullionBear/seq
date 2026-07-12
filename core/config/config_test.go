@@ -65,3 +65,19 @@ logger:
 		t.Fatalf("APIToken = %q, want empty when env unset", cfg.Catalog.APIToken)
 	}
 }
+
+func TestLoadConfigFromBytes_DefaultsTradingModeToPaper(t *testing.T) {
+	cfg, err := LoadConfigFromBytes([]byte(`
+catalog:
+  base_url: https://example.test
+logger:
+  level: info
+  output: stdout
+`))
+	if err != nil {
+		t.Fatalf("LoadConfigFromBytes: %v", err)
+	}
+	if cfg.TradingMode != "paper" {
+		t.Fatalf("TradingMode = %q, want paper", cfg.TradingMode)
+	}
+}

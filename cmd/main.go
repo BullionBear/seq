@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 
 	// Register actor factories via init().
@@ -63,6 +64,28 @@ func main() {
 	log.Info().Msg("Commit Hash: " + env.CommitHash)
 	log.Info().Msgf("Configuration loaded from: %s", *configPath)
 
+	// Resolve paper/live gate before any venue clients or engines start.
+	mode, err := tradingmode.Resolve(cfg.TradingMode, os.Getenv)
+	if err != nil {
+		log.Error().Err(err).
+			Str("config_trading_mode", cfg.TradingMode).
+			Str("env_trading_mode", os.Getenv(tradingmode.EnvTradingMode)).
+			Str("env_allow_live", os.Getenv(tradingmode.EnvAllowLive)).
+			Msg("Trading mode gate refused to start")
+		os.Exit(1)
+	}
+	tradingmode.Set(mode)
+	if mode.IsLive() {
+		log.Warn().
+			Str("trading_mode", mode.String()).
+			Str("gate", tradingmode.EnvAllowLive).
+			Msg("TRADING MODE: LIVE — venue order submit/cancel enabled; CEO/board approval required outside this process")
+	} else {
+		log.Info().
+			Str("trading_mode", mode.String()).
+			Msg("TRADING MODE: PAPER — venue order submit/cancel refused; set trading_mode=live and SEQ_ALLOW_LIVE=1 only after CEO/board approval")
+	}
+
 	// Initialize Catalog service
 	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	if catalogService == nil {
@@ -91,7 +114,7 @@ func main() {
 	}
 
 	// Initialize, start, and run the node (Run blocks until graceful shutdown completes)
-	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter)
+	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter, mode)
 	n.Start(ctx)
 	n.Run(ctx)
 }

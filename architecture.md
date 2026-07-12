@@ -283,7 +283,7 @@ Strategy or stop path → `OrderCancel` / cancel-all → execution engine marks 
 | `cmd/parser` | Offline decode to JSONL |
 | Engine state events | Ready / stop / abnormal fan-out |
 
-Gaps relative to a production trading desk (not present as first-class modules today): metrics/latency histograms, reject/slippage dashboards, paper-vs-live execution gate, kill-switch service, deterministic backtest harness.
+Gaps relative to a production trading desk (not present as first-class modules today): metrics/latency histograms, reject/slippage dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is implemented (`trading_mode` + `SEQ_ALLOW_LIVE`; see `core/tradingmode`).
 
 ---
 
@@ -304,7 +304,7 @@ seq/
 ├── config/              # YAML scenarios
 ├── node/                # composition root + event loop
 ├── core/
-│   ├── actor|engine|msgbus|mem|clock|cache|catalog|config|logger|env|model
+│   ├── actor|engine|msgbus|mem|clock|cache|catalog|config|logger|env|tradingmode|model
 ├── adapter/             # DataRouter, ExecutionRouter, binance/, bybit/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
@@ -329,7 +329,7 @@ seq/
 
 1. **README drift** — document still describes PMS/EMS/SMS + Postgres; replace or rewrite against this file.
 2. **Secrets in sample YAML** — scrubbed from working tree (`${CATALOG_API_TOKEN}` + gitignored `*.local.yml`); **rotate** any previously exposed tokens at the provider (history may still contain them).
-3. **Live trading safety** — no explicit paper/live mode or CEO-gated live switch in code; operational discipline is config/ops only.
+3. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` and `SEQ_ALLOW_LIVE=1|true|yes`, logged at boot. Running live still needs separate CEO/board approval.
 4. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
 5. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.
 6. **Research/backtest** — msglog parser exists; full deterministic replay/backtest stack is not yet a first-class module.
@@ -339,7 +339,7 @@ seq/
 ## 13. Suggested next engineering work (out of scope for this review)
 
 1. Align `README.md` with this architecture.
-2. Add paper execution adapter + explicit live gate (CEO/board approval required for live enablement).
+2. Add paper execution adapter (venue order mutations are already gated; paper fill simulation remains). Live enablement still requires CEO/board approval.
 3. Metrics: queue depth, dispatch lag, reject rates, slippage, inventory, PnL.
 4. Harden secret handling (env/secret store; no tokens in git).
 5. Expand venue/product coverage beyond spot Binance/Bybit as needed.

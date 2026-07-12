@@ -12,6 +12,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 
 	_ "github.com/BullionBear/seq/portfolio/actor/balance"
@@ -47,7 +48,7 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 		n.MsgBus().SetMsgLogger(msgLogger)
 	}
 
-	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter)
+	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter, tradingmode.ModePaper)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -156,7 +157,7 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	}
 
 	n := node.NewNode(cat)
-	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter)
+	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter, tradingmode.ModePaper)
 
 	bus := n.MsgBus()
 	acctID := n.PortfolioEngine().GetConfiguredAccounts()[0]

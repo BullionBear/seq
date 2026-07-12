@@ -2,23 +2,28 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 	"gopkg.in/yaml.v3"
 )
 
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
-	Logger     logger.Config             `yaml:"logger"`
-	Catalog    catalog.Config            `yaml:"catalog"`
-	MsgBus     msgbus.Config             `yaml:"msgbus"`
-	ExecRouter []adapter.ExecRouterEntry `yaml:"execrouter"`
-	DataRouter []adapter.DataRouterEntry `yaml:"datarouter"`
-	Node       node.Config               `yaml:"node"`
+	// TradingMode is paper|live. Empty defaults to paper after load.
+	// Live also requires SEQ_ALLOW_LIVE at process start.
+	TradingMode string                    `yaml:"trading_mode"`
+	Logger      logger.Config             `yaml:"logger"`
+	Catalog     catalog.Config            `yaml:"catalog"`
+	MsgBus      msgbus.Config             `yaml:"msgbus"`
+	ExecRouter  []adapter.ExecRouterEntry `yaml:"execrouter"`
+	DataRouter  []adapter.DataRouterEntry `yaml:"datarouter"`
+	Node        node.Config               `yaml:"node"`
 }
 
 // LoadConfig loads configuration from a YAML file.
@@ -37,6 +42,7 @@ func LoadConfigFromBytes(data []byte) (*AppConfig, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	cfg.applyDefaults()
 	applyEnvSecrets(&cfg)
 	return &cfg, nil
 }
@@ -44,6 +50,12 @@ func LoadConfigFromBytes(data []byte) (*AppConfig, error) {
 // LoadConfigFromString loads configuration from a YAML string.
 func LoadConfigFromString(data string) (*AppConfig, error) {
 	return LoadConfigFromBytes([]byte(data))
+}
+
+func (c *AppConfig) applyDefaults() {
+	if strings.TrimSpace(c.TradingMode) == "" {
+		c.TradingMode = string(tradingmode.ModePaper)
+	}
 }
 
 // applyEnvSecrets expands ${VAR} placeholders in secret fields and fills

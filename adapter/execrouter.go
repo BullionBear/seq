@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/BullionBear/seq/core/model/common"
+	"github.com/BullionBear/seq/core/tradingmode"
 )
 
 var (
@@ -68,15 +69,45 @@ type ExecutionClient interface {
 // based on account ID. It manages a collection of execution clients and
 // provides a unified interface for order management.
 type ExecutionRouter struct {
-	clients map[int]ExecutionClient
-	mu      sync.RWMutex
+	clients     map[int]ExecutionClient
+	tradingMode tradingmode.Mode
+	mu          sync.RWMutex
 }
 
-// NewExecutionRouter creates a new ExecutionRouter
+// NewExecutionRouter creates a new ExecutionRouter in paper mode by default.
 func NewExecutionRouter() *ExecutionRouter {
 	return &ExecutionRouter{
-		clients: make(map[int]ExecutionClient),
+		clients:     make(map[int]ExecutionClient),
+		tradingMode: tradingmode.ModePaper,
 	}
+}
+
+// SetTradingMode sets the process trading mode gate for venue order mutations.
+// Call once during Node.Init before Start/Connect.
+func (r *ExecutionRouter) SetTradingMode(mode tradingmode.Mode) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if mode == "" {
+		mode = tradingmode.ModePaper
+	}
+	r.tradingMode = mode
+}
+
+// TradingMode returns the active trading mode gate.
+func (r *ExecutionRouter) TradingMode() tradingmode.Mode {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.tradingMode == "" {
+		return tradingmode.ModePaper
+	}
+	return r.tradingMode
+}
+
+func (r *ExecutionRouter) guardLiveMutation() error {
+	if r.TradingMode().IsLive() {
+		return nil
+	}
+	return tradingmode.ErrPaperMode
 }
 
 // RegisterClient registers an ExecutionClient for a specific account ID
@@ -104,8 +135,12 @@ func (r *ExecutionRouter) GetClient(acctID int) (ExecutionClient, error) {
 	return client, nil
 }
 
-// SubmitOrder routes the order submission to the appropriate client
+// SubmitOrder routes the order submission to the appropriate client.
+// Paper mode refuses the call before any venue client is touched.
 func (r *ExecutionRouter) SubmitOrder(acctID int, clientOrderID int, symbolID int, side common.Side, orderType common.OrderType, timeInForce common.TimeInForce, price float64, quantity float64) error {
+	if err := r.guardLiveMutation(); err != nil {
+		return err
+	}
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
@@ -113,8 +148,12 @@ func (r *ExecutionRouter) SubmitOrder(acctID int, clientOrderID int, symbolID in
 	return client.SubmitOrder(clientOrderID, symbolID, side, orderType, timeInForce, price, quantity)
 }
 
-// CancelOrder routes the order cancellation to the appropriate client
+// CancelOrder routes the order cancellation to the appropriate client.
+// Paper mode refuses the call before any venue client is touched.
 func (r *ExecutionRouter) CancelOrder(acctID int, symbolID int, orderID int, clientOrderID int) error {
+	if err := r.guardLiveMutation(); err != nil {
+		return err
+	}
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
@@ -122,8 +161,12 @@ func (r *ExecutionRouter) CancelOrder(acctID int, symbolID int, orderID int, cli
 	return client.CancelOrder(symbolID, orderID, clientOrderID)
 }
 
-// CancelAllOrders routes the cancel all orders request to the appropriate client
+// CancelAllOrders routes the cancel all orders request to the appropriate client.
+// Paper mode refuses the call before any venue client is touched.
 func (r *ExecutionRouter) CancelAllOrders(acctID int, symbolID int) error {
+	if err := r.guardLiveMutation(); err != nil {
+		return err
+	}
 	client, err := r.GetClient(acctID)
 	if err != nil {
 		return err
