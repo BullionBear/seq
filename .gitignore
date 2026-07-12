@@ -28,6 +28,11 @@ go.work.sum
 # env file
 .env
 
+# Local config overrides with secrets (see config/README.md)
+config/*.local.yml
+config/myconfig.yml
+config/local.yml
+
 # Editor/IDE
 # .idea/
 # .vscode/

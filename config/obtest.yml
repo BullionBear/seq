@@ -12,7 +12,8 @@ msgbus:
 
 catalog:
   base_url: https://capi.lynxlinkage.com
-  api_token: api_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwidHlwZSI6ImFwaV9hY2Nlc3MiLCJleHAiOjIwODY0MDU4MTcsImlhdCI6MTc3MTA0NTgxNy45NDI2NTgsImp0aSI6IndzUTJmQnFwaXc0In0.0Tm3yo-rcNmhOvwl3UB2Mc_WMxejDROOaRIXLDQKSxw
+  # Set CATALOG_API_TOKEN in the environment, or copy to a gitignored *.local.yml
+  api_token: ${CATALOG_API_TOKEN}
 
 node:
   engine:

@@ -74,11 +74,11 @@ make build                # → bin/seq-linux-amd64
 
 ### Configure
 
-Copy a scenario under `config/` (e.g. `obtest.yml`, `xarb.yml`, `test.yml`) and fill in **your own** secrets. Do not commit tokens or API keys.
+Sample scenarios under `config/` use `${CATALOG_API_TOKEN}` (no live secrets in git). See [`config/README.md`](config/README.md).
 
 ```bash
-cp config/obtest.yml config/myconfig.yml
-# Edit catalog.base_url, catalog.api_token, execrouter credentials, symbols, etc.
+export CATALOG_API_TOKEN='your-token-here'
+# or: cp config/obtest.yml config/obtest.local.yml  # gitignored; edit secrets there
 ```
 
 ### Run
@@ -116,7 +116,7 @@ msgbus:
 
 catalog:
   base_url: https://your-cpanel.example
-  api_token: <REDACTED>     # never commit real tokens
+  api_token: ${CATALOG_API_TOKEN}   # never commit real tokens
 
 execrouter:
   - account: <account_name>
@@ -161,9 +161,9 @@ node:
             symbol_universal_ticker: BINANCE_SPOT_BTCUSDT
 ```
 
-Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/test.yml`.
+Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/test.yml` (placeholders only; see `config/README.md`).
 
-**Security:** some in-tree sample configs may contain live-looking catalog tokens. Treat them as secrets; rotate if exposed and keep tokens out of git.
+**Security:** sample configs no longer embed catalog tokens. Tokens that were previously committed must still be **rotated at the provider** — scrubbing the tree does not revoke exposed credentials.
 
 ## Critical runtime flows
 

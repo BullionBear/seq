@@ -246,9 +246,9 @@ node:
     strategy: { actor: [...] }
 ```
 
-Actor entries are uniformly `{ type, name?, config: map }`. Sample scenarios live under `config/` (`xarb.yml`, `obtest.yml`, `test.yml`).
+Actor entries are uniformly `{ type, name?, config: map }`. Sample scenarios live under `config/` (`xarb.yml`, `obtest.yml`, `test.yml`) with `${CATALOG_API_TOKEN}` placeholders; see `config/README.md`.
 
-**Security note:** some sample configs in-tree appear to contain live-looking catalog API tokens. Treat them as secrets; rotate if exposed and keep tokens out of git going forward.
+**Security note:** sample YAML no longer embeds catalog API tokens. Credentials that were previously committed remain in git history until rotated at the provider and (if needed) history is rewritten.
 
 ---
 
@@ -328,7 +328,7 @@ seq/
 **Risks / follow-ups**
 
 1. **README drift** — document still describes PMS/EMS/SMS + Postgres; replace or rewrite against this file.
-2. **Secrets in sample YAML** — rotate and scrub tokens from the repo.
+2. **Secrets in sample YAML** — scrubbed from working tree (`${CATALOG_API_TOKEN}` + gitignored `*.local.yml`); **rotate** any previously exposed tokens at the provider (history may still contain them).
 3. **Live trading safety** — no explicit paper/live mode or CEO-gated live switch in code; operational discipline is config/ops only.
 4. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
 5. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.

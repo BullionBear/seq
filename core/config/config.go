@@ -28,11 +28,7 @@ func LoadConfig(path string) (*AppConfig, error) {
 		return nil, err
 	}
 
-	var cfg AppConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
+	return LoadConfigFromBytes(data)
 }
 
 // LoadConfigFromBytes loads configuration from YAML bytes.
@@ -41,10 +37,22 @@ func LoadConfigFromBytes(data []byte) (*AppConfig, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	applyEnvSecrets(&cfg)
 	return &cfg, nil
 }
 
 // LoadConfigFromString loads configuration from a YAML string.
 func LoadConfigFromString(data string) (*AppConfig, error) {
 	return LoadConfigFromBytes([]byte(data))
+}
+
+// applyEnvSecrets expands ${VAR} placeholders in secret fields and fills
+// empty catalog.api_token from CATALOG_API_TOKEN when set.
+func applyEnvSecrets(cfg *AppConfig) {
+	cfg.Catalog.APIToken = os.ExpandEnv(cfg.Catalog.APIToken)
+	if cfg.Catalog.APIToken == "" {
+		if tok := os.Getenv("CATALOG_API_TOKEN"); tok != "" {
+			cfg.Catalog.APIToken = tok
+		}
+	}
 }
