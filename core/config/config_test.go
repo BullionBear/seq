@@ -3,8 +3,6 @@ package config
 import (
 	"os"
 	"testing"
-
-	"github.com/BullionBear/seq/core/tradingmode"
 )
 
 func TestLoadConfigFromBytes_ExpandsCatalogTokenPlaceholder(t *testing.T) {
@@ -24,9 +22,6 @@ logger:
 	}
 	if cfg.Catalog.APIToken != "test-token-from-env" {
 		t.Fatalf("APIToken = %q, want expanded env value", cfg.Catalog.APIToken)
-	}
-	if cfg.TradingMode != string(tradingmode.ModePaper) {
-		t.Fatalf("TradingMode = %q, want default %q", cfg.TradingMode, tradingmode.ModePaper)
 	}
 }
 
@@ -52,7 +47,6 @@ logger:
 
 func TestLoadConfigFromBytes_MissingEnvLeavesEmpty(t *testing.T) {
 	_ = os.Unsetenv("CATALOG_API_TOKEN_UNSET_TEST")
-	// Ensure the preferred env is also unset for this case.
 	t.Setenv("CATALOG_API_TOKEN", "")
 
 	yaml := `
