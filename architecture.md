@@ -22,7 +22,7 @@ Seq is an **in-process, actor-oriented crypto trading runtime** written in Go. A
 | Trading logic | `strategy` engine + strategy actors |
 | Venue I/O | `adapter/binance`, `adapter/bybit` |
 
-There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional binary msgbus logging (`.dat` files) plus remote catalog. The root `README.md` still describes an older PMS/EMS/SMS layout and is **out of date**.
+There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional binary msgbus logging (`.dat` files) plus remote catalog. The root `README.md` was rewritten to match this architecture and is current.
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -51,11 +51,12 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 
 1. Load YAML via `core/config.LoadConfig` (`-c` or `CONFIG`).
 2. Init `core/logger` (zerolog + optional lumberjack rotation).
-3. Build `catalog.Catalog` from cpanel (`base_url` + `api_token`); load symbols and accounts.
-4. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter`, `tpnl`, `obtest`, `xarb`).
-5. `node.NewNode` → wire msgbus, cache, five engines, execution router.
-6. Optional `msgbus.MsgLogger` for binary event/command audit logs.
-7. `Init` → `Start` → `Run` (blocks until SIGINT/SIGTERM).
+3. Resolve paper/live gate via `tradingmode.Resolve(cfg.TradingMode, os.Getenv)` — default `paper`; `live` also requires `SEQ_ALLOW_LIVE=1|true|yes` or the process exits. Result is logged and passed into `Node.Init`.
+4. Build `catalog.Catalog` from cpanel (`base_url` + `api_token`); load symbols and accounts.
+5. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter`, `tpnl`, `obtest`, `xarb`).
+6. `node.NewNode` → wire msgbus, cache, five engines, execution router.
+7. Optional `msgbus.MsgLogger` for binary event/command audit logs.
+8. `Init` → `Start` → `Run` (blocks until SIGINT/SIGTERM).
 
 ### Node event loop (`node/node.go`)
 
@@ -232,6 +233,7 @@ Adapters publish **normalized** events onto msgbus; they do not call strategy co
 Top-level YAML (`core/config.AppConfig`):
 
 ```yaml
+trading_mode: paper|live   # optional; default paper; live also requires SEQ_ALLOW_LIVE env
 logger: { ... }
 msgbus: { msglog: { enabled, dir } }
 catalog: { base_url, api_token }
@@ -292,7 +294,7 @@ Gaps relative to a production trading desk (not present as first-class modules t
 - Go **1.25.1**, module `github.com/BullionBear/seq`.
 - `Makefile`: local/linux builds with version ldflags, `go test -race`, coverage, benchmarks, escape analysis, parser targets.
 - CI: `.github/workflows/go.yml`.
-- `docker-compose.yml` present (legacy README still assumes Postgres; verify before relying on it for this architecture).
+- `docker-compose.yml` still defines a legacy Postgres service; `README.md` correctly disclaims it as not part of this runtime.
 
 ---
 
@@ -327,20 +329,18 @@ seq/
 
 **Risks / follow-ups**
 
-1. **README drift** — document still describes PMS/EMS/SMS + Postgres; replace or rewrite against this file.
-2. **Secrets in sample YAML** — scrubbed from working tree (`${CATALOG_API_TOKEN}` + gitignored `*.local.yml`); **rotate** any previously exposed tokens at the provider (history may still contain them).
-3. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` and `SEQ_ALLOW_LIVE=1|true|yes`, logged at boot. Running live still needs separate CEO/board approval.
-4. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
-5. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.
-6. **Research/backtest** — msglog parser exists; full deterministic replay/backtest stack is not yet a first-class module.
+1. **Secrets in sample YAML** — scrubbed from working tree (`${CATALOG_API_TOKEN}` + gitignored `*.local.yml`); **rotate** any previously exposed tokens at the provider (history may still contain them).
+2. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` and `SEQ_ALLOW_LIVE=1|true|yes`, logged at boot. Running live still needs separate CEO/board approval.
+3. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
+4. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.
+5. **Research/backtest** — msglog parser exists; full deterministic replay/backtest stack is not yet a first-class module.
 
 ---
 
 ## 13. Suggested next engineering work (out of scope for this review)
 
-1. Align `README.md` with this architecture.
-2. Add paper execution adapter (venue order mutations are already gated; paper fill simulation remains). Live enablement still requires CEO/board approval.
-3. Metrics: queue depth, dispatch lag, reject rates, slippage, inventory, PnL.
-4. Harden secret handling (env/secret store; no tokens in git).
-5. Expand venue/product coverage beyond spot Binance/Bybit as needed.
+1. Add paper execution adapter (venue order mutations are already gated; paper fill simulation remains). Live enablement still requires CEO/board approval.
+2. Metrics: queue depth, dispatch lag, reject rates, slippage, inventory, PnL.
+3. Harden secret handling (env/secret store; no tokens in git).
+4. Expand venue/product coverage beyond spot Binance/Bybit as needed.
 ```
