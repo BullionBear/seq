@@ -24,6 +24,10 @@ func unsafeString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
+// errSnapshotDropped is returned when a depth snapshot could not be published
+// because the event bus dropped it under overflow; the caller may retry.
+var errSnapshotDropped = errors.New("bybit: depth snapshot dropped under event bus overflow")
+
 type BybitHTTPClient struct {
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
@@ -123,7 +127,10 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		uint64(askCount)*uint64(event.PriceLevelSize) +
 		uint64(bidCount)*uint64(event.PriceLevelSize)
 
-	offset, buf := c.msgBus.Allocate(size)
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthSnapshot, size)
+	if !ok {
+		return errSnapshotDropped
+	}
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
@@ -143,10 +150,12 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Bybit uses "a" for asks and "b" for bids
 	err = c.parsePriceLevelsInto(jsonData, "\"a\"", asks, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
+		c.msgBus.Cancel(ref)
 		return err
 	}
 	err = c.parsePriceLevelsInto(jsonData, "\"b\"", bids, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
+		c.msgBus.Cancel(ref)
 		return err
 	}
 
@@ -160,14 +169,13 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		Asks:      asks,
 		Bids:      bids,
 	}
-	snapshot.Encode(buf)
+	if err := snapshot.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return err
+	}
 
 	// Publish to event bus
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthSnapshot,
-		Index:  offset,
-		Length: size,
-	})
+	c.msgBus.Publish(ref)
 	return nil
 }
 
@@ -617,7 +625,10 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 
 	// Calculate size and allocate buffer
 	size := uint64(event.RespBalanceSnapshotHeaderSize) + uint64(balanceCount)*uint64(event.BalanceSize)
-	offset, buf := c.msgBus.Allocate(size)
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventRespBalanceSnapshot, size)
+	if !ok {
+		return errors.New("bybit: balance snapshot dropped under event bus overflow")
+	}
 
 	// Write header directly to buffer
 	pos := 0
@@ -638,11 +649,7 @@ func (c *BybitHTTPClient) parseAndPublishBalanceSnapshot(data []byte, accountID 
 	c.parseWalletBalancesInto(coinData, buf[pos:], balanceCount)
 
 	// Publish to event bus
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventRespBalanceSnapshot,
-		Index:  offset,
-		Length: size,
-	})
+	c.msgBus.Publish(ref)
 
 	log().Debug().Int("accountID", accountID).Int("walletID", walletID).Int("balanceCount", balanceCount).Msg("Published balance snapshot")
 	return nil

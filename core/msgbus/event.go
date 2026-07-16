@@ -1,13 +1,28 @@
 package msgbus
 
 import (
+	"github.com/BullionBear/seq/core/mem"
 	"github.com/BullionBear/seq/core/model/event"
 )
 
+// EventRef is a reference to event data stored in the event arena.
+// EventRefs are created by EventBus.Allocate, which also records the arena
+// reservation so the space can be returned after dispatch. Length may be
+// shrunk by the producer before Publish if less data was written than
+// allocated; the full reservation is still released.
 type EventRef struct {
 	Topic  event.Topic
 	Index  uint64 // offset in arena
 	Length uint64 // size of data in bytes
+
+	// Arena reservation range (monotonic), set by Allocate.
+	resStart uint64
+	resEnd   uint64
+}
+
+// reservation reconstructs the arena reservation for release.
+func (r EventRef) reservation() mem.Reservation {
+	return mem.Reservation{Start: r.resStart, End: r.resEnd, Offset: r.Index}
 }
 
 // Event wraps data with metadata. Data is embedded as a value type

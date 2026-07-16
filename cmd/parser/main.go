@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 )
+
+// maxPayloadLen guards against corrupt records claiming absurd payload sizes.
+const maxPayloadLen = 64 << 20 // 64 MB
 
 // jsonRecord is the output structure for each line in the .jsonl file.
 type jsonRecord struct {
@@ -40,16 +41,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Detect file type from filename
-	base := filepath.Base(*inputPath)
-	isEvent := strings.HasPrefix(base, "event_")
-	isCommand := strings.HasPrefix(base, "command_")
-	if !isEvent && !isCommand {
-		fmt.Fprintf(os.Stderr, "Error: filename must start with 'event_' or 'command_' (got %q)\n", base)
-		os.Exit(1)
-	}
-
-	// Open input
 	inFile, err := os.Open(*inputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -57,7 +48,6 @@ func main() {
 	}
 	defer inFile.Close()
 
-	// Open output
 	var out *bufio.Writer
 	if *outputPath != "" {
 		outFile, err := os.Create(*outputPath)
@@ -70,34 +60,64 @@ func main() {
 	} else {
 		out = bufio.NewWriter(os.Stdout)
 	}
-	defer out.Flush()
 
-	reader := bufio.NewReader(inFile)
+	if err := parseFile(inFile, out); err != nil {
+		out.Flush()
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	out.Flush()
+}
+
+// parseFile validates the .dat file header and converts every record to a
+// JSON line on w. Unversioned (pre-schema) files are refused: they predate
+// the format contract and cannot be decoded reliably.
+func parseFile(r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+
+	fileHdr := make([]byte, msgbus.FileHeaderSize)
+	if _, err := io.ReadFull(reader, fileHdr); err != nil {
+		return fmt.Errorf("reading file header: %w", err)
+	}
+	hdr, err := msgbus.DecodeFileHeader(fileHdr)
+	if err != nil {
+		return err
+	}
+	isEvent := hdr.StreamType == msgbus.StreamTypeEvent
+
 	headerBuf := make([]byte, msgbus.RecordHeaderSize)
-	encoder := json.NewEncoder(out)
+	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
 
-	for {
-		// Read header
+	for recordIdx := 0; ; recordIdx++ {
 		if _, err := io.ReadFull(reader, headerBuf); err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				break
+			if err == io.EOF {
+				return nil
 			}
-			fmt.Fprintf(os.Stderr, "Error reading header: %v\n", err)
-			os.Exit(1)
+			if err == io.ErrUnexpectedEOF {
+				return fmt.Errorf("record %d: truncated record header", recordIdx)
+			}
+			return fmt.Errorf("record %d: reading header: %w", recordIdx, err)
 		}
 
-		topicOrType := int32(binary.LittleEndian.Uint32(headerBuf[0:]))
-		seqID := binary.LittleEndian.Uint64(headerBuf[4:])
-		createdAt := binary.LittleEndian.Uint64(headerBuf[12:])
-		payloadLen := binary.LittleEndian.Uint32(headerBuf[20:])
+		schemaVersion := binary.LittleEndian.Uint16(headerBuf[0:])
+		msgType := binary.LittleEndian.Uint16(headerBuf[2:])
+		payloadLen := binary.LittleEndian.Uint32(headerBuf[4:])
+		seqID := binary.LittleEndian.Uint64(headerBuf[8:])
+		createdAt := binary.LittleEndian.Uint64(headerBuf[16:])
 
-		// Read payload
+		if schemaVersion != msgbus.SchemaVersion {
+			return fmt.Errorf("record %d: unsupported record schema version %d (reader supports v%d)",
+				recordIdx, schemaVersion, msgbus.SchemaVersion)
+		}
+		if payloadLen > maxPayloadLen {
+			return fmt.Errorf("record %d: implausible payload length %d", recordIdx, payloadLen)
+		}
+
 		payload := make([]byte, payloadLen)
 		if payloadLen > 0 {
 			if _, err := io.ReadFull(reader, payload); err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading payload: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("record %d: reading payload: %w", recordIdx, err)
 			}
 		}
 
@@ -105,22 +125,31 @@ func main() {
 		rec.CreatedAt = createdAt
 
 		if isEvent {
-			topic := event.Topic(topicOrType)
+			topic := event.Topic(msgType)
 			rec.Topic = topic.String()
 			rec.EventID = seqID
 			rec.Data = decodeEventPayload(topic, payload)
 		} else {
-			cmdType := command.CommandType(topicOrType)
+			cmdType := command.CommandType(msgType)
 			rec.CommandType = cmdType.String()
 			rec.CommandID = seqID
 			rec.Data = decodeCommandPayload(cmdType, payload)
 		}
 
 		if err := encoder.Encode(rec); err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("record %d: encoding JSON: %w", recordIdx, err)
 		}
 	}
+}
+
+// orDecodeErr adapts the (T, error) decoder signature to the any-typed JSON
+// output: decode failures are reported inline in the record instead of
+// aborting the whole file.
+func orDecodeErr[T any](v T, err error) any {
+	if err != nil {
+		return map[string]any{"decode_error": err.Error()}
+	}
+	return v
 }
 
 func decodeEventPayload(topic event.Topic, buf []byte) any {
@@ -130,49 +159,55 @@ func decodeEventPayload(topic event.Topic, buf []byte) any {
 	switch topic {
 	// State events
 	case event.TopicEventAbnormal:
-		return event.NewAbnormalEventFromBytes(buf)
+		return orDecodeErr(event.NewAbnormalEventFromBytes(buf))
 	case event.TopicEventReady:
-		return event.NewReadyEventFromBytes(buf)
+		return orDecodeErr(event.NewReadyEventFromBytes(buf))
 	case event.TopicEventStop:
-		return event.NewStopEventFromBytes(buf)
+		return orDecodeErr(event.NewStopEventFromBytes(buf))
 	case event.TopicEventFinished:
-		return event.NewFinishedEventFromBytes(buf)
+		return orDecodeErr(event.NewFinishedEventFromBytes(buf))
 
 	// Market data
 	case event.TopicEventDepthSnapshot:
-		return event.NewDepthSnapshotFromBytes(buf)
+		return orDecodeErr(event.NewDepthSnapshotFromBytes(buf))
 	case event.TopicEventRespDepthSnapshot:
-		return event.NewRespDepthSnapshotFromBytes(buf)
+		return orDecodeErr(event.NewRespDepthSnapshotFromBytes(buf))
 	case event.TopicEventDepthUpdate:
-		return event.NewDepthUpdateFromBytes(buf)
+		return orDecodeErr(event.NewDepthUpdateFromBytes(buf))
 	case event.TopicEventTick:
-		return event.NewTickFromBytes(buf)
+		return orDecodeErr(event.NewTickFromBytes(buf))
+
+	// Timer
+	case event.TopicEventTimer:
+		return orDecodeErr(event.NewTimeEventFromBytes(buf))
 
 	// Execution data
+	case event.TopicEventOrderNew:
+		return orDecodeErr(event.NewOrderNewFromBytes(buf))
 	case event.TopicEventOrderUnknownStatus:
-		return event.NewOrderUnknownStatusFromBytes(buf)
+		return orDecodeErr(event.NewOrderUnknownStatusFromBytes(buf))
 	case event.TopicEventOrderError:
-		return event.NewOrderErrorFromBytes(buf)
+		return orDecodeErr(event.NewOrderErrorFromBytes(buf))
 	case event.TopicEventOrderRiskInvalid:
-		return event.NewOrderRiskInvalidFromBytes(buf)
+		return orDecodeErr(event.NewOrderRiskInvalidFromBytes(buf))
 	case event.TopicEventOrderAccepted:
-		return event.NewOrderAcceptedFromBytes(buf)
+		return orDecodeErr(event.NewOrderAcceptedFromBytes(buf))
 	case event.TopicEventOrderPartialFill:
-		return event.NewOrderPartiallyFilledFromBytes(buf)
+		return orDecodeErr(event.NewOrderPartiallyFilledFromBytes(buf))
 	case event.TopicEventOrderFilled:
-		return event.NewOrderFilledFromBytes(buf)
+		return orDecodeErr(event.NewOrderFilledFromBytes(buf))
 	case event.TopicEventExecution:
-		return event.NewExecutionFromBytes(buf)
+		return orDecodeErr(event.NewExecutionFromBytes(buf))
 	case event.TopicEventOrderCanceled:
-		return event.NewOrderCanceledFromBytes(buf)
+		return orDecodeErr(event.NewOrderCanceledFromBytes(buf))
 	case event.TopicEventOrderRejected:
-		return event.NewOrderRejectedFromBytes(buf)
+		return orDecodeErr(event.NewOrderRejectedFromBytes(buf))
 
 	// Reconciliation data
 	case event.TopicEventRespBalanceSnapshot:
-		return event.NewRespBalanceSnapshotFromBytes(buf)
+		return orDecodeErr(event.NewRespBalanceSnapshotFromBytes(buf))
 	case event.TopicEventBalanceUpdate:
-		return event.NewBalanceUpdateFromBytes(buf)
+		return orDecodeErr(event.NewBalanceUpdateFromBytes(buf))
 
 	default:
 		return map[string]any{"raw_len": len(buf)}
@@ -185,17 +220,17 @@ func decodeCommandPayload(cmdType command.CommandType, buf []byte) any {
 	}
 	switch cmdType {
 	case command.CommandTypeOrderRiskCheck:
-		return command.NewRiskCheckFromBytes(buf)
+		return orDecodeErr(command.NewRiskCheckFromBytes(buf))
 	case command.CommandTypeOrderSubmit:
-		return command.NewSubmitOrderFromBytes(buf)
+		return orDecodeErr(command.NewSubmitOrderFromBytes(buf))
 	case command.CommandTypeOrderCancel:
-		return command.NewCancelOrderFromBytes(buf)
+		return orDecodeErr(command.NewCancelOrderFromBytes(buf))
 	case command.CommandTypeCancelAll:
-		return command.NewCancelAllFromBytes(buf)
+		return orDecodeErr(command.NewCancelAllFromBytes(buf))
 	case command.CommandTypeQryBalanceSnapshot:
-		return command.NewQryBalanceSnapshotFromBytes(buf)
+		return orDecodeErr(command.NewQryBalanceSnapshotFromBytes(buf))
 	case command.CommandTypeReqDepthSnapshot:
-		return command.NewReqDepthSnapshotFromBytes(buf)
+		return orDecodeErr(command.NewReqDepthSnapshotFromBytes(buf))
 	default:
 		return map[string]any{"raw_len": len(buf)}
 	}

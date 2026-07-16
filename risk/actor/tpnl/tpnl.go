@@ -104,7 +104,10 @@ func (t *Tpnl) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		exec := event.NewExecutionFromBytes(buf)
+		exec, err := event.NewExecutionFromBytes(buf)
+		if err != nil {
+			return
+		}
 		t.onExecution(exec)
 	}
 }

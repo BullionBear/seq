@@ -1,20 +1,9 @@
 package command
 
-import "unsafe"
+import "github.com/BullionBear/seq/core/model/codec"
 
-const sizeOfReqDepthSnapshot = int(unsafe.Sizeof(ReqDepthSnapshot{}))
-
-func (r ReqDepthSnapshot) GetBufferLength() int { return sizeOfReqDepthSnapshot }
-
-func (r ReqDepthSnapshot) Encode(buf []byte) error {
-	if len(buf) < sizeOfReqDepthSnapshot {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfReqDepthSnapshot]byte)(unsafe.Pointer(&r))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewReqDepthSnapshotFromBytes(buf []byte) ReqDepthSnapshot {
-	return *(*ReqDepthSnapshot)(unsafe.Pointer(&buf[0]))
+func (r ReqDepthSnapshot) GetBufferLength() int    { return codec.Size[ReqDepthSnapshot]() }
+func (r ReqDepthSnapshot) Encode(buf []byte) error { return codec.Encode(buf, &r) }
+func NewReqDepthSnapshotFromBytes(buf []byte) (ReqDepthSnapshot, error) {
+	return codec.Decode[ReqDepthSnapshot](buf)
 }

@@ -34,31 +34,59 @@ func (o *OMS) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventOrderNew:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderNew := event.NewOrderNewFromBytes(buf)
+		orderNew, err := event.NewOrderNewFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderNew(orderNew)
 	case event.TopicEventOrderAccepted:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderAccepted := event.NewOrderAcceptedFromBytes(buf)
+		orderAccepted, err := event.NewOrderAcceptedFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderAccepted(orderAccepted)
 	case event.TopicEventOrderPartialFill:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderPartiallyFilled := event.NewOrderPartiallyFilledFromBytes(buf)
+		orderPartiallyFilled, err := event.NewOrderPartiallyFilledFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderPartiallyFilled(orderPartiallyFilled)
 	case event.TopicEventOrderFilled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderFilled := event.NewOrderFilledFromBytes(buf)
+		orderFilled, err := event.NewOrderFilledFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderFilled(orderFilled)
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderCanceled := event.NewOrderCanceledFromBytes(buf)
+		orderCanceled, err := event.NewOrderCanceledFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderCanceled(orderCanceled)
 	case event.TopicEventOrderRejected:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderRejected := event.NewOrderRejectedFromBytes(buf)
+		orderRejected, err := event.NewOrderRejectedFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderRejected(orderRejected)
 	case event.TopicEventOrderRiskInvalid:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderRiskInvalid := event.NewOrderRiskInvalidFromBytes(buf)
+		orderRiskInvalid, err := event.NewOrderRiskInvalidFromBytes(buf)
+		if err != nil {
+			o.Log().Error().Err(err).Msg("OMS: failed to decode event")
+			return
+		}
 		o.OnOrderRiskInvalid(orderRiskInvalid)
 	}
 }

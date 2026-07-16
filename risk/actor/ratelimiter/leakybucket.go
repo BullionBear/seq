@@ -110,7 +110,10 @@ func (lb *LeakyBucket) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 
 	buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-	orderNew := event.NewOrderNewFromBytes(buf)
+	orderNew, err := event.NewOrderNewFromBytes(buf)
+	if err != nil {
+		return
+	}
 
 	if lb.accountID != -1 && orderNew.AccountID != lb.accountID {
 		return

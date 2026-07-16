@@ -109,7 +109,11 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	switch cmd.Ref.CommandType {
 	case command.CommandTypeOrderRiskCheck:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		orderCmd := command.NewRiskCheckFromBytes(buf)
+		orderCmd, err := command.NewRiskCheckFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("RiskEngine: failed to decode command")
+			return
+		}
 		e.execOrderRiskCheck(orderCmd)
 	}
 }
@@ -123,13 +127,15 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 			ErrorCode:     -1,
 			Msg:           err.Error(),
 		}
-		offset, buf := e.msgBus.Allocate(uint64(ev.GetBufferLength()))
-		ev.Encode(buf)
-		e.msgBus.Publish(msgbus.EventRef{
-			Topic:  event.TopicEventOrderRiskInvalid,
-			Index:  offset,
-			Length: uint64(ev.GetBufferLength()),
-		})
+		ref, buf, ok := e.msgBus.Allocate(event.TopicEventOrderRiskInvalid, uint64(ev.GetBufferLength()))
+		if !ok {
+			return
+		}
+		if err := ev.Encode(buf); err != nil {
+			e.msgBus.Cancel(ref)
+			return
+		}
+		e.msgBus.Publish(ref)
 		return
 	}
 
@@ -147,13 +153,15 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
-	offset, buf := e.msgBus.Allocate(uint64(ev.GetBufferLength()))
-	ev.Encode(buf)
-	e.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderNew,
-		Index:  offset,
-		Length: uint64(ev.GetBufferLength()),
-	})
+	ref, buf, ok := e.msgBus.Allocate(event.TopicEventOrderNew, uint64(ev.GetBufferLength()))
+	if !ok {
+		return
+	}
+	if err := ev.Encode(buf); err != nil {
+		e.msgBus.Cancel(ref)
+		return
+	}
+	e.msgBus.Publish(ref)
 	submitCmd := command.SubmitOrder{
 		ClientOrderID: cmd.ClientOrderID,
 		AccountID:     cmd.AccountID,
@@ -164,13 +172,9 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 		Price:         cmd.Price,
 		Quantity:      cmd.Quantity,
 	}
-	offset, buf = e.msgBus.AllocateCmd(uint64(submitCmd.GetBufferLength()))
-	submitCmd.Encode(buf)
-	e.msgBus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeOrderSubmit,
-		Index:       offset,
-		Length:      uint64(submitCmd.GetBufferLength()),
-	})
+	cmdRef, cmdBuf := e.msgBus.AllocateCmd(command.CommandTypeOrderSubmit, uint64(submitCmd.GetBufferLength()))
+	submitCmd.Encode(cmdBuf)
+	e.msgBus.Send(cmdRef)
 }
 
 func (e *Engine) riskCheck(cmd command.RiskCheck) error {

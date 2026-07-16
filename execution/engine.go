@@ -87,15 +87,27 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	switch cmd.Ref.CommandType {
 	case command.CommandTypeOrderSubmit:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		submitCmd := command.NewSubmitOrderFromBytes(buf)
+		submitCmd, err := command.NewSubmitOrderFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("ExecutionEngine: failed to decode command")
+			return
+		}
 		e.execOrderSubmit(submitCmd)
 	case command.CommandTypeOrderCancel:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		cancelCmd := command.NewCancelOrderFromBytes(buf)
+		cancelCmd, err := command.NewCancelOrderFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("ExecutionEngine: failed to decode command")
+			return
+		}
 		e.execOrderCancel(cancelCmd)
 	case command.CommandTypeCancelAll:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		cancelAllCmd := command.NewCancelAllFromBytes(buf)
+		cancelAllCmd, err := command.NewCancelAllFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("ExecutionEngine: failed to decode command")
+			return
+		}
 		e.execOrderCancelAll(cancelAllCmd)
 	}
 }

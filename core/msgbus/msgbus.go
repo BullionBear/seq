@@ -1,6 +1,7 @@
 package msgbus
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/BullionBear/seq/core/logger"
@@ -61,6 +62,11 @@ type MsgBus struct {
 
 	// Optional ticker driven by the dispatch loop (set via SetTicker)
 	ticker Ticker
+
+	// Commands read off the ring with no registered processor. Counted
+	// instead of logged: this fires at command rate on the dispatch loop
+	// (P2-3), and is reported by the observer goroutine.
+	unroutedCmds uint64
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -92,6 +98,12 @@ func (m *MsgBus) SetMsgLogger(l *MsgLogger) {
 	m.eventBus.SetMsgLogger(l)
 }
 
+// SetOverflowDeadline configures how long critical-class event producers wait
+// for ring/arena space before failing hard.
+func (m *MsgBus) SetOverflowDeadline(d time.Duration) {
+	m.eventBus.SetOverflowDeadline(d)
+}
+
 // SetTicker attaches a Ticker (e.g. core/clock.Clock) to the MsgBus.
 // The ticker is driven by the dispatch loop via GetTicker().Tick(nowNs).
 func (m *MsgBus) SetTicker(t Ticker) {
@@ -114,17 +126,40 @@ func (m *MsgBus) Register(name string, topics []event.Topic, handler EventHandle
 	m.eventBus.Register(name, topics, handler)
 }
 
-// Publish publishes an EventRef to the event ring buffer. The caller should have
-// already serialized data into the arena buffer obtained via Allocate.
-// This method is thread-safe and can be called from multiple goroutines.
-func (m *MsgBus) Publish(ref EventRef) {
-	m.eventBus.Publish(ref)
+// Publish publishes an EventRef to the event ring buffer. The caller should
+// have already serialized data into the arena buffer obtained via Allocate.
+// Thread-safe. Returns false only when a droppable-class event was dropped
+// (see EventBus.Publish).
+func (m *MsgBus) Publish(ref EventRef) bool {
+	return m.eventBus.Publish(ref)
 }
 
-// Allocate reserves space in the event arena and returns the offset and a []byte slice
-// for the caller to write data into.
-func (m *MsgBus) Allocate(size uint64) (offset uint64, buffer []byte) {
-	return m.eventBus.Allocate(size)
+// Allocate reserves space in the event arena for an event of the given topic.
+// Returns ok=false only for droppable topics under sustained overflow
+// (see EventBus.Allocate).
+func (m *MsgBus) Allocate(topic event.Topic, size uint64) (EventRef, []byte, bool) {
+	return m.eventBus.Allocate(topic, size)
+}
+
+// Cancel releases an allocated-but-never-published EventRef.
+func (m *MsgBus) Cancel(ref EventRef) {
+	m.eventBus.Cancel(ref)
+}
+
+// DropCount returns the number of dropped events for the given topic.
+func (m *MsgBus) DropCount(topic event.Topic) uint64 {
+	return m.eventBus.DropCount(topic)
+}
+
+// WaitCount returns the number of publish/allocate overflow waits for the given topic.
+func (m *MsgBus) WaitCount(topic event.Topic) uint64 {
+	return m.eventBus.WaitCount(topic)
+}
+
+// UnroutedCommandCount returns the number of commands dispatched with no
+// registered processor.
+func (m *MsgBus) UnroutedCommandCount() uint64 {
+	return atomic.LoadUint64(&m.unroutedCmds)
 }
 
 // ReadBuffer returns a []byte slice from the event arena at the given offset/length
@@ -168,6 +203,10 @@ func (m *MsgBus) RegisterCommand(cmdType command.CommandType, processor CommandP
 
 // Send sends a command to the SPSC command ring buffer.
 // This should only be called from the dispatch thread (single producer).
+//
+// All commands are critical (order submit/cancel, reconciliation requests)
+// and the dispatch thread cannot wait for itself to drain the ring, so a
+// full command ring is a fatal sizing error rather than a silent drop.
 func (m *MsgBus) Send(ref CommandRef) {
 	now := uint64(time.Now().UnixNano())
 	commandID := m.nextCommandID
@@ -177,20 +216,35 @@ func (m *MsgBus) Send(ref CommandRef) {
 		CommandID: commandID,
 		CreatedAt: now,
 	}) {
-		log().Error().
-			Int("cmdType", int(ref.CommandType)).
+		log().Fatal().
+			Str("cmdType", ref.CommandType.String()).
 			Uint64("commandID", commandID).
-			Msg("MsgBus: command ring buffer full, dropping command")
+			Msg("MsgBus: command ring buffer full; commands are critical and cannot be dropped")
 	}
 }
 
-// AllocateCmd reserves space in the command arena and returns the offset and a []byte slice
-// for the caller to write command data into.
-// This should only be called from the dispatch thread (single producer).
-func (m *MsgBus) AllocateCmd(size uint64) (offset uint64, buffer []byte) {
-	offset = m.cmdArena.Reserve(size)
-	buffer = m.cmdArena.GetSlice(offset, size)
-	return offset, buffer
+// AllocateCmd reserves space in the command arena for a command of the given
+// type and returns a fully-populated CommandRef plus the []byte slice to
+// serialize into. This should only be called from the dispatch thread.
+//
+// The dispatch thread is both producer and consumer of the command arena, so
+// exhaustion cannot be waited out — it is a fatal sizing error.
+func (m *MsgBus) AllocateCmd(cmdType command.CommandType, size uint64) (CommandRef, []byte) {
+	res, ok := m.cmdArena.TryReserve(size)
+	if !ok {
+		log().Fatal().
+			Str("cmdType", cmdType.String()).
+			Uint64("size", size).
+			Msg("MsgBus: command arena full; commands are critical and cannot be dropped")
+	}
+	ref := CommandRef{
+		CommandType: cmdType,
+		Index:       res.Offset,
+		Length:      size,
+		resStart:    res.Start,
+		resEnd:      res.End,
+	}
+	return ref, m.cmdArena.GetSlice(res.Offset, size)
 }
 
 // ReadCmdBuffer returns a []byte slice from the command arena at the given offset/length
@@ -222,14 +276,14 @@ func (m *MsgBus) Dispatch() bool {
 			m.msgLogger.LogCommand(cmd, payload)
 		}
 		processor, exists := m.cmdProcessors[cmd.Ref.CommandType]
-		if !exists {
-			log().Warn().
-				Str("cmdType", cmd.Ref.CommandType.String()).
-				Uint64("commandID", cmd.CommandID).
-				Msg("MsgBus: no processor registered for command type")
-			continue
+		if exists {
+			processor(cmd)
+		} else {
+			// Hot path (dispatch loop): counted, not logged (P2-3). The
+			// observer goroutine reports the counter at low cadence.
+			atomic.AddUint64(&m.unroutedCmds, 1)
 		}
-		processor(cmd)
+		m.cmdArena.Release(cmd.Ref.reservation())
 	}
 
 	// Phase 2: Process one event (lower priority)

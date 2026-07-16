@@ -98,15 +98,24 @@ func (o *OBTest) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewDepthSnapshotFromBytes(buf)
+		snapshot, err := event.NewDepthSnapshotFromBytes(buf)
+		if err != nil {
+			return
+		}
 		o.OnDepthSnapshot(snapshot)
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewDepthUpdateFromBytes(buf)
+		update, err := event.NewDepthUpdateFromBytes(buf)
+		if err != nil {
+			return
+		}
 		o.OnDepthUpdate(update)
 	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewRespDepthSnapshotFromBytes(buf)
+		snapshot, err := event.NewRespDepthSnapshotFromBytes(buf)
+		if err != nil {
+			return
+		}
 		o.OnRespDepthSnapshot(snapshot)
 	default:
 		o.Log().Warn().Int("topic", int(ev.Ref.Topic)).Msg("OBTest: Unknown topic")

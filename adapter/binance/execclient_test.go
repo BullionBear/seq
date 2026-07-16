@@ -225,7 +225,10 @@ func TestProcessAccountStatusResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
+	snapshot, err := event.NewRespBalanceSnapshotFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if snapshot.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", snapshot.AccountID)
@@ -291,7 +294,10 @@ func TestProcessOrderResponse(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := event.NewOrderAcceptedFromBytes(buf)
+	orderAccepted, err := event.NewOrderAcceptedFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if orderAccepted.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderAccepted.OrderID)
@@ -337,7 +343,10 @@ func TestProcessOrderResponseCanceled(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderCanceled := event.NewOrderCanceledFromBytes(buf)
+	orderCanceled, err := event.NewOrderCanceledFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if orderCanceled.OrderID != 12345678 {
 		t.Errorf("Expected OrderID 12345678, got %d", orderCanceled.OrderID)
@@ -384,7 +393,10 @@ func TestProcessOutboundAccountPosition(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	balanceUpdate := event.NewBalanceUpdateFromBytes(buf)
+	balanceUpdate, err := event.NewBalanceUpdateFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if balanceUpdate.AccountID != 123 {
 		t.Errorf("Expected AccountID 123, got %d", balanceUpdate.AccountID)
@@ -458,7 +470,10 @@ func TestProcessExecutionReport(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	orderAccepted := event.NewOrderAcceptedFromBytes(buf)
+	orderAccepted, err := event.NewOrderAcceptedFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if orderAccepted.OrderID != 4293153 {
 		t.Errorf("Expected OrderID 4293153, got %d", orderAccepted.OrderID)
@@ -529,7 +544,10 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify OrderPartiallyFilled
 	orderBuf := eb.ReadBuffer(partialFillEvent.Ref.Index, partialFillEvent.Ref.Length)
-	orderPartiallyFilled := event.NewOrderPartiallyFilledFromBytes(orderBuf)
+	orderPartiallyFilled, err := event.NewOrderPartiallyFilledFromBytes(orderBuf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if orderPartiallyFilled.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", orderPartiallyFilled.OrderID)
@@ -541,7 +559,10 @@ func TestProcessExecutionReportWithFill(t *testing.T) {
 
 	// Verify Execution
 	fillBuf := eb.ReadBuffer(fillEvent.Ref.Index, fillEvent.Ref.Length)
-	fill := event.NewExecutionFromBytes(fillBuf)
+	fill, err := event.NewExecutionFromBytes(fillBuf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if fill.OrderID != 4293154 {
 		t.Errorf("Expected OrderID 4293154, got %d", fill.OrderID)
@@ -785,7 +806,10 @@ loop:
 			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventRespBalanceSnapshot {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
+					snapshot, err := event.NewRespBalanceSnapshotFromBytes(buf)
+					if err != nil {
+						t.Fatalf("decode failed: %v", err)
+					}
 					t.Logf("Received balance snapshot: AccountID=%d, Balances=%d",
 						snapshot.AccountID, len(snapshot.Balances))
 					for i, b := range snapshot.Balances {

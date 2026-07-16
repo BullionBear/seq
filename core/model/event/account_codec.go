@@ -4,18 +4,55 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/BullionBear/seq/core/model/codec"
 	"github.com/BullionBear/seq/core/model/common"
 )
+
+// Wire headers for the variable-size balance events. Header sizes are
+// derived from these structs — padding is declared explicitly, not
+// hand-computed. Integer fields are written little-endian; the balance
+// array follows the header as raw common.Balance images.
+type respBalanceSnapshotHeader struct {
+	AccountID   uint64
+	WalletID    uint64
+	BalancesLen uint32
+	_           [4]byte // padding, written as zero
+}
+
+type balanceUpdateHeader struct {
+	AccountID   uint64
+	WalletID    uint64
+	UpdatedAt   uint64
+	BalancesLen uint32
+	_           [4]byte // padding, written as zero
+}
 
 const (
 	BalanceSize = int(unsafe.Sizeof(common.Balance{}))
 
-	// RespBalanceSnapshotHeaderSize is the header: AccountID(8) + WalletID(8) + BalancesLen(4) + padding(4) = 24 bytes
-	RespBalanceSnapshotHeaderSize = 24
+	// RespBalanceSnapshotHeaderSize is the size of respBalanceSnapshotHeader.
+	RespBalanceSnapshotHeaderSize = int(unsafe.Sizeof(respBalanceSnapshotHeader{}))
 
-	// BalanceUpdateHeaderSize is the header: AccountID(8) + WalletID(8) + UpdatedAt(8) + BalancesLen(4) + padding(4) = 32 bytes
-	BalanceUpdateHeaderSize = 32
+	// BalanceUpdateHeaderSize is the size of balanceUpdateHeader.
+	BalanceUpdateHeaderSize = int(unsafe.Sizeof(balanceUpdateHeader{}))
 )
+
+// validBalanceCount checks the header + n*BalanceSize length invariant
+// without integer overflow.
+func validBalanceCount(bufLen, headerSize int, balancesLen uint32) bool {
+	need := uint64(headerSize) + uint64(balancesLen)*uint64(BalanceSize)
+	return uint64(bufLen) >= need
+}
+
+// balanceSlice aliases n Balances starting at base. Arena reservations are
+// 8-byte aligned and both header sizes are multiples of 8, so the cast is
+// aligned.
+func balanceSlice(buf []byte, base, n int) []common.Balance {
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[base])), n)
+}
 
 // ============================================================================
 // RespBalanceSnapshot
@@ -26,55 +63,44 @@ func (r RespBalanceSnapshot) GetBufferLength() int {
 	return RespBalanceSnapshotHeaderSize + len(r.Balances)*BalanceSize
 }
 
-// Encode writes the RespBalanceSnapshot into buf.
-// Layout: [AccountID(8)][WalletID(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Encode writes the RespBalanceSnapshot into buf (layout: respBalanceSnapshotHeader).
 func (r RespBalanceSnapshot) Encode(buf []byte) error {
-	needed := r.GetBufferLength()
-	if len(buf) < needed {
+	if len(buf) < r.GetBufferLength() {
 		return ErrBufferTooSmall
 	}
-	balancesLen := uint32(len(r.Balances))
-	pos := 0
-
-	binary.LittleEndian.PutUint64(buf[pos:], uint64(r.AccountID))
-	pos += 8
-	binary.LittleEndian.PutUint64(buf[pos:], uint64(r.WalletID))
-	pos += 8
-	binary.LittleEndian.PutUint32(buf[pos:], balancesLen)
-	pos += 4
-	binary.LittleEndian.PutUint32(buf[pos:], 0) // padding
-	pos += 4
-
+	c := codec.NewCursor(buf)
+	c.PutUint64(uint64(r.AccountID))
+	c.PutUint64(uint64(r.WalletID))
+	c.PutUint32(uint32(len(r.Balances)))
+	c.PutUint32(0) // padding
 	for i := range r.Balances {
-		balanceBytes := (*[BalanceSize]byte)(unsafe.Pointer(&r.Balances[i]))[:]
-		copy(buf[pos:], balanceBytes)
-		pos += BalanceSize
+		codec.Put(&c, &r.Balances[i])
 	}
-	return nil
+	return c.Err()
 }
 
-// NewRespBalanceSnapshotFromBytes interprets buf as a RespBalanceSnapshot. Zero-copy for slices.
-func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
-	pos := 0
+// NewRespBalanceSnapshotFromBytes interprets buf as a RespBalanceSnapshot.
+// The buffer length is validated against the header-declared balance count
+// before any read. The Balances slice is a zero-copy view into buf and is
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewRespBalanceSnapshotFromBytes(buf []byte) (RespBalanceSnapshot, error) {
+	if len(buf) < RespBalanceSnapshotHeaderSize {
+		return RespBalanceSnapshot{}, ErrBufferTooSmall
+	}
+	accountID := int(binary.LittleEndian.Uint64(buf[unsafe.Offsetof(respBalanceSnapshotHeader{}.AccountID):]))
+	walletID := int(binary.LittleEndian.Uint64(buf[unsafe.Offsetof(respBalanceSnapshotHeader{}.WalletID):]))
+	balancesLen := binary.LittleEndian.Uint32(buf[unsafe.Offsetof(respBalanceSnapshotHeader{}.BalancesLen):])
 
-	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
-	pos += 8
-	walletID := int(binary.LittleEndian.Uint64(buf[pos:]))
-	pos += 8
-	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
-	pos += 4
-	pos += 4 // skip padding
-
-	var balances []common.Balance
-	if balancesLen > 0 {
-		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+	if !validBalanceCount(len(buf), RespBalanceSnapshotHeaderSize, balancesLen) {
+		return RespBalanceSnapshot{}, ErrInvalidBuffer
 	}
 
 	return RespBalanceSnapshot{
 		AccountID: accountID,
 		WalletID:  walletID,
-		Balances:  balances,
-	}
+		Balances:  balanceSlice(buf, RespBalanceSnapshotHeaderSize, int(balancesLen)),
+	}, nil
 }
 
 // ============================================================================
@@ -86,58 +112,45 @@ func (b BalanceUpdate) GetBufferLength() int {
 	return BalanceUpdateHeaderSize + len(b.Balances)*BalanceSize
 }
 
-// Encode writes the BalanceUpdate into buf.
-// Layout: [AccountID(8)][WalletID(8)][UpdatedAt(8)][BalancesLen(4)][Padding(4)][Balances...]
+// Encode writes the BalanceUpdate into buf (layout: balanceUpdateHeader).
 func (b BalanceUpdate) Encode(buf []byte) error {
-	needed := b.GetBufferLength()
-	if len(buf) < needed {
+	if len(buf) < b.GetBufferLength() {
 		return ErrBufferTooSmall
 	}
-	balancesLen := uint32(len(b.Balances))
-	pos := 0
-
-	binary.LittleEndian.PutUint64(buf[pos:], uint64(b.AccountID))
-	pos += 8
-	binary.LittleEndian.PutUint64(buf[pos:], uint64(b.WalletID))
-	pos += 8
-	binary.LittleEndian.PutUint64(buf[pos:], b.UpdatedAt)
-	pos += 8
-	binary.LittleEndian.PutUint32(buf[pos:], balancesLen)
-	pos += 4
-	binary.LittleEndian.PutUint32(buf[pos:], 0) // padding
-	pos += 4
-
+	c := codec.NewCursor(buf)
+	c.PutUint64(uint64(b.AccountID))
+	c.PutUint64(uint64(b.WalletID))
+	c.PutUint64(b.UpdatedAt)
+	c.PutUint32(uint32(len(b.Balances)))
+	c.PutUint32(0) // padding
 	for i := range b.Balances {
-		balanceBytes := (*[BalanceSize]byte)(unsafe.Pointer(&b.Balances[i]))[:]
-		copy(buf[pos:], balanceBytes)
-		pos += BalanceSize
+		codec.Put(&c, &b.Balances[i])
 	}
-	return nil
+	return c.Err()
 }
 
-// NewBalanceUpdateFromBytes interprets buf as a BalanceUpdate. Zero-copy for slices.
-func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
-	pos := 0
+// NewBalanceUpdateFromBytes interprets buf as a BalanceUpdate.
+// The buffer length is validated against the header-declared balance count
+// before any read. The Balances slice is a zero-copy view into buf and is
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewBalanceUpdateFromBytes(buf []byte) (BalanceUpdate, error) {
+	if len(buf) < BalanceUpdateHeaderSize {
+		return BalanceUpdate{}, ErrBufferTooSmall
+	}
+	accountID := int(binary.LittleEndian.Uint64(buf[unsafe.Offsetof(balanceUpdateHeader{}.AccountID):]))
+	walletID := int(binary.LittleEndian.Uint64(buf[unsafe.Offsetof(balanceUpdateHeader{}.WalletID):]))
+	updatedAt := binary.LittleEndian.Uint64(buf[unsafe.Offsetof(balanceUpdateHeader{}.UpdatedAt):])
+	balancesLen := binary.LittleEndian.Uint32(buf[unsafe.Offsetof(balanceUpdateHeader{}.BalancesLen):])
 
-	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
-	pos += 8
-	walletID := int(binary.LittleEndian.Uint64(buf[pos:]))
-	pos += 8
-	updatedAt := binary.LittleEndian.Uint64(buf[pos:])
-	pos += 8
-	balancesLen := binary.LittleEndian.Uint32(buf[pos:])
-	pos += 4
-	pos += 4 // skip padding
-
-	var balances []common.Balance
-	if balancesLen > 0 {
-		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
+	if !validBalanceCount(len(buf), BalanceUpdateHeaderSize, balancesLen) {
+		return BalanceUpdate{}, ErrInvalidBuffer
 	}
 
 	return BalanceUpdate{
 		AccountID: accountID,
 		WalletID:  walletID,
-		Balances:  balances,
+		Balances:  balanceSlice(buf, BalanceUpdateHeaderSize, int(balancesLen)),
 		UpdatedAt: updatedAt,
-	}
+	}, nil
 }

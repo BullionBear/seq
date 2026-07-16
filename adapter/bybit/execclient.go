@@ -537,13 +537,15 @@ func (c *BybitPrivateStreamClient) processExecutionItem(data []byte) {
 	}
 
 	size := uint64(fill.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	fill.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventExecution,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventExecution, size)
+	if !ok {
+		return
+	}
+	if err := fill.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 
 	log().Debug().
 		Int("accountID", c.accountID).
@@ -620,13 +622,15 @@ func (c *BybitPrivateStreamClient) processWalletItem(data []byte) {
 	}
 
 	size := uint64(balanceUpdate.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	balanceUpdate.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventBalanceUpdate,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventBalanceUpdate, size)
+	if !ok {
+		return
+	}
+	if err := balanceUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 
 	log().Debug().
 		Int("accountID", c.accountID).
@@ -644,13 +648,15 @@ func (c *BybitPrivateStreamClient) publishOrderAccepted(clientOrderID, orderID i
 		CreatedAt:     createdAt,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderAccepted,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderAccepted, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // publishOrderPartiallyFilled publishes an OrderPartiallyFilled event
@@ -663,13 +669,15 @@ func (c *BybitPrivateStreamClient) publishOrderPartiallyFilled(clientOrderID, or
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderPartialFill,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderPartialFill, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // publishOrderFilled publishes an OrderFilled event
@@ -682,13 +690,15 @@ func (c *BybitPrivateStreamClient) publishOrderFilled(clientOrderID, orderID int
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderFilled,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderFilled, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // publishOrderCanceled publishes an OrderCanceled event
@@ -701,13 +711,15 @@ func (c *BybitPrivateStreamClient) publishOrderCanceled(clientOrderID, orderID i
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderCanceled,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderCanceled, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // publishOrderRejected publishes an OrderRejected event.
@@ -722,13 +734,15 @@ func (c *BybitPrivateStreamClient) publishOrderRejected(clientOrderID, orderID i
 		Msg:           reason,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderRejected,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderRejected, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // publishOrderUnknownStatus publishes an OrderUnknownStatus event
@@ -740,13 +754,15 @@ func (c *BybitPrivateStreamClient) publishOrderUnknownStatus(clientOrderID, orde
 		Msg:           status,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderUnknownStatus,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderUnknownStatus, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // getTokenID gets the token ID from the catalog by asset name
@@ -1356,13 +1372,15 @@ func (c *BybitOrderEntryClient) processOpResponse(op string, data []byte) {
 					UpdatedAt:     uint64(time.Now().UnixNano()),
 					Msg:           retMsg,
 				}
-				offset, buf := c.msgBus.Allocate(uint64(ev.GetBufferLength()))
-				ev.Encode(buf)
-				c.msgBus.Publish(msgbus.EventRef{
-					Topic:  event.TopicEventOrderRejected,
-					Index:  offset,
-					Length: uint64(ev.GetBufferLength()),
-				})
+				ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderRejected, uint64(ev.GetBufferLength()))
+				if !ok {
+					return
+				}
+				if err := ev.Encode(buf); err != nil {
+					c.msgBus.Cancel(ref)
+					return
+				}
+				c.msgBus.Publish(ref)
 			}
 
 			if found && op == "order.cancel" {
@@ -1381,13 +1399,15 @@ func (c *BybitOrderEntryClient) publishOrderCanceled(clientOrderID, orderID, err
 		UpdatedAt:     updatedAt,
 	}
 	size := uint64(e.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	e.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventOrderCanceled,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventOrderCanceled, size)
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // wsOrderEntryHandler implements gws.Event interface for order entry WebSocket

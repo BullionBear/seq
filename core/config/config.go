@@ -8,6 +8,7 @@ import (
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/telemetry"
 	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 	"gopkg.in/yaml.v3"
@@ -24,6 +25,11 @@ type AppConfig struct {
 	ExecRouter  []adapter.ExecRouterEntry `yaml:"execrouter"`
 	DataRouter  []adapter.DataRouterEntry `yaml:"datarouter"`
 	Node        node.Config               `yaml:"node"`
+	// Runtime fences the Go runtime (GC off + memory limit, GOMAXPROCS);
+	// see docs/DEPLOYMENT.md.
+	Runtime telemetry.RuntimeConfig `yaml:"runtime"`
+	// Metrics enables the /metrics + /gc HTTP endpoints.
+	Metrics telemetry.MetricsConfig `yaml:"metrics"`
 }
 
 // LoadConfig loads configuration from a YAML file.

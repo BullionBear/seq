@@ -1,92 +1,35 @@
 package command
 
-import (
-	"errors"
-	"unsafe"
-)
+import "github.com/BullionBear/seq/core/model/codec"
 
-// ErrBufferTooSmall is returned when the provided buffer is too small for encoding.
-var ErrBufferTooSmall = errors.New("buffer too small")
+// ErrBufferTooSmall is returned when the provided buffer is too small for
+// encoding or decoding. It is the same error value as codec.ErrBufferTooSmall
+// so identity comparisons work across packages.
+var ErrBufferTooSmall = codec.ErrBufferTooSmall
 
-const (
-	sizeOfRiskCheck   = int(unsafe.Sizeof(RiskCheck{}))
-	sizeOfSubmitOrder = int(unsafe.Sizeof(SubmitOrder{}))
-	sizeOfCancelOrder = int(unsafe.Sizeof(CancelOrder{}))
-	sizeOfCancelAll   = int(unsafe.Sizeof(CancelAll{}))
-)
+// Order command codecs, delegated to the generic bounds-checked memcpy pair
+// in core/model/codec. Layout is guarded in codec/guard_test.go.
 
-// ============================================================================
-// RiskCheck
-// ============================================================================
-
-func (r RiskCheck) GetBufferLength() int { return sizeOfRiskCheck }
-
-func (r RiskCheck) Encode(buf []byte) error {
-	if len(buf) < sizeOfRiskCheck {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfRiskCheck]byte)(unsafe.Pointer(&r))[:]
-	copy(buf, data)
-	return nil
+func (r RiskCheck) GetBufferLength() int    { return codec.Size[RiskCheck]() }
+func (r RiskCheck) Encode(buf []byte) error { return codec.Encode(buf, &r) }
+func NewRiskCheckFromBytes(buf []byte) (RiskCheck, error) {
+	return codec.Decode[RiskCheck](buf)
 }
 
-func NewRiskCheckFromBytes(buf []byte) RiskCheck {
-	return *(*RiskCheck)(unsafe.Pointer(&buf[0]))
+func (s SubmitOrder) GetBufferLength() int    { return codec.Size[SubmitOrder]() }
+func (s SubmitOrder) Encode(buf []byte) error { return codec.Encode(buf, &s) }
+func NewSubmitOrderFromBytes(buf []byte) (SubmitOrder, error) {
+	return codec.Decode[SubmitOrder](buf)
 }
 
-// ============================================================================
-// SubmitOrder
-// ============================================================================
-
-func (s SubmitOrder) GetBufferLength() int { return sizeOfSubmitOrder }
-
-func (s SubmitOrder) Encode(buf []byte) error {
-	if len(buf) < sizeOfSubmitOrder {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfSubmitOrder]byte)(unsafe.Pointer(&s))[:]
-	copy(buf, data)
-	return nil
+func (c CancelOrder) GetBufferLength() int    { return codec.Size[CancelOrder]() }
+func (c CancelOrder) Encode(buf []byte) error { return codec.Encode(buf, &c) }
+func NewCancelOrderFromBytes(buf []byte) (CancelOrder, error) {
+	return codec.Decode[CancelOrder](buf)
 }
 
-func NewSubmitOrderFromBytes(buf []byte) SubmitOrder {
-	return *(*SubmitOrder)(unsafe.Pointer(&buf[0]))
-}
-
-// ============================================================================
-// CancelOrder
-// ============================================================================
-
-func (c CancelOrder) GetBufferLength() int { return sizeOfCancelOrder }
-
-func (c CancelOrder) Encode(buf []byte) error {
-	if len(buf) < sizeOfCancelOrder {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfCancelOrder]byte)(unsafe.Pointer(&c))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewCancelOrderFromBytes(buf []byte) CancelOrder {
-	return *(*CancelOrder)(unsafe.Pointer(&buf[0]))
-}
-
-// ============================================================================
-// CancelAll
-// ============================================================================
-
-func (c CancelAll) GetBufferLength() int { return sizeOfCancelAll }
-
-func (c CancelAll) Encode(buf []byte) error {
-	if len(buf) < sizeOfCancelAll {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfCancelAll]byte)(unsafe.Pointer(&c))[:]
-	copy(buf, data)
-	return nil
-}
-
-func NewCancelAllFromBytes(buf []byte) CancelAll {
-	return *(*CancelAll)(unsafe.Pointer(&buf[0]))
+func (c CancelAll) GetBufferLength() int    { return codec.Size[CancelAll]() }
+func (c CancelAll) Encode(buf []byte) error { return codec.Encode(buf, &c) }
+func NewCancelAllFromBytes(buf []byte) (CancelAll, error) {
+	return codec.Decode[CancelAll](buf)
 }

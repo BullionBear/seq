@@ -92,26 +92,50 @@ func (sb *SymbolBook) reset() {
 	sb.lastUpdated = 0
 }
 
-// loadSnapshot loads a full snapshot (clears and rebuilds).
-func (sb *SymbolBook) loadSnapshot(depthID int, timestamp uint64, bids, asks []common.PriceLevel) {
+// loadSnapshot loads a full snapshot (clears and rebuilds), iterating the
+// encoded buffer through the flyweight view — no slice materialization.
+func (sb *SymbolBook) loadSnapshot(v event.DepthSnapshotView) {
 	sb.bids = btree.Map[int, common.PriceLevel]{}
 	sb.asks = btree.Map[int, common.PriceLevel]{}
-	for _, pl := range bids {
+	for i, n := 0, v.NumBids(); i < n; i++ {
+		pl := v.Bid(i)
 		if pl.QuantityTick != 0 {
 			sb.bids.Set(pl.PriceTick, pl)
 		}
 	}
-	for _, pl := range asks {
+	for i, n := 0, v.NumAsks(); i < n; i++ {
+		pl := v.Ask(i)
 		if pl.QuantityTick != 0 {
 			sb.asks.Set(pl.PriceTick, pl)
 		}
 	}
-	sb.depthID = depthID
-	sb.lastUpdated = timestamp
+	sb.depthID = v.DepthID()
+	sb.lastUpdated = v.Timestamp()
 }
 
-// applyLevels applies incremental level updates.
-// QuantityTick==0 means the level should be deleted.
+// applyLevelsView applies incremental level updates straight from the
+// encoded buffer. QuantityTick==0 means the level should be deleted.
+func (sb *SymbolBook) applyLevelsView(v event.DepthUpdateView) {
+	for i, n := 0, v.NumBids(); i < n; i++ {
+		pl := v.Bid(i)
+		if pl.QuantityTick != 0 {
+			sb.bids.Set(pl.PriceTick, pl)
+		} else {
+			sb.bids.Delete(pl.PriceTick)
+		}
+	}
+	for i, n := 0, v.NumAsks(); i < n; i++ {
+		pl := v.Ask(i)
+		if pl.QuantityTick != 0 {
+			sb.asks.Set(pl.PriceTick, pl)
+		} else {
+			sb.asks.Delete(pl.PriceTick)
+		}
+	}
+}
+
+// applyLevels applies incremental level updates from owned slices
+// (buffered updates). QuantityTick==0 means the level should be deleted.
 func (sb *SymbolBook) applyLevels(bids, asks []common.PriceLevel) {
 	for _, pl := range bids {
 		if pl.QuantityTick != 0 {
@@ -169,50 +193,25 @@ func (sb *SymbolBook) requestSnapshot(bus *msgbus.MsgBus) {
 	sb.snapshotPending = true
 
 	req := command.ReqDepthSnapshot{SymbolID: sb.symbolID}
-	size := uint64(req.GetBufferLength())
-	offset, buf := bus.AllocateCmd(size)
+	ref, buf := bus.AllocateCmd(command.CommandTypeReqDepthSnapshot, uint64(req.GetBufferLength()))
 	req.Encode(buf)
-	bus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeReqDepthSnapshot,
-		Index:       offset,
-		Length:      size,
-	})
+	bus.Send(ref)
 
 	sb.log.Debug().Int("symbolID", sb.symbolID).Msg("SymbolBook: requested depth snapshot")
 }
 
-// onDepthSnapshot handles a depth snapshot event (from WS).
-func (sb *SymbolBook) onDepthSnapshot(snapshot event.DepthSnapshot, c *cache.Cache) {
+// onDepthSnapshot handles a depth snapshot event (WS DepthSnapshot and HTTP
+// RespDepthSnapshot share the same wire layout, hence the same view).
+func (sb *SymbolBook) onDepthSnapshot(snapshot event.DepthSnapshotView, c *cache.Cache) {
 	sb.log.Info().
 		Int("symbolID", sb.symbolID).
-		Int("snapshotDepthID", snapshot.DepthID).
-		Int("bids", len(snapshot.Bids)).
-		Int("asks", len(snapshot.Asks)).
+		Int("snapshotDepthID", snapshot.DepthID()).
+		Int("bids", snapshot.NumBids()).
+		Int("asks", snapshot.NumAsks()).
 		Str("prevState", sb.state.String()).
 		Msg("SymbolBook: Processing DepthSnapshot")
 
-	sb.loadSnapshot(snapshot.DepthID, snapshot.Timestamp, snapshot.Bids, snapshot.Asks)
-	sb.snapshotPending = false
-
-	// Transition to Updating to process buffered updates
-	sb.state = common.BookStateUpdating
-	sb.processBufferedUpdates(c)
-
-	// Full sync after snapshot
-	sb.syncToCache(c)
-}
-
-// onRespDepthSnapshot handles an HTTP response snapshot.
-func (sb *SymbolBook) onRespDepthSnapshot(resp event.RespDepthSnapshot, c *cache.Cache) {
-	sb.log.Info().
-		Int("symbolID", sb.symbolID).
-		Int("snapshotDepthID", resp.DepthID).
-		Int("bids", len(resp.Bids)).
-		Int("asks", len(resp.Asks)).
-		Str("prevState", sb.state.String()).
-		Msg("SymbolBook: Processing RespDepthSnapshot")
-
-	sb.loadSnapshot(resp.DepthID, resp.Timestamp, resp.Bids, resp.Asks)
+	sb.loadSnapshot(snapshot)
 	sb.snapshotPending = false
 
 	// Transition to Updating to process buffered updates
@@ -224,14 +223,14 @@ func (sb *SymbolBook) onRespDepthSnapshot(resp event.RespDepthSnapshot, c *cache
 }
 
 // onDepthUpdate handles a depth update event.
-func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bus *msgbus.MsgBus) {
+func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdateView, c *cache.Cache, bus *msgbus.MsgBus) {
 	switch sb.state {
 	case common.BookStateWaitForSnapshot:
 		// Buffer the update for later processing
 		sb.bufferUpdate(update)
 		sb.log.Debug().
 			Int("symbolID", sb.symbolID).
-			Int("depthID", update.DepthID).
+			Int("depthID", update.DepthID()).
 			Uint64("buffered", sb.updateBuffer.Count()).
 			Msg("SymbolBook: Buffered update (waiting for snapshot)")
 
@@ -246,34 +245,38 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 		sb.syncToCache(c)
 
 	case common.BookStateReady:
-		if update.PreviousDepthID <= sb.depthID && update.CurrentDepthID > sb.depthID {
-			// Apply the update
-			sb.applyLevels(update.Bids, update.Asks)
-			sb.depthID = update.CurrentDepthID
-			sb.lastUpdated = update.Timestamp
+		prevDepthID := update.PreviousDepthID()
+		finalDepthID := update.CurrentDepthID()
+		if prevDepthID <= sb.depthID && finalDepthID > sb.depthID {
+			// Apply the update straight from the view
+			sb.applyLevelsView(update)
+			sb.depthID = finalDepthID
+			sb.lastUpdated = update.Timestamp()
 			sb.log.Debug().
 				Int("symbolID", sb.symbolID).
-				Int("prevDepthID", update.PreviousDepthID).
+				Int("prevDepthID", prevDepthID).
 				Int("bookDepthID", sb.depthID).
-				Int("updateFinalDepthID", update.CurrentDepthID).
+				Int("updateFinalDepthID", finalDepthID).
 				Msg("SymbolBook: Applied update")
-			// Incremental sync to cache
-			sb.applySyncToCache(c, update.Bids, update.Asks)
-		} else if update.CurrentDepthID <= sb.depthID {
+			// Incremental sync to cache. The slices alias the event buffer,
+			// which is valid for the duration of this handler; the cache
+			// copies the levels into its own btree.
+			sb.applySyncToCache(c, update.Bids(), update.Asks())
+		} else if finalDepthID <= sb.depthID {
 			// Stale update - ignore
 			sb.log.Debug().
 				Int("symbolID", sb.symbolID).
 				Int("bookDepthID", sb.depthID).
-				Int("updateFinalDepthID", update.CurrentDepthID).
+				Int("updateFinalDepthID", finalDepthID).
 				Msg("SymbolBook: Ignoring stale update")
 		} else {
 			// Gap detected - reset
-			gap := update.PreviousDepthID - sb.depthID
+			gap := prevDepthID - sb.depthID
 			sb.log.Warn().
 				Int("symbolID", sb.symbolID).
 				Int("bookDepthID", sb.depthID).
-				Int("updatePrevDepthID", update.PreviousDepthID).
-				Int("updateFinalDepthID", update.CurrentDepthID).
+				Int("updatePrevDepthID", prevDepthID).
+				Int("updateFinalDepthID", finalDepthID).
 				Int("missedDepthIDs", gap).
 				Msg("SymbolBook: Data loss detected, resetting to WaitForSnapshot")
 			sb.reset()
@@ -282,21 +285,33 @@ func (sb *SymbolBook) onDepthUpdate(update event.DepthUpdate, c *cache.Cache, bu
 	}
 }
 
-// bufferUpdate adds an update to the ring buffer.
-func (sb *SymbolBook) bufferUpdate(update event.DepthUpdate) {
+// bufferUpdate adds an update to the ring buffer. The buffered update
+// outlives this dispatch handler, so the levels are copied out of the event
+// buffer into owned slices — they must not alias the arena.
+func (sb *SymbolBook) bufferUpdate(update event.DepthUpdateView) {
 	buffered := DepthUpdateBuffer{
-		PreviousDepthID: update.PreviousDepthID,
-		FirstDepthID:    update.DepthID,
-		FinalDepthID:    update.CurrentDepthID,
-		Timestamp:       update.Timestamp,
-		Bids:            update.Bids,
-		Asks:            update.Asks,
+		PreviousDepthID: update.PreviousDepthID(),
+		FirstDepthID:    update.DepthID(),
+		FinalDepthID:    update.CurrentDepthID(),
+		Timestamp:       update.Timestamp(),
+		Bids:            copyLevels(update.Bids()),
+		Asks:            copyLevels(update.Asks()),
 	}
 	if !sb.updateBuffer.Write(buffered) {
 		sb.log.Warn().
 			Int("symbolID", sb.symbolID).
 			Msg("SymbolBook: Update buffer full, dropping update")
 	}
+}
+
+// copyLevels copies price levels out of an event buffer into an owned slice.
+func copyLevels(src []common.PriceLevel) []common.PriceLevel {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]common.PriceLevel, len(src))
+	copy(out, src)
+	return out
 }
 
 // processBufferedUpdates drains applicable buffered updates.
@@ -379,41 +394,38 @@ func (a *Actor) RegisterSymbol(symbolID, pricePrecision, sizePrecision int) {
 func (a *Actor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 
 	switch ev.Ref.Topic {
-	case event.TopicEventDepthSnapshot:
+	case event.TopicEventDepthSnapshot, event.TopicEventRespDepthSnapshot:
+		// Both topics share the snapshot wire layout; iterate the flyweight
+		// view directly instead of materializing a DepthSnapshot struct.
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewDepthSnapshotFromBytes(buf)
+		snapshot, err := event.NewDepthSnapshotView(buf)
+		if err != nil {
+			a.Log().Error().Err(err).Msg("OrderbookActor: failed to decode event")
+			return
+		}
 		a.onDepthSnapshot(snapshot)
-
-	case event.TopicEventRespDepthSnapshot:
-		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		resp := event.NewRespDepthSnapshotFromBytes(buf)
-		a.onRespDepthSnapshot(resp)
 
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewDepthUpdateFromBytes(buf)
+		update, err := event.NewDepthUpdateView(buf)
+		if err != nil {
+			a.Log().Error().Err(err).Msg("OrderbookActor: failed to decode event")
+			return
+		}
 		a.onDepthUpdate(update, bus)
 	}
 }
 
-func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshot) {
-	book, exists := a.books[snapshot.SymbolID]
+func (a *Actor) onDepthSnapshot(snapshot event.DepthSnapshotView) {
+	book, exists := a.books[snapshot.SymbolID()]
 	if !exists {
 		return
 	}
 	book.onDepthSnapshot(snapshot, a.cache)
 }
 
-func (a *Actor) onRespDepthSnapshot(resp event.RespDepthSnapshot) {
-	book, exists := a.books[resp.SymbolID]
-	if !exists {
-		return
-	}
-	book.onRespDepthSnapshot(resp, a.cache)
-}
-
-func (a *Actor) onDepthUpdate(update event.DepthUpdate, bus *msgbus.MsgBus) {
-	book, exists := a.books[update.SymbolID]
+func (a *Actor) onDepthUpdate(update event.DepthUpdateView, bus *msgbus.MsgBus) {
+	book, exists := a.books[update.SymbolID()]
 	if !exists {
 		return
 	}

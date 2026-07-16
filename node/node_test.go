@@ -178,15 +178,14 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	}
 
 	bufLen := uint64(fakeSnapshot.GetBufferLength())
-	offset, buf := bus.Allocate(bufLen)
+	ref, buf, ok := bus.Allocate(event.TopicEventRespBalanceSnapshot, bufLen)
+	if !ok {
+		t.Fatal("Failed to allocate arena space for snapshot")
+	}
 	if err := fakeSnapshot.Encode(buf); err != nil {
 		t.Fatalf("Failed to encode snapshot: %v", err)
 	}
-	bus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventRespBalanceSnapshot,
-		Index:  offset,
-		Length: bufLen,
-	})
+	bus.Publish(ref)
 
 	for i := 0; i < 100; i++ {
 		hasWork := bus.Dispatch()

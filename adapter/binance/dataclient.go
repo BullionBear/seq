@@ -3,6 +3,7 @@ package binance
 import (
 	"bytes"
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -33,6 +35,30 @@ const (
 	streamAggTrade = "aggTrade"
 )
 
+// Byte constants for allocation-free message dispatch (P2-2): event types and
+// stream-name fragments are compared as []byte, never converted to string.
+var (
+	bytesEventDepthUpdate = []byte("depthUpdate")
+	bytesEventTrade       = []byte("trade")
+	bytesEventAggTrade    = []byte("aggTrade")
+	bytesStreamDepth      = []byte("depth")
+	bytesStreamTrade      = []byte("trade")
+)
+
+// symbolPrecision caches per-symbol tick multipliers so the per-message path
+// needs neither a catalog lookup (which allocates) nor math.Pow.
+type symbolPrecision struct {
+	priceMul float64 // 10^PricePrecision
+	sizeMul  float64 // 10^SizePrecision
+}
+
+func newSymbolPrecision(pricePrecision, sizePrecision int) symbolPrecision {
+	return symbolPrecision{
+		priceMul: math.Pow(10, float64(pricePrecision)),
+		sizeMul:  math.Pow(10, float64(sizePrecision)),
+	}
+}
+
 // BinanceSpotDataClient handles Binance spot market data via WebSocket and HTTP
 // It provides a unified interface for both real-time streaming data (WebSocket)
 // and on-demand requests (HTTP REST API)
@@ -54,7 +80,19 @@ type BinanceSpotDataClient struct {
 
 	// Stream to symbolID mapping for fast lookup during message processing
 	streamToSymbol map[string]int // "btcusdt@depth@100ms" -> symbolID
-	streamMapLock  sync.RWMutex
+	// Symbol name as sent by Binance ("BTCUSDT") -> symbolID, for
+	// single-stream dispatch without building stream-name strings.
+	symbolToID map[string]int
+	// symbolID -> cached tick multipliers for the per-message parse path.
+	precisions    map[int]symbolPrecision
+	streamMapLock sync.RWMutex // guards streamToSymbol, symbolToID, precisions
+
+	// Scratch price-level buffers reused across depth messages (grow-only,
+	// high-water sized). Safe without locking: a client owns one WebSocket
+	// connection and gws delivers its frames sequentially on the ReadLoop
+	// goroutine (ParallelEnabled is off).
+	scratchBids []common.PriceLevel
+	scratchAsks []common.PriceLevel
 
 	// Connection state
 	connected  atomic.Bool
@@ -79,6 +117,8 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:      make(map[int]*TradeSubscriptionOptions, 64),
 		streamToSymbol: make(map[string]int, 128),
+		symbolToID:     make(map[string]int, 128),
+		precisions:     make(map[int]symbolPrecision, 128),
 	}
 }
 
@@ -218,10 +258,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 		}
 		streamName := strings.ToLower(symbol.Name) + "@" + opts.PushRate.StreamSuffix()
 		streams = append(streams, streamName)
-
-		c.streamMapLock.Lock()
-		c.streamToSymbol[streamName] = symbolID
-		c.streamMapLock.Unlock()
+		c.registerStream(streamName, symbol)
 	}
 
 	for symbolID, opts := range c.tradeSubs {
@@ -236,13 +273,21 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 		}
 		streamName := strings.ToLower(symbol.Name) + "@" + stream
 		streams = append(streams, streamName)
-
-		c.streamMapLock.Lock()
-		c.streamToSymbol[streamName] = symbolID
-		c.streamMapLock.Unlock()
+		c.registerStream(streamName, symbol)
 	}
 
 	return streams
+}
+
+// registerStream records the stream -> symbol mapping plus the lookups the
+// hot parse path needs: symbol name -> ID (single-stream dispatch) and
+// symbolID -> tick multipliers.
+func (c *BinanceSpotDataClient) registerStream(streamName string, symbol *cpanel.Symbol) {
+	c.streamMapLock.Lock()
+	c.streamToSymbol[streamName] = symbol.ID
+	c.symbolToID[symbol.Name] = symbol.ID
+	c.precisions[symbol.ID] = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)
+	c.streamMapLock.Unlock()
 }
 
 // buildStreamURL builds the combined stream WebSocket URL
@@ -265,7 +310,8 @@ func (c *BinanceSpotDataClient) subscribeToStream(symbolID int, streamType strin
 	}
 
 	streamName := strings.ToLower(symbol.Name) + "@" + streamType
-	c.sendSubscription(symbolID, streamName)
+	c.registerStream(streamName, symbol)
+	c.sendSubscription(streamName)
 }
 
 // subscribeToDepthStream sends a subscription message for depth stream with specified push rate
@@ -277,15 +323,13 @@ func (c *BinanceSpotDataClient) subscribeToDepthStream(symbolID int, pushRate Pu
 	}
 
 	streamName := strings.ToLower(symbol.Name) + "@" + pushRate.StreamSuffix()
-	c.sendSubscription(symbolID, streamName)
+	c.registerStream(streamName, symbol)
+	c.sendSubscription(streamName)
 }
 
 // sendSubscription sends a subscription message for a stream name
-func (c *BinanceSpotDataClient) sendSubscription(symbolID int, streamName string) {
-	c.streamMapLock.Lock()
-	c.streamToSymbol[streamName] = symbolID
-	c.streamMapLock.Unlock()
-
+// (the stream must already be registered via registerStream).
+func (c *BinanceSpotDataClient) sendSubscription(streamName string) {
 	// Build subscription message
 	c.msgBuffer.Reset()
 	c.msgBuffer.WriteString(`{"method":"SUBSCRIBE","params":["`)
@@ -349,15 +393,23 @@ func (c *BinanceSpotDataClient) handleDisconnect() {
 	}
 }
 
-// processMessage processes a raw WebSocket message using jsonparser
+// processMessage processes a raw WebSocket message using jsonparser.
+//
+// P2-2 contract: all field extraction stays on []byte subslices of the
+// connection read buffer — no string conversions, no per-message
+// allocations. Symbol resolution goes through map[string]T lookups keyed
+// with string(b) (compiler-optimized, non-allocating); only integer IDs
+// cross into the arena. Nothing derived from data may be retained past
+// this call (P2-1 buffer lifetime contract).
 func (c *BinanceSpotDataClient) processMessage(data []byte) {
 	// Check if this is a combined stream message (has "stream" field)
-	stream, err := jsonparser.GetString(data, "stream")
+	stream, _, _, err := jsonparser.Get(data, "stream")
 	if err == nil {
 		// Combined stream format: {"stream":"...","data":{...}}
 		msgData, _, _, err := jsonparser.Get(data, "data")
 		if err != nil {
-			log().Error().Err(err).Msg("Failed to get data field from combined stream message")
+			// Per-message path: Debug only (P2-3); disabled at production level.
+			log().Debug().Err(err).Msg("Failed to get data field from combined stream message")
 			return
 		}
 		c.processStreamMessage(stream, msgData)
@@ -365,68 +417,74 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 	}
 
 	// Single stream format - determine type from event field
-	eventType, err := jsonparser.GetString(data, "e")
+	eventType, _, _, err := jsonparser.Get(data, "e")
 	if err != nil {
 		// Might be a subscription response or error
 		return
 	}
 
-	// For single stream, we need to determine the stream name from the symbol
-	symbol, _ := jsonparser.GetString(data, "s")
-	if symbol == "" {
+	// For single stream, resolve the symbol name ("s", uppercase) directly
+	// to a symbolID — no stream-name construction.
+	symbol, _, _, _ := jsonparser.Get(data, "s")
+	if len(symbol) == 0 {
 		return
 	}
+	c.streamMapLock.RLock()
+	symbolID, ok := c.symbolToID[string(symbol)]
+	c.streamMapLock.RUnlock()
+	if !ok {
+		return // not a subscribed symbol
+	}
 
-	switch eventType {
-	case "depthUpdate":
-		// For single-stream depth updates, find the matching stream in our map
-		// by checking both possible push rates
-		lowerSymbol := strings.ToLower(symbol)
-		streamName := c.findDepthStream(lowerSymbol)
-		if streamName != "" {
-			c.processStreamMessage(streamName, data)
-		}
-	case "trade":
-		streamName := strings.ToLower(symbol) + "@" + streamTrade
-		c.processStreamMessage(streamName, data)
-	case "aggTrade":
-		streamName := strings.ToLower(symbol) + "@" + streamAggTrade
-		c.processStreamMessage(streamName, data)
+	switch {
+	case bytes.Equal(eventType, bytesEventDepthUpdate):
+		c.processDepthUpdate(symbolID, data)
+	case bytes.Equal(eventType, bytesEventTrade), bytes.Equal(eventType, bytesEventAggTrade):
+		c.processTrade(symbolID, data)
 	}
 }
 
-// findDepthStream finds the depth stream name for a symbol by checking the stream map
-func (c *BinanceSpotDataClient) findDepthStream(lowerSymbol string) string {
+// processStreamMessage routes a combined-stream message to the appropriate handler
+func (c *BinanceSpotDataClient) processStreamMessage(stream, data []byte) {
 	c.streamMapLock.RLock()
-	defer c.streamMapLock.RUnlock()
-
-	// Check both possible push rates
-	for _, suffix := range []string{PushRate100ms.StreamSuffix(), PushRate1s.StreamSuffix()} {
-		streamName := lowerSymbol + "@" + suffix
-		if _, ok := c.streamToSymbol[streamName]; ok {
-			return streamName
-		}
-	}
-	return ""
-}
-
-// processStreamMessage routes a message to the appropriate handler
-func (c *BinanceSpotDataClient) processStreamMessage(stream string, data []byte) {
-	c.streamMapLock.RLock()
-	symbolID, ok := c.streamToSymbol[stream]
+	symbolID, ok := c.streamToSymbol[string(stream)]
 	c.streamMapLock.RUnlock()
 
 	if !ok {
-		log().Warn().Str("stream", stream).Msg("Received message for unknown stream")
-		return
+		return // unknown stream (cold: only after a subscription bug)
 	}
 
 	// Determine message type from stream name
-	if strings.Contains(stream, "depth") {
+	if bytes.Contains(stream, bytesStreamDepth) {
 		c.processDepthUpdate(symbolID, data)
-	} else if strings.Contains(stream, "trade") {
+	} else if bytes.Contains(stream, bytesStreamTrade) {
 		c.processTrade(symbolID, data)
 	}
+}
+
+// getPrecision returns the cached tick multipliers for a symbol. On a miss
+// (stream registered without going through registerStream, e.g. in tests)
+// it falls back to the catalog once and caches the result — the hot path
+// afterwards is a read-locked map hit.
+func (c *BinanceSpotDataClient) getPrecision(symbolID int) (symbolPrecision, bool) {
+	c.streamMapLock.RLock()
+	prec, ok := c.precisions[symbolID]
+	c.streamMapLock.RUnlock()
+	if ok {
+		return prec, true
+	}
+
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		// Per-message path: Debug only (P2-3); disabled at production level.
+		log().Debug().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+		return symbolPrecision{}, false
+	}
+	prec = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)
+	c.streamMapLock.Lock()
+	c.precisions[symbolID] = prec
+	c.streamMapLock.Unlock()
+	return prec, true
 }
 
 // processDepthUpdate parses and publishes a depth update event
@@ -442,6 +500,11 @@ func (c *BinanceSpotDataClient) processStreamMessage(stream string, data []byte)
 //	  "a": [["price","qty"],...]   // Asks
 //	}
 func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
+	prec, ok := c.getPrecision(symbolID)
+	if !ok {
+		return
+	}
+
 	var depthUpdate event.DepthUpdate
 	depthUpdate.SymbolID = symbolID
 
@@ -457,26 +520,24 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.CurrentDepthID = int(finalUpdateID)
 	depthUpdate.NextDepthID = int(finalUpdateID) + 1
 
-	// Get symbol precision for tick computation
-	symbol, err := c.catalog.GetSymbol(symbolID)
-	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+	// Parse bids and asks into the reusable scratch buffers. The slices are
+	// only referenced until Encode below copies the levels into the arena.
+	c.scratchBids = appendPriceLevels(c.scratchBids[:0], data, "b", prec)
+	c.scratchAsks = appendPriceLevels(c.scratchAsks[:0], data, "a", prec)
+	depthUpdate.Bids = c.scratchBids
+	depthUpdate.Asks = c.scratchAsks
+
+	// Publish to event bus
+	size := uint64(depthUpdate.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthUpdate, size)
+	if !ok {
+		return // dropped under overflow; orderbook re-syncs via DepthID gap
+	}
+	if err := depthUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
 		return
 	}
-
-	// Parse bids and asks with precision for PriceTick/QuantityTick
-	depthUpdate.Bids = c.parsePriceLevels(data, "b", symbol.PricePrecision, symbol.SizePrecision)
-	depthUpdate.Asks = c.parsePriceLevels(data, "a", symbol.PricePrecision, symbol.SizePrecision)
-
-	// Publish to event bus using new generic API
-	size := uint64(depthUpdate.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	depthUpdate.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthUpdate,
-		Index:  offset,
-		Length: size,
-	})
+	c.msgBus.Publish(ref)
 }
 
 // processTrade parses and publishes a trade event
@@ -517,60 +578,43 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 		tick.Side = common.SideBuy
 	}
 
-	// Publish to event bus using new generic API
+	// Publish to event bus
 	size := uint64(tick.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	tick.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventTick, size)
+	if !ok {
+		return // dropped under overflow
+	}
+	if err := tick.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
-// parsePriceLevels parses an array of [price, qty] arrays from JSON.
-// Uses pricePrecision and sizePrecision to compute PriceTick and QuantityTick.
-func (c *BinanceSpotDataClient) parsePriceLevels(data []byte, key string, pricePrecision, sizePrecision int) []common.PriceLevel {
-	// First pass: count elements
-	count := 0
-	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		count++
-	}, key)
-
-	if count == 0 {
-		return nil
-	}
-
-	// Allocate slice for price levels
-	levels := make([]common.PriceLevel, count)
-
-	// Second pass: parse values
-	idx := 0
-	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		if idx >= count {
-			return
-		}
-
-		// Parse [price, qty] array
+// appendPriceLevels parses an array of [price, qty] arrays from JSON and
+// appends the levels to dst (single pass, amortized zero allocation once the
+// caller's scratch buffer has reached its high-water capacity).
+func appendPriceLevels(dst []common.PriceLevel, data []byte, key string, prec symbolPrecision) []common.PriceLevel {
+	_, _ = jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+		var pl common.PriceLevel
 		elemIdx := 0
-		_, _ = jsonparser.ArrayEach(value, func(elem []byte, dt jsonparser.ValueType, off int, e error) {
+		_, _ = jsonparser.ArrayEach(value, func(elem []byte, _ jsonparser.ValueType, _ int, _ error) {
 			// Remove quotes if present
 			if len(elem) >= 2 && elem[0] == '"' {
 				elem = elem[1 : len(elem)-1]
 			}
 			if elemIdx == 0 {
-				levels[idx].Price = parseFloat64(elem)
+				pl.Price = parseFloat64(elem)
 			} else if elemIdx == 1 {
-				levels[idx].Quantity = parseFloat64(elem)
+				pl.Quantity = parseFloat64(elem)
 			}
 			elemIdx++
 		})
-		levels[idx].PriceTick = common.PriceToTick(levels[idx].Price, pricePrecision)
-		levels[idx].QuantityTick = common.QuantityToTick(levels[idx].Quantity, sizePrecision)
-		idx++
+		pl.PriceTick = int(math.Round(pl.Price * prec.priceMul))
+		pl.QuantityTick = int(math.Round(pl.Quantity * prec.sizeMul))
+		dst = append(dst, pl)
 	}, key)
-
-	return levels[:idx]
+	return dst
 }
 
 // parseFloat64 parses a float64 from bytes without string allocation
@@ -647,6 +691,15 @@ func (h *wsEventHandler) OnPong(socket *gws.Conn, payload []byte) {
 	_ = socket.SetDeadline(time.Now().Add(wsPingInterval + wsPingWait))
 }
 
+// OnMessage handles one WebSocket frame.
+//
+// Buffer lifetime contract (P2-1): message.Bytes() aliases a pooled read
+// buffer owned by gws; message.Close() recycles it into the pool, so frame
+// reads allocate nothing in steady state. The contents are valid only until
+// this handler returns — parsing (processMessage) and the arena encode must
+// complete synchronously here, and no subslice of the payload may be
+// retained. Frames arrive sequentially per connection (gws ParallelEnabled
+// is off), which is what makes the client's scratch buffers safe.
 func (h *wsEventHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	// Reset deadline on message received
