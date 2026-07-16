@@ -1,25 +1,9 @@
 package command
 
-import "unsafe"
+import "github.com/BullionBear/seq/core/model/codec"
 
-const sizeOfQryBalanceSnapshot = int(unsafe.Sizeof(QryBalanceSnapshot{}))
-
-func (q QryBalanceSnapshot) GetBufferLength() int { return sizeOfQryBalanceSnapshot }
-
-func (q QryBalanceSnapshot) Encode(buf []byte) error {
-	if len(buf) < sizeOfQryBalanceSnapshot {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfQryBalanceSnapshot]byte)(unsafe.Pointer(&q))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (q QryBalanceSnapshot) GetBufferLength() int    { return codec.Size[QryBalanceSnapshot]() }
+func (q QryBalanceSnapshot) Encode(buf []byte) error { return codec.Encode(buf, &q) }
 func NewQryBalanceSnapshotFromBytes(buf []byte) (QryBalanceSnapshot, error) {
-	var v QryBalanceSnapshot
-	if len(buf) < sizeOfQryBalanceSnapshot {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfQryBalanceSnapshot]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[QryBalanceSnapshot](buf)
 }

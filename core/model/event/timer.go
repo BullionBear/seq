@@ -1,6 +1,6 @@
 package event
 
-import "unsafe"
+import "github.com/BullionBear/seq/core/model/codec"
 
 // TimeEvent is published by the Clock on each timer tick.
 // TimerID identifies which registered timer fired.
@@ -12,24 +12,8 @@ type TimeEvent struct {
 
 func (t TimeEvent) Topic() Topic { return TopicEventTimer }
 
-const sizeOfTimeEvent = int(unsafe.Sizeof(TimeEvent{}))
-
-func (t TimeEvent) GetBufferLength() int { return sizeOfTimeEvent }
-
-func (t TimeEvent) Encode(buf []byte) error {
-	if len(buf) < sizeOfTimeEvent {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfTimeEvent]byte)(unsafe.Pointer(&t))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (t TimeEvent) GetBufferLength() int    { return codec.Size[TimeEvent]() }
+func (t TimeEvent) Encode(buf []byte) error { return codec.Encode(buf, &t) }
 func NewTimeEventFromBytes(buf []byte) (TimeEvent, error) {
-	var v TimeEvent
-	if len(buf) < sizeOfTimeEvent {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfTimeEvent]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[TimeEvent](buf)
 }

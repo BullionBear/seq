@@ -1,106 +1,30 @@
 package event
 
-import "unsafe"
+import "github.com/BullionBear/seq/core/model/codec"
 
-const (
-	sizeOfReadyEvent    = int(unsafe.Sizeof(ReadyEvent{}))
-	sizeOfStopEvent     = int(unsafe.Sizeof(StopEvent{}))
-	sizeOfFinishedEvent = int(unsafe.Sizeof(FinishedEvent{}))
-	sizeOfAbnormalEvent = int(unsafe.Sizeof(AbnormalEvent{}))
-)
+// Engine state event codecs, delegated to the generic bounds-checked memcpy
+// pair in core/model/codec. Layout is guarded in codec/guard_test.go.
 
-// ============================================================================
-// ReadyEvent
-// ============================================================================
-
-func (r ReadyEvent) GetBufferLength() int { return sizeOfReadyEvent }
-
-func (r ReadyEvent) Encode(buf []byte) error {
-	if len(buf) < sizeOfReadyEvent {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfReadyEvent]byte)(unsafe.Pointer(&r))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (r ReadyEvent) GetBufferLength() int    { return codec.Size[ReadyEvent]() }
+func (r ReadyEvent) Encode(buf []byte) error { return codec.Encode(buf, &r) }
 func NewReadyEventFromBytes(buf []byte) (ReadyEvent, error) {
-	var v ReadyEvent
-	if len(buf) < sizeOfReadyEvent {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfReadyEvent]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[ReadyEvent](buf)
 }
 
-// ============================================================================
-// StopEvent
-// ============================================================================
-
-func (s StopEvent) GetBufferLength() int { return sizeOfStopEvent }
-
-func (s StopEvent) Encode(buf []byte) error {
-	if len(buf) < sizeOfStopEvent {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfStopEvent]byte)(unsafe.Pointer(&s))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (s StopEvent) GetBufferLength() int    { return codec.Size[StopEvent]() }
+func (s StopEvent) Encode(buf []byte) error { return codec.Encode(buf, &s) }
 func NewStopEventFromBytes(buf []byte) (StopEvent, error) {
-	var v StopEvent
-	if len(buf) < sizeOfStopEvent {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfStopEvent]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[StopEvent](buf)
 }
 
-// ============================================================================
-// FinishedEvent
-// ============================================================================
-
-func (f FinishedEvent) GetBufferLength() int { return sizeOfFinishedEvent }
-
-func (f FinishedEvent) Encode(buf []byte) error {
-	if len(buf) < sizeOfFinishedEvent {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfFinishedEvent]byte)(unsafe.Pointer(&f))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (f FinishedEvent) GetBufferLength() int    { return codec.Size[FinishedEvent]() }
+func (f FinishedEvent) Encode(buf []byte) error { return codec.Encode(buf, &f) }
 func NewFinishedEventFromBytes(buf []byte) (FinishedEvent, error) {
-	var v FinishedEvent
-	if len(buf) < sizeOfFinishedEvent {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfFinishedEvent]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[FinishedEvent](buf)
 }
 
-// ============================================================================
-// AbnormalEvent
-// ============================================================================
-
-func (a AbnormalEvent) GetBufferLength() int { return sizeOfAbnormalEvent }
-
-func (a AbnormalEvent) Encode(buf []byte) error {
-	if len(buf) < sizeOfAbnormalEvent {
-		return ErrBufferTooSmall
-	}
-	data := (*[sizeOfAbnormalEvent]byte)(unsafe.Pointer(&a))[:]
-	copy(buf, data)
-	return nil
-}
-
+func (a AbnormalEvent) GetBufferLength() int    { return codec.Size[AbnormalEvent]() }
+func (a AbnormalEvent) Encode(buf []byte) error { return codec.Encode(buf, &a) }
 func NewAbnormalEventFromBytes(buf []byte) (AbnormalEvent, error) {
-	var v AbnormalEvent
-	if len(buf) < sizeOfAbnormalEvent {
-		return v, ErrBufferTooSmall
-	}
-	copy((*[sizeOfAbnormalEvent]byte)(unsafe.Pointer(&v))[:], buf)
-	return v, nil
+	return codec.Decode[AbnormalEvent](buf)
 }
