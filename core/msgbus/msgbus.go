@@ -1,6 +1,7 @@
 package msgbus
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/BullionBear/seq/core/logger"
@@ -61,6 +62,11 @@ type MsgBus struct {
 
 	// Optional ticker driven by the dispatch loop (set via SetTicker)
 	ticker Ticker
+
+	// Commands read off the ring with no registered processor. Counted
+	// instead of logged: this fires at command rate on the dispatch loop
+	// (P2-3), and is reported by the observer goroutine.
+	unroutedCmds uint64
 }
 
 // NewMsgBus creates a new MsgBus with default capacities.
@@ -148,6 +154,12 @@ func (m *MsgBus) DropCount(topic event.Topic) uint64 {
 // WaitCount returns the number of publish/allocate overflow waits for the given topic.
 func (m *MsgBus) WaitCount(topic event.Topic) uint64 {
 	return m.eventBus.WaitCount(topic)
+}
+
+// UnroutedCommandCount returns the number of commands dispatched with no
+// registered processor.
+func (m *MsgBus) UnroutedCommandCount() uint64 {
+	return atomic.LoadUint64(&m.unroutedCmds)
 }
 
 // ReadBuffer returns a []byte slice from the event arena at the given offset/length
@@ -267,10 +279,9 @@ func (m *MsgBus) Dispatch() bool {
 		if exists {
 			processor(cmd)
 		} else {
-			log().Warn().
-				Str("cmdType", cmd.Ref.CommandType.String()).
-				Uint64("commandID", cmd.CommandID).
-				Msg("MsgBus: no processor registered for command type")
+			// Hot path (dispatch loop): counted, not logged (P2-3). The
+			// observer goroutine reports the counter at low cadence.
+			atomic.AddUint64(&m.unroutedCmds, 1)
 		}
 		m.cmdArena.Release(cmd.Ref.reservation())
 	}

@@ -44,6 +44,9 @@ type Node struct {
 
 	// Cache for strategy access
 	cache *cache.Cache
+
+	// Dispatch-loop tuning (P2-4), captured from config in Init.
+	dispatchCfg DispatchConfig
 }
 
 // NewNode creates a new Node with the given catalog.
@@ -78,6 +81,18 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 		Str("trading_mode", tradingMode.String()).
 		Bool("live_orders_enabled", tradingMode.IsLive()).
 		Msg("Trading mode active: venue order submit/cancel require live mode")
+
+	n.dispatchCfg = config.Dispatch
+	if n.dispatchCfg.IdleStrategy == "" {
+		n.dispatchCfg.IdleStrategy = IdleStrategyGosched
+	}
+	if n.dispatchCfg.SpinBudget <= 0 {
+		n.dispatchCfg.SpinBudget = DefaultSpinBudget
+	}
+	log().Info().
+		Str("idle_strategy", n.dispatchCfg.IdleStrategy).
+		Int("spin_budget", n.dispatchCfg.SpinBudget).
+		Msg("Dispatch loop configured (OS-thread pinned)")
 
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
@@ -185,12 +200,32 @@ func (n *Node) Start(ctx context.Context) {
 
 // Run starts the event loop and blocks until context is cancelled,
 // then performs graceful shutdown.
+//
+// The dispatch goroutine is pinned to its OS thread (P2-4) so the Go
+// scheduler cannot migrate it across cores; combined with the taskset /
+// isolcpus recipe in docs/DEPLOYMENT.md this gives the loop a stable,
+// cache-warm core. The idle strategy is configurable: cooperative Gosched
+// (default) or a bounded busy-spin for latency-critical deployments on a
+// dedicated core.
 func (n *Node) Run(ctx context.Context) {
 	done := make(chan struct{})
 	exited := make(chan struct{})
 
+	// Low-frequency reporter for the hot-path overflow counters (P2-3).
+	n.msgBus.StartObserver(ctx, msgbus.DefaultObserverInterval)
+
+	spinStrategy := n.dispatchCfg.IdleStrategy == IdleStrategySpin
+	spinBudget := n.dispatchCfg.SpinBudget
+	if spinBudget <= 0 {
+		spinBudget = DefaultSpinBudget
+	}
+
 	go func() {
 		defer close(exited)
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		idleSpins := 0
 		for {
 			select {
 			case <-done:
@@ -203,6 +238,16 @@ func (n *Node) Run(ctx context.Context) {
 				if hasWork {
 					n.msgBus.Release()
 					n.msgBus.ReleaseArenas()
+					idleSpins = 0
+				} else if spinStrategy {
+					// Bounded busy-spin: keep the thread hot for the next
+					// event, but yield periodically so this core is not
+					// unconditionally monopolized if isolation is absent.
+					idleSpins++
+					if idleSpins >= spinBudget {
+						idleSpins = 0
+						runtime.Gosched()
+					}
 				} else {
 					runtime.Gosched()
 				}

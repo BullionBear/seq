@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/seq/core/env"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/BullionBear/seq/core/telemetry"
 	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 
@@ -86,6 +87,18 @@ func main() {
 			Msg("TRADING MODE: PAPER — venue order submit/cancel refused; set trading_mode=live and SEQ_ALLOW_LIVE=1 only after CEO/board approval")
 	}
 
+	// Fence the Go runtime (P2-4): optional GOMAXPROCS cap, memory limit,
+	// and GC-off (requires the memory limit as a fuse).
+	if err := cfg.Runtime.Apply(); err != nil {
+		log.Error().Err(err).Msg("Runtime fencing refused to start")
+		os.Exit(1)
+	}
+	if cfg.Runtime.GCOff {
+		log.Info().
+			Int64("mem_limit_bytes", cfg.Runtime.MemLimitBytes).
+			Msg("Runtime fencing: GC disabled, memory limit acts as fuse (see docs/DEPLOYMENT.md)")
+	}
+
 	// Initialize Catalog service
 	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	if catalogService == nil {
@@ -111,6 +124,16 @@ func main() {
 		defer msgLogger.Close()
 		n.MsgBus().SetMsgLogger(msgLogger)
 		log.Info().Str("dir", cfg.MsgBus.MsgLog.Dir).Msg("MsgLogger enabled")
+	}
+
+	// Start the metrics endpoint (P2-4): /metrics for runtime histograms and
+	// overflow counters, POST /gc as the quiet-window collection hook.
+	if srv, err := telemetry.StartMetricsServer(cfg.Metrics, n.MsgBus()); err != nil {
+		log.Error().Err(err).Msg("Failed to start metrics server")
+		os.Exit(1)
+	} else if srv != nil {
+		defer srv.Close()
+		log.Info().Str("addr", srv.Addr).Msg("Metrics server enabled")
 	}
 
 	// Initialize, start, and run the node (Run blocks until graceful shutdown completes)

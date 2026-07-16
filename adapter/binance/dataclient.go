@@ -408,7 +408,8 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 		// Combined stream format: {"stream":"...","data":{...}}
 		msgData, _, _, err := jsonparser.Get(data, "data")
 		if err != nil {
-			log().Error().Err(err).Msg("Failed to get data field from combined stream message")
+			// Per-message path: Debug only (P2-3); disabled at production level.
+			log().Debug().Err(err).Msg("Failed to get data field from combined stream message")
 			return
 		}
 		c.processStreamMessage(stream, msgData)
@@ -475,7 +476,8 @@ func (c *BinanceSpotDataClient) getPrecision(symbolID int) (symbolPrecision, boo
 
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+		// Per-message path: Debug only (P2-3); disabled at production level.
+		log().Debug().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
 		return symbolPrecision{}, false
 	}
 	prec = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)

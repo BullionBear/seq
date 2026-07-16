@@ -565,7 +565,8 @@ func (c *BybitDataClient) processOrderbook(ws *wsConnection, topic, msgType []by
 	// Get data object
 	dataObj, _, _, err := jsonparser.Get(data, "data")
 	if err != nil {
-		log().Error().Err(err).Msg("Failed to get data field")
+		// Per-message path: Debug only (P2-3); disabled at production level.
+		log().Debug().Err(err).Msg("Failed to get data field")
 		return
 	}
 
@@ -597,7 +598,8 @@ func (c *BybitDataClient) getPrecision(symbolID int) (symbolPrecision, bool) {
 
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth message")
+		// Per-message path: Debug only (P2-3); disabled at production level.
+		log().Debug().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth message")
 		return symbolPrecision{}, false
 	}
 	prec = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)
