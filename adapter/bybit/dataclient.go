@@ -564,15 +564,15 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 
 	// Calculate size and allocate buffer
 	size := uint64(snapshot.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-
-	// Encode and publish
-	snapshot.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthSnapshot,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthSnapshot, size)
+	if !ok {
+		return // dropped under overflow; orderbook re-syncs via DepthID gap
+	}
+	if err := snapshot.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // processDepthUpdate handles delta messages
@@ -602,15 +602,15 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 
 	// Calculate size and allocate buffer
 	size := uint64(depthUpdate.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-
-	// Encode and publish
-	depthUpdate.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthUpdate,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthUpdate, size)
+	if !ok {
+		return // dropped under overflow; orderbook re-syncs via DepthID gap
+	}
+	if err := depthUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // processTrade processes trade messages
@@ -656,13 +656,15 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 
 	// Publish to event bus
 	size := uint64(tick.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	tick.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventTick, size)
+	if !ok {
+		return
+	}
+	if err := tick.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // parsePriceLevels parses an array of [price, qty] arrays from JSON.

@@ -22,6 +22,10 @@ func unsafeString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
+// errSnapshotDropped is returned when a depth snapshot could not be published
+// because the event bus dropped it under overflow; the caller may retry.
+var errSnapshotDropped = errors.New("binance: depth snapshot dropped under event bus overflow")
+
 type BinanceHTTPClient struct {
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
@@ -101,7 +105,10 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		uint64(askCount)*uint64(event.PriceLevelSize) +
 		uint64(bidCount)*uint64(event.PriceLevelSize)
 
-	offset, buf := c.msgBus.Allocate(size)
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthSnapshot, size)
+	if !ok {
+		return errSnapshotDropped
+	}
 
 	// Phase 3: Parse directly into arena buffer (zero-allocation)
 	// Get pointers to the PriceLevel arrays in the buffer
@@ -120,10 +127,12 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Parse price levels directly into arena with precision for PriceTick/QuantityTick
 	err = c.parsePriceLevelsInto(jsonData, "\"asks\"", asks, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
+		c.msgBus.Cancel(ref)
 		return err
 	}
 	err = c.parsePriceLevelsInto(jsonData, "\"bids\"", bids, symbol.PricePrecision, symbol.SizePrecision)
 	if err != nil {
+		c.msgBus.Cancel(ref)
 		return err
 	}
 
@@ -136,14 +145,13 @@ func (c *BinanceHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 		Asks:      asks,
 		Bids:      bids,
 	}
-	snapshot.Encode(buf)
+	if err := snapshot.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return err
+	}
 
 	// Publish to event bus
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthSnapshot,
-		Index:  offset,
-		Length: size,
-	})
+	c.msgBus.Publish(ref)
 	return nil
 }
 

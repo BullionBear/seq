@@ -24,8 +24,13 @@ func (r ReadyEvent) Encode(buf []byte) error {
 	return nil
 }
 
-func NewReadyEventFromBytes(buf []byte) ReadyEvent {
-	return *(*ReadyEvent)(unsafe.Pointer(&buf[0]))
+func NewReadyEventFromBytes(buf []byte) (ReadyEvent, error) {
+	var v ReadyEvent
+	if len(buf) < sizeOfReadyEvent {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfReadyEvent]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -43,8 +48,13 @@ func (s StopEvent) Encode(buf []byte) error {
 	return nil
 }
 
-func NewStopEventFromBytes(buf []byte) StopEvent {
-	return *(*StopEvent)(unsafe.Pointer(&buf[0]))
+func NewStopEventFromBytes(buf []byte) (StopEvent, error) {
+	var v StopEvent
+	if len(buf) < sizeOfStopEvent {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfStopEvent]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -62,8 +72,13 @@ func (f FinishedEvent) Encode(buf []byte) error {
 	return nil
 }
 
-func NewFinishedEventFromBytes(buf []byte) FinishedEvent {
-	return *(*FinishedEvent)(unsafe.Pointer(&buf[0]))
+func NewFinishedEventFromBytes(buf []byte) (FinishedEvent, error) {
+	var v FinishedEvent
+	if len(buf) < sizeOfFinishedEvent {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfFinishedEvent]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -81,6 +96,11 @@ func (a AbnormalEvent) Encode(buf []byte) error {
 	return nil
 }
 
-func NewAbnormalEventFromBytes(buf []byte) AbnormalEvent {
-	return *(*AbnormalEvent)(unsafe.Pointer(&buf[0]))
+func NewAbnormalEventFromBytes(buf []byte) (AbnormalEvent, error) {
+	var v AbnormalEvent
+	if len(buf) < sizeOfAbnormalEvent {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfAbnormalEvent]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

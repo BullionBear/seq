@@ -5,8 +5,13 @@ import (
 	"unsafe"
 )
 
-// ErrBufferTooSmall is returned when the provided buffer is too small for encoding.
+// ErrBufferTooSmall is returned when the provided buffer is too small for
+// encoding or decoding.
 var ErrBufferTooSmall = errors.New("buffer too small")
+
+// ErrInvalidBuffer is returned when a decoded buffer is structurally invalid
+// (e.g. its length does not match the header-declared element counts).
+var ErrInvalidBuffer = errors.New("invalid buffer layout")
 
 const sizeOfTick = int(unsafe.Sizeof(Tick{}))
 
@@ -25,7 +30,12 @@ func (t Tick) Encode(buf []byte) error {
 	return nil
 }
 
-// NewTickFromBytes interprets buf as a Tick. Zero-copy, no allocation.
-func NewTickFromBytes(buf []byte) Tick {
-	return *(*Tick)(unsafe.Pointer(&buf[0]))
+// NewTickFromBytes decodes a Tick by copying out of buf (bounds-checked).
+func NewTickFromBytes(buf []byte) (Tick, error) {
+	var v Tick
+	if len(buf) < sizeOfTick {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfTick]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

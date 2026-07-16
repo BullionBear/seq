@@ -1,245 +1,292 @@
 package mem
 
 import (
+	"encoding/binary"
+	"os"
+	"runtime"
+	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 )
 
 func TestCircularByteArena_BasicOperations(t *testing.T) {
 	arena := NewCircularByteArena(1024)
 
-	// Test initial state
-	if arena.WriteOff() != 0 {
-		t.Errorf("Expected writeOff 0, got %d", arena.WriteOff())
-	}
-	if arena.ReadOff() != 0 {
-		t.Errorf("Expected readOff 0, got %d", arena.ReadOff())
+	if arena.Claimed() != 0 || arena.Released() != 0 {
+		t.Errorf("Expected zero cursors, got claimed=%d released=%d", arena.Claimed(), arena.Released())
 	}
 	if arena.Capacity() != 1024 {
 		t.Errorf("Expected capacity 1024, got %d", arena.Capacity())
 	}
 
-	// Test Reserve
-	offset := arena.Reserve(100)
-	if offset != 0 {
-		t.Errorf("Expected offset 0, got %d", offset)
+	res, ok := arena.TryReserve(100)
+	if !ok {
+		t.Fatal("Expected reservation to succeed")
 	}
-	if arena.WriteOff() != 100 {
-		t.Errorf("Expected writeOff 100, got %d", arena.WriteOff())
+	if res.Offset != 0 {
+		t.Errorf("Expected offset 0, got %d", res.Offset)
 	}
-
-	// Test GetSlice and WriteAt
-	slice := arena.GetSlice(offset, 100)
-	if len(slice) != 100 {
-		t.Errorf("Expected slice length 100, got %d", len(slice))
+	// 100 rounds up to 104 for 8-byte alignment.
+	if res.End-res.Start != 104 {
+		t.Errorf("Expected claimed range of 104 bytes, got %d", res.End-res.Start)
 	}
 
-	// Write some data
+	slice := arena.GetSlice(res.Offset, 100)
 	testData := []byte("hello world")
-	arena.WriteAt(offset, testData)
+	copy(slice, testData)
 
-	// Test ReadSlice
-	readSlice := arena.ReadSlice(offset, uint64(len(testData)))
+	readSlice := arena.ReadSlice(res.Offset, uint64(len(testData)))
 	if string(readSlice) != "hello world" {
 		t.Errorf("Expected 'hello world', got '%s'", string(readSlice))
 	}
-}
 
-func TestCircularByteArena_WrapAround(t *testing.T) {
-	arena := NewCircularByteArena(100)
-
-	// Fill most of the buffer
-	offset1 := arena.Reserve(80)
-	if offset1 != 0 {
-		t.Errorf("Expected offset 0, got %d", offset1)
-	}
-
-	// This allocation should wrap to beginning
-	offset2 := arena.Reserve(30)
-	if offset2 != 0 {
-		t.Errorf("Expected wrap to offset 0, got %d", offset2)
-	}
-	if arena.WriteOff() != 30 {
-		t.Errorf("Expected writeOff 30, got %d", arena.WriteOff())
+	arena.Release(res)
+	if arena.Released() != res.End {
+		t.Errorf("Expected released=%d, got %d", res.End, arena.Released())
 	}
 }
 
-func TestCircularByteArena_MultipleReserves(t *testing.T) {
-	arena := NewCircularByteArena(1024)
+func TestCircularByteArena_BoundaryPadding(t *testing.T) {
+	arena := NewCircularByteArena(96)
 
-	offsets := make([]uint64, 10)
-	expectedOffset := uint64(0)
+	res1, ok := arena.TryReserve(80)
+	if !ok || res1.Offset != 0 {
+		t.Fatalf("Expected first reservation at offset 0, got %+v ok=%v", res1, ok)
+	}
+	arena.Release(res1)
 
-	for i := 0; i < 10; i++ {
-		offsets[i] = arena.Reserve(100)
-		if offsets[i] != expectedOffset {
-			t.Errorf("Reserve %d: expected offset %d, got %d", i, expectedOffset, offsets[i])
+	// 80 used, 16 left at the tail. A 32-byte reservation cannot straddle the
+	// end: the 16-byte tail is claimed as padding and payload starts at 0.
+	res2, ok := arena.TryReserve(32)
+	if !ok {
+		t.Fatal("Expected second reservation to succeed")
+	}
+	if res2.Offset != 0 {
+		t.Errorf("Expected payload to wrap to offset 0, got %d", res2.Offset)
+	}
+	if res2.End-res2.Start != 16+32 {
+		t.Errorf("Expected range to include 16 bytes of padding, got %d bytes", res2.End-res2.Start)
+	}
+}
+
+func TestCircularByteArena_BoundedByConsumer(t *testing.T) {
+	arena := NewCircularByteArena(128)
+
+	res1, ok := arena.TryReserve(64)
+	if !ok {
+		t.Fatal("first reservation should succeed")
+	}
+	res2, ok := arena.TryReserve(64)
+	if !ok {
+		t.Fatal("second reservation should succeed")
+	}
+
+	// Arena is full: no overwrite is possible, reservation must fail.
+	if _, ok := arena.TryReserve(8); ok {
+		t.Fatal("reservation on a full arena must fail")
+	}
+
+	// Out-of-order release: releasing res2 alone must not free the frontier.
+	arena.Release(res2)
+	if _, ok := arena.TryReserve(8); ok {
+		t.Fatal("frontier is still held by res1; reservation must fail")
+	}
+
+	// Releasing res1 merges the parked res2 range and frees everything.
+	arena.Release(res1)
+	if arena.Released() != res2.End {
+		t.Errorf("Expected released frontier %d, got %d", res2.End, arena.Released())
+	}
+	if _, ok := arena.TryReserve(64); !ok {
+		t.Fatal("reservation should succeed after both releases")
+	}
+}
+
+// TestCircularByteArena_AlignmentAcrossWraps asserts the P0-3 invariant:
+// every payload offset is 8-byte aligned, including across wrap boundaries.
+func TestCircularByteArena_AlignmentAcrossWraps(t *testing.T) {
+	arena := NewCircularByteArena(256)
+
+	sizes := []uint64{1, 3, 7, 8, 9, 15, 24, 31, 40, 63, 100}
+	for i := 0; i < 500; i++ {
+		size := sizes[i%len(sizes)]
+		res, ok := arena.TryReserve(size)
+		if !ok {
+			t.Fatalf("iteration %d: reservation of %d bytes failed unexpectedly", i, size)
 		}
-		expectedOffset += 100
-	}
-
-	if arena.WriteOff() != 1000 {
-		t.Errorf("Expected writeOff 1000, got %d", arena.WriteOff())
+		if res.Offset%8 != 0 {
+			t.Fatalf("iteration %d: offset %d is not 8-byte aligned", i, res.Offset)
+		}
+		if res.Start%8 != 0 || res.End%8 != 0 {
+			t.Fatalf("iteration %d: range [%d,%d) not 8-aligned", i, res.Start, res.End)
+		}
+		arena.Release(res)
 	}
 }
 
-func TestCircularByteArena_ConcurrentReserve(t *testing.T) {
-	arena := NewCircularByteArena(1024 * 1024) // 1MB
-	const numGoroutines = 8
-	const reservesPerGoroutine = 1000
-	const reserveSize = 64
+// TestCircularByteArena_ChecksumStress is the P0-2 verification: N producers
+// on a small arena (forcing wraps every few hundred writes) write
+// checksum-carrying payloads; the consumer validates every payload before
+// releasing. Zero mismatches expected.
+//
+// The default iteration count is CI-friendly; set SEQ_STRESS_ITERS for the
+// full run (e.g. SEQ_STRESS_ITERS=100000000).
+func TestCircularByteArena_ChecksumStress(t *testing.T) {
+	iters := 200_000
+	if v := os.Getenv("SEQ_STRESS_ITERS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			iters = n
+		}
+	}
+	if testing.Short() {
+		iters = 50_000
+	}
 
+	const numProducers = 8
+	const payloadSize = 40 // header(8) + body(24) + checksum(8)
+	arena := NewCircularByteArena(4096)
+
+	type published struct {
+		res Reservation
+	}
+	ch := make(chan published, 1024)
+
+	perProducer := iters / numProducers
 	var wg sync.WaitGroup
-	offsets := make([][]uint64, numGoroutines)
-
-	for g := 0; g < numGoroutines; g++ {
-		offsets[g] = make([]uint64, reservesPerGoroutine)
-		wg.Add(1)
-		go func(goroutineID int) {
-			defer wg.Done()
-			for i := 0; i < reservesPerGoroutine; i++ {
-				offsets[goroutineID][i] = arena.Reserve(reserveSize)
-			}
-		}(g)
-	}
-
-	wg.Wait()
-
-	// Verify no overlapping allocations
-	// Collect all [offset, offset+size) ranges
-	type allocation struct {
-		start uint64
-		end   uint64
-	}
-	allocs := make([]allocation, 0, numGoroutines*reservesPerGoroutine)
-
-	for g := 0; g < numGoroutines; g++ {
-		for i := 0; i < reservesPerGoroutine; i++ {
-			allocs = append(allocs, allocation{
-				start: offsets[g][i],
-				end:   offsets[g][i] + reserveSize,
-			})
-		}
-	}
-
-	// Check for overlaps (simple O(n²) check for correctness)
-	for i := 0; i < len(allocs); i++ {
-		for j := i + 1; j < len(allocs); j++ {
-			a, b := allocs[i], allocs[j]
-			// Two ranges [a.start, a.end) and [b.start, b.end) overlap if
-			// a.start < b.end && b.start < a.end
-			if a.start < b.end && b.start < a.end {
-				t.Errorf("Overlapping allocations: [%d,%d) and [%d,%d)",
-					a.start, a.end, b.start, b.end)
-			}
-		}
-	}
-}
-
-func TestCircularByteArena_ConcurrentWriteRead(t *testing.T) {
-	arena := NewCircularByteArena(1024 * 1024) // 1MB
-	const numProducers = 4
-	const itemsPerProducer = 1000
-
-	type item struct {
-		offset uint64
-		size   uint64
-		data   []byte
-	}
-
-	var wg sync.WaitGroup
-	items := make(chan item, numProducers*itemsPerProducer)
-
-	// Start producers
 	for p := 0; p < numProducers; p++ {
 		wg.Add(1)
-		go func(producerID int) {
+		go func(id int) {
 			defer wg.Done()
-			for i := 0; i < itemsPerProducer; i++ {
-				// Create unique data for this producer/item
-				data := []byte{byte(producerID), byte(i >> 8), byte(i & 0xFF)}
-				size := uint64(len(data))
-
-				offset := arena.Reserve(size)
-				slice := arena.GetSlice(offset, size)
-				copy(slice, data)
-
-				items <- item{offset: offset, size: size, data: data}
+			for i := 0; i < perProducer; i++ {
+				var res Reservation
+				for {
+					var ok bool
+					res, ok = arena.TryReserve(payloadSize)
+					if ok {
+						break
+					}
+					runtime.Gosched()
+				}
+				buf := arena.GetSlice(res.Offset, payloadSize)
+				seq := uint64(id)<<32 | uint64(i)
+				binary.LittleEndian.PutUint64(buf[0:], seq)
+				var sum uint64
+				for j := 8; j < payloadSize-8; j++ {
+					buf[j] = byte(seq + uint64(j))
+					sum += uint64(buf[j])
+				}
+				binary.LittleEndian.PutUint64(buf[payloadSize-8:], sum)
+				ch <- published{res: res}
 			}
 		}(p)
 	}
-
-	// Wait for producers and close channel
 	go func() {
 		wg.Wait()
-		close(items)
+		close(ch)
 	}()
 
-	// Consumer: verify all items
 	count := 0
-	for it := range items {
-		readData := arena.ReadSlice(it.offset, it.size)
-		if len(readData) != len(it.data) {
-			t.Errorf("Size mismatch: expected %d, got %d", len(it.data), len(readData))
+	for pub := range ch {
+		buf := arena.ReadSlice(pub.res.Offset, payloadSize)
+		var sum uint64
+		for j := 8; j < payloadSize-8; j++ {
+			sum += uint64(buf[j])
 		}
-		for j := range it.data {
-			if readData[j] != it.data[j] {
-				t.Errorf("Data mismatch at item %d, byte %d: expected %d, got %d",
-					count, j, it.data[j], readData[j])
-			}
+		if got := binary.LittleEndian.Uint64(buf[payloadSize-8:]); got != sum {
+			t.Fatalf("checksum mismatch after %d events: got %d want %d", count, got, sum)
 		}
+		arena.Release(pub.res)
 		count++
 	}
-
-	expectedCount := numProducers * itemsPerProducer
-	if count != expectedCount {
-		t.Errorf("Expected %d items, got %d", expectedCount, count)
+	if count != perProducer*numProducers {
+		t.Errorf("Expected %d events, got %d", perProducer*numProducers, count)
 	}
 }
 
-func TestCircularByteArena_AdvanceRead(t *testing.T) {
-	arena := NewCircularByteArena(1024)
+// TestCircularByteArena_WrapWhileConsumerHoldsSlice exercises the wrap path:
+// a producer tries to wrap onto a region the consumer still holds. The
+// reservation must fail until the consumer releases.
+func TestCircularByteArena_WrapWhileConsumerHoldsSlice(t *testing.T) {
+	arena := NewCircularByteArena(64)
 
-	// Reserve some space
-	arena.Reserve(100)
-	arena.Reserve(100)
-
-	// Advance read
-	arena.AdvanceRead(100)
-	if arena.ReadOff() != 100 {
-		t.Errorf("Expected readOff 100, got %d", arena.ReadOff())
+	resA, ok := arena.TryReserve(40)
+	if !ok {
+		t.Fatal("resA should succeed")
+	}
+	bufA := arena.GetSlice(resA.Offset, 40)
+	for i := range bufA {
+		bufA[i] = 0xAA
 	}
 
-	// Advance read further
-	arena.AdvanceRead(200)
-	if arena.ReadOff() != 200 {
-		t.Errorf("Expected readOff 200, got %d", arena.ReadOff())
+	// Fill the rest of the tail.
+	resB, ok := arena.TryReserve(24)
+	if !ok {
+		t.Fatal("resB should succeed")
+	}
+	arena.Release(resB)
+
+	// A wrap onto resA's region must be refused while the consumer holds it.
+	if _, ok := arena.TryReserve(40); ok {
+		t.Fatal("wrap onto an unreleased region must fail")
+	}
+	for i := range bufA {
+		if bufA[i] != 0xAA {
+			t.Fatalf("consumer-held data was corrupted at byte %d", i)
+		}
 	}
 
-	// Advancing backwards should be ignored
-	arena.AdvanceRead(100)
-	if arena.ReadOff() != 200 {
-		t.Errorf("Expected readOff to stay at 200, got %d", arena.ReadOff())
+	arena.Release(resA)
+	if _, ok := arena.TryReserve(40); !ok {
+		t.Fatal("reservation should succeed after release")
 	}
 }
 
 func TestCircularByteArena_Reset(t *testing.T) {
 	arena := NewCircularByteArena(1024)
 
-	// Make some allocations
-	arena.Reserve(100)
-	arena.Reserve(200)
-	arena.AdvanceRead(100)
+	res1, _ := arena.TryReserve(100)
+	arena.TryReserve(200)
+	arena.Release(res1)
 
-	// Reset
 	arena.Reset()
 
-	if arena.WriteOff() != 0 {
-		t.Errorf("Expected writeOff 0 after reset, got %d", arena.WriteOff())
+	if arena.Claimed() != 0 || arena.Released() != 0 {
+		t.Errorf("Expected zero cursors after reset, got claimed=%d released=%d",
+			arena.Claimed(), arena.Released())
 	}
-	if arena.ReadOff() != 0 {
-		t.Errorf("Expected readOff 0 after reset, got %d", arena.ReadOff())
+}
+
+func TestSimpleByteArena_BoundedAndAligned(t *testing.T) {
+	arena := NewSimpleByteArena(128)
+
+	res1, ok := arena.TryReserve(60)
+	if !ok || res1.Offset != 0 {
+		t.Fatalf("expected reservation at 0, got %+v ok=%v", res1, ok)
+	}
+	if res1.End-res1.Start != 64 {
+		t.Errorf("expected 8-byte rounded range of 64, got %d", res1.End-res1.Start)
+	}
+
+	res2, ok := arena.TryReserve(64)
+	if !ok || res2.Offset != 64 {
+		t.Fatalf("expected reservation at 64, got %+v ok=%v", res2, ok)
+	}
+
+	// Full: must refuse rather than overwrite.
+	if _, ok := arena.TryReserve(8); ok {
+		t.Fatal("reservation on a full SimpleByteArena must fail")
+	}
+
+	arena.Release(res1)
+	res3, ok := arena.TryReserve(32)
+	if !ok || res3.Offset != 0 {
+		t.Fatalf("expected wrap to offset 0 after release, got %+v ok=%v", res3, ok)
+	}
+
+	arena.Release(res2)
+	arena.Release(res3)
+	if arena.Released() != arena.Claimed() {
+		t.Errorf("expected all space released, claimed=%d released=%d", arena.Claimed(), arena.Released())
 	}
 }
 
@@ -247,104 +294,30 @@ func TestCircularByteArena_Reset(t *testing.T) {
 // Benchmarks
 // =============================================================================
 
-func BenchmarkCircularByteArena_Reserve(b *testing.B) {
-	arena := NewCircularByteArena(1024 * 1024 * 10) // 10MB
+func BenchmarkCircularByteArena_ReserveRelease(b *testing.B) {
+	arena := NewCircularByteArena(1024 * 1024)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		arena.Reserve(64)
+		res, ok := arena.TryReserve(64)
+		if !ok {
+			b.Fatal("reservation failed")
+		}
+		arena.Release(res)
 	}
 }
 
-func BenchmarkCircularByteArena_ReserveAndWrite(b *testing.B) {
-	arena := NewCircularByteArena(1024 * 1024 * 10) // 10MB
+func BenchmarkCircularByteArena_ReserveWriteRelease(b *testing.B) {
+	arena := NewCircularByteArena(1024 * 1024)
 	data := make([]byte, 64)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		offset := arena.Reserve(64)
-		slice := arena.GetSlice(offset, 64)
-		copy(slice, data)
-	}
-}
-
-func BenchmarkCircularByteArena_ConcurrentReserve(b *testing.B) {
-	arena := NewCircularByteArena(1024 * 1024 * 100) // 100MB
-	var wg sync.WaitGroup
-	numProducers := 4
-	itemsPerProducer := b.N / numProducers
-
-	b.ResetTimer()
-	for p := 0; p < numProducers; p++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < itemsPerProducer; i++ {
-				arena.Reserve(64)
-			}
-		}()
-	}
-	wg.Wait()
-}
-
-func BenchmarkCircularByteArena_ConcurrentReserveAndWrite(b *testing.B) {
-	arena := NewCircularByteArena(1024 * 1024 * 100) // 100MB
-	var wg sync.WaitGroup
-	numProducers := 4
-	itemsPerProducer := b.N / numProducers
-
-	b.ResetTimer()
-	for p := 0; p < numProducers; p++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			data := make([]byte, 64)
-			for i := 0; i < itemsPerProducer; i++ {
-				offset := arena.Reserve(64)
-				slice := arena.GetSlice(offset, 64)
-				copy(slice, data)
-			}
-		}()
-	}
-	wg.Wait()
-}
-
-func TestCircularByteArena_NoAllocationRace(t *testing.T) {
-	// This test verifies that concurrent Reserve calls never return overlapping ranges
-	// by checking that writing to reserved ranges doesn't cause data corruption
-	arena := NewCircularByteArena(1024 * 1024) // 1MB
-	const numProducers = 8
-	const itemsPerProducer = 5000
-	const itemSize = 32
-
-	var wg sync.WaitGroup
-	var errors int64
-
-	for p := 0; p < numProducers; p++ {
-		wg.Add(1)
-		go func(producerID int) {
-			defer wg.Done()
-			for i := 0; i < itemsPerProducer; i++ {
-				offset := arena.Reserve(itemSize)
-				slice := arena.GetSlice(offset, itemSize)
-
-				// Write producer ID and sequence to the slice
-				for j := 0; j < itemSize; j++ {
-					slice[j] = byte(producerID)
-				}
-
-				// Verify the data wasn't corrupted by another producer
-				for j := 0; j < itemSize; j++ {
-					if slice[j] != byte(producerID) {
-						atomic.AddInt64(&errors, 1)
-						break
-					}
-				}
-			}
-		}(p)
-	}
-
-	wg.Wait()
-
-	if errors > 0 {
-		t.Errorf("Detected %d data corruption events - allocations overlap!", errors)
+		res, ok := arena.TryReserve(64)
+		if !ok {
+			b.Fatal("reservation failed")
+		}
+		copy(arena.GetSlice(res.Offset, 64), data)
+		arena.Release(res)
 	}
 }

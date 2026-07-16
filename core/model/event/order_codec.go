@@ -27,8 +27,13 @@ func (o OrderNew) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderNewFromBytes(buf []byte) OrderNew {
-	return *(*OrderNew)(unsafe.Pointer(&buf[0]))
+func NewOrderNewFromBytes(buf []byte) (OrderNew, error) {
+	var v OrderNew
+	if len(buf) < sizeOfOrderNew {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfOrderNew]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -46,8 +51,13 @@ func (o OrderAccepted) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderAcceptedFromBytes(buf []byte) OrderAccepted {
-	return *(*OrderAccepted)(unsafe.Pointer(&buf[0]))
+func NewOrderAcceptedFromBytes(buf []byte) (OrderAccepted, error) {
+	var v OrderAccepted
+	if len(buf) < sizeOfOrderAccepted {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfOrderAccepted]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -65,8 +75,13 @@ func (o OrderPartiallyFilled) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderPartiallyFilledFromBytes(buf []byte) OrderPartiallyFilled {
-	return *(*OrderPartiallyFilled)(unsafe.Pointer(&buf[0]))
+func NewOrderPartiallyFilledFromBytes(buf []byte) (OrderPartiallyFilled, error) {
+	var v OrderPartiallyFilled
+	if len(buf) < sizeOfOrderPartiallyFilled {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfOrderPartiallyFilled]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -84,8 +99,13 @@ func (o OrderFilled) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderFilledFromBytes(buf []byte) OrderFilled {
-	return *(*OrderFilled)(unsafe.Pointer(&buf[0]))
+func NewOrderFilledFromBytes(buf []byte) (OrderFilled, error) {
+	var v OrderFilled
+	if len(buf) < sizeOfOrderFilled {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfOrderFilled]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -103,8 +123,13 @@ func (o OrderCanceled) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderCanceledFromBytes(buf []byte) OrderCanceled {
-	return *(*OrderCanceled)(unsafe.Pointer(&buf[0]))
+func NewOrderCanceledFromBytes(buf []byte) (OrderCanceled, error) {
+	var v OrderCanceled
+	if len(buf) < sizeOfOrderCanceled {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfOrderCanceled]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -122,6 +147,11 @@ func (e Execution) Encode(buf []byte) error {
 	return nil
 }
 
-func NewExecutionFromBytes(buf []byte) Execution {
-	return *(*Execution)(unsafe.Pointer(&buf[0]))
+func NewExecutionFromBytes(buf []byte) (Execution, error) {
+	var v Execution
+	if len(buf) < sizeOfExecution {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfExecution]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

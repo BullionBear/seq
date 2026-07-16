@@ -60,8 +60,15 @@ func (d DepthSnapshot) Encode(buf []byte) error {
 	return nil
 }
 
-// NewDepthSnapshotFromBytes interprets buf as a DepthSnapshot. Zero-copy for slices.
-func NewDepthSnapshotFromBytes(buf []byte) DepthSnapshot {
+// NewDepthSnapshotFromBytes interprets buf as a DepthSnapshot.
+// The buffer length is validated against the header-declared level counts
+// before any read. The Asks/Bids slices are zero-copy views into buf and are
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewDepthSnapshotFromBytes(buf []byte) (DepthSnapshot, error) {
+	if len(buf) < DepthSnapshotHeaderSize {
+		return DepthSnapshot{}, ErrBufferTooSmall
+	}
 	pos := 0
 
 	symbolID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -74,6 +81,10 @@ func NewDepthSnapshotFromBytes(buf []byte) DepthSnapshot {
 	pos += 4
 	bidsLen := binary.LittleEndian.Uint32(buf[pos:])
 	pos += 4
+
+	if !validLevelCounts(len(buf), DepthSnapshotHeaderSize, asksLen, bidsLen) {
+		return DepthSnapshot{}, ErrInvalidBuffer
+	}
 
 	var asks []common.PriceLevel
 	var bids []common.PriceLevel
@@ -92,7 +103,14 @@ func NewDepthSnapshotFromBytes(buf []byte) DepthSnapshot {
 		Timestamp: timestamp,
 		Asks:      asks,
 		Bids:      bids,
-	}
+	}, nil
+}
+
+// validLevelCounts checks the header + n*PriceLevelSize length invariant
+// without integer overflow: counts are widened to uint64 before multiplying.
+func validLevelCounts(bufLen, headerSize int, asksLen, bidsLen uint32) bool {
+	need := uint64(headerSize) + (uint64(asksLen)+uint64(bidsLen))*uint64(PriceLevelSize)
+	return uint64(bufLen) >= need
 }
 
 // ============================================================================
@@ -147,8 +165,15 @@ func (d DepthUpdate) Encode(buf []byte) error {
 	return nil
 }
 
-// NewDepthUpdateFromBytes interprets buf as a DepthUpdate. Zero-copy for slices.
-func NewDepthUpdateFromBytes(buf []byte) DepthUpdate {
+// NewDepthUpdateFromBytes interprets buf as a DepthUpdate.
+// The buffer length is validated against the header-declared level counts
+// before any read. The Asks/Bids slices are zero-copy views into buf and are
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewDepthUpdateFromBytes(buf []byte) (DepthUpdate, error) {
+	if len(buf) < DepthUpdateHeaderSize {
+		return DepthUpdate{}, ErrBufferTooSmall
+	}
 	pos := 0
 
 	symbolID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -167,6 +192,10 @@ func NewDepthUpdateFromBytes(buf []byte) DepthUpdate {
 	pos += 4
 	bidsLen := binary.LittleEndian.Uint32(buf[pos:])
 	pos += 4
+
+	if !validLevelCounts(len(buf), DepthUpdateHeaderSize, asksLen, bidsLen) {
+		return DepthUpdate{}, ErrInvalidBuffer
+	}
 
 	var asks []common.PriceLevel
 	var bids []common.PriceLevel
@@ -188,7 +217,7 @@ func NewDepthUpdateFromBytes(buf []byte) DepthUpdate {
 		Timestamp:       timestamp,
 		Asks:            asks,
 		Bids:            bids,
-	}
+	}, nil
 }
 
 // ============================================================================
@@ -236,8 +265,15 @@ func (r RespDepthSnapshot) Encode(buf []byte) error {
 	return nil
 }
 
-// NewRespDepthSnapshotFromBytes interprets buf as a RespDepthSnapshot. Zero-copy for slices.
-func NewRespDepthSnapshotFromBytes(buf []byte) RespDepthSnapshot {
+// NewRespDepthSnapshotFromBytes interprets buf as a RespDepthSnapshot.
+// The buffer length is validated against the header-declared level counts
+// before any read. The Asks/Bids slices are zero-copy views into buf and are
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewRespDepthSnapshotFromBytes(buf []byte) (RespDepthSnapshot, error) {
+	if len(buf) < DepthSnapshotHeaderSize {
+		return RespDepthSnapshot{}, ErrBufferTooSmall
+	}
 	pos := 0
 
 	symbolID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -250,6 +286,10 @@ func NewRespDepthSnapshotFromBytes(buf []byte) RespDepthSnapshot {
 	pos += 4
 	bidsLen := binary.LittleEndian.Uint32(buf[pos:])
 	pos += 4
+
+	if !validLevelCounts(len(buf), DepthSnapshotHeaderSize, asksLen, bidsLen) {
+		return RespDepthSnapshot{}, ErrInvalidBuffer
+	}
 
 	var asks []common.PriceLevel
 	var bids []common.PriceLevel
@@ -268,5 +308,5 @@ func NewRespDepthSnapshotFromBytes(buf []byte) RespDepthSnapshot {
 		Timestamp: timestamp,
 		Asks:      asks,
 		Bids:      bids,
-	}
+	}, nil
 }

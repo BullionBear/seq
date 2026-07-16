@@ -194,39 +194,75 @@ func (x *XArb) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewDepthUpdateFromBytes(buf)
+		update, err := event.NewDepthUpdateFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnDepthUpdate(update)
 	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		exec := event.NewExecutionFromBytes(buf)
+		exec, err := event.NewExecutionFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnExecution(exec)
 	case event.TopicEventOrderCanceled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderCanceled := event.NewOrderCanceledFromBytes(buf)
+		orderCanceled, err := event.NewOrderCanceledFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderCanceled(orderCanceled)
 	case event.TopicEventOrderRejected:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderRejected := event.NewOrderRejectedFromBytes(buf)
+		orderRejected, err := event.NewOrderRejectedFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderRejected(orderRejected)
 	case event.TopicEventOrderFilled:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderFilled := event.NewOrderFilledFromBytes(buf)
+		orderFilled, err := event.NewOrderFilledFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderFilled(orderFilled)
 	case event.TopicEventOrderError:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderError := event.NewOrderErrorFromBytes(buf)
+		orderError, err := event.NewOrderErrorFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderError(orderError)
 	case event.TopicEventOrderRiskInvalid:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderRiskInvalid := event.NewOrderRiskInvalidFromBytes(buf)
+		orderRiskInvalid, err := event.NewOrderRiskInvalidFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderRiskInvalid(orderRiskInvalid)
 	case event.TopicEventOrderNew:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderNew := event.NewOrderNewFromBytes(buf)
+		orderNew, err := event.NewOrderNewFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderNew(orderNew)
 	case event.TopicEventOrderAccepted:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		orderAccepted := event.NewOrderAcceptedFromBytes(buf)
+		orderAccepted, err := event.NewOrderAcceptedFromBytes(buf)
+		if err != nil {
+			x.Log().Error().Err(err).Msg("XArb: failed to decode event")
+			return
+		}
 		x.OnOrderAccepted(orderAccepted)
 	}
 }

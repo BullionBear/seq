@@ -15,6 +15,11 @@ func (q QryBalanceSnapshot) Encode(buf []byte) error {
 	return nil
 }
 
-func NewQryBalanceSnapshotFromBytes(buf []byte) QryBalanceSnapshot {
-	return *(*QryBalanceSnapshot)(unsafe.Pointer(&buf[0]))
+func NewQryBalanceSnapshotFromBytes(buf []byte) (QryBalanceSnapshot, error) {
+	var v QryBalanceSnapshot
+	if len(buf) < sizeOfQryBalanceSnapshot {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfQryBalanceSnapshot]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

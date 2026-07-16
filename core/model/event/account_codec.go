@@ -53,8 +53,15 @@ func (r RespBalanceSnapshot) Encode(buf []byte) error {
 	return nil
 }
 
-// NewRespBalanceSnapshotFromBytes interprets buf as a RespBalanceSnapshot. Zero-copy for slices.
-func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
+// NewRespBalanceSnapshotFromBytes interprets buf as a RespBalanceSnapshot.
+// The buffer length is validated against the header-declared balance count
+// before any read. The Balances slice is a zero-copy view into buf and is
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewRespBalanceSnapshotFromBytes(buf []byte) (RespBalanceSnapshot, error) {
+	if len(buf) < RespBalanceSnapshotHeaderSize {
+		return RespBalanceSnapshot{}, ErrBufferTooSmall
+	}
 	pos := 0
 
 	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -65,6 +72,10 @@ func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
 	pos += 4
 	pos += 4 // skip padding
 
+	if !validBalanceCount(len(buf), RespBalanceSnapshotHeaderSize, balancesLen) {
+		return RespBalanceSnapshot{}, ErrInvalidBuffer
+	}
+
 	var balances []common.Balance
 	if balancesLen > 0 {
 		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
@@ -74,7 +85,14 @@ func NewRespBalanceSnapshotFromBytes(buf []byte) RespBalanceSnapshot {
 		AccountID: accountID,
 		WalletID:  walletID,
 		Balances:  balances,
-	}
+	}, nil
+}
+
+// validBalanceCount checks the header + n*BalanceSize length invariant
+// without integer overflow.
+func validBalanceCount(bufLen, headerSize int, balancesLen uint32) bool {
+	need := uint64(headerSize) + uint64(balancesLen)*uint64(BalanceSize)
+	return uint64(bufLen) >= need
 }
 
 // ============================================================================
@@ -115,8 +133,15 @@ func (b BalanceUpdate) Encode(buf []byte) error {
 	return nil
 }
 
-// NewBalanceUpdateFromBytes interprets buf as a BalanceUpdate. Zero-copy for slices.
-func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
+// NewBalanceUpdateFromBytes interprets buf as a BalanceUpdate.
+// The buffer length is validated against the header-declared balance count
+// before any read. The Balances slice is a zero-copy view into buf and is
+// only valid while buf is (i.e. within the dispatch handler, before the
+// event's arena reservation is released).
+func NewBalanceUpdateFromBytes(buf []byte) (BalanceUpdate, error) {
+	if len(buf) < BalanceUpdateHeaderSize {
+		return BalanceUpdate{}, ErrBufferTooSmall
+	}
 	pos := 0
 
 	accountID := int(binary.LittleEndian.Uint64(buf[pos:]))
@@ -129,6 +154,10 @@ func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
 	pos += 4
 	pos += 4 // skip padding
 
+	if !validBalanceCount(len(buf), BalanceUpdateHeaderSize, balancesLen) {
+		return BalanceUpdate{}, ErrInvalidBuffer
+	}
+
 	var balances []common.Balance
 	if balancesLen > 0 {
 		balances = unsafe.Slice((*common.Balance)(unsafe.Pointer(&buf[pos])), balancesLen)
@@ -139,5 +168,5 @@ func NewBalanceUpdateFromBytes(buf []byte) BalanceUpdate {
 		WalletID:  walletID,
 		Balances:  balances,
 		UpdatedAt: updatedAt,
-	}
+	}, nil
 }

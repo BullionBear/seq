@@ -35,7 +35,10 @@ func (o OrderUnknownStatus) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderUnknownStatusFromBytes(buf []byte) OrderUnknownStatus {
+func NewOrderUnknownStatusFromBytes(buf []byte) (OrderUnknownStatus, error) {
+	if len(buf) < orderUnknownStatusFixedSize {
+		return OrderUnknownStatus{}, ErrBufferTooSmall
+	}
 	pos := 0
 	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
@@ -45,13 +48,16 @@ func NewOrderUnknownStatusFromBytes(buf []byte) OrderUnknownStatus {
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
+	if msgLen < 0 || len(buf)-pos < msgLen {
+		return OrderUnknownStatus{}, ErrInvalidBuffer
+	}
 	msg := string(buf[pos : pos+msgLen])
 	return OrderUnknownStatus{
 		ClientOrderID: clientOrderID,
 		OrderID:       orderID,
 		AccountID:     accountID,
 		Msg:           msg,
-	}
+	}, nil
 }
 
 // ============================================================================
@@ -85,7 +91,10 @@ func (o OrderError) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderErrorFromBytes(buf []byte) OrderError {
+func NewOrderErrorFromBytes(buf []byte) (OrderError, error) {
+	if len(buf) < orderErrorFixedSize {
+		return OrderError{}, ErrBufferTooSmall
+	}
 	pos := 0
 	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
@@ -97,6 +106,9 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
+	if msgLen < 0 || len(buf)-pos < msgLen {
+		return OrderError{}, ErrInvalidBuffer
+	}
 	msg := string(buf[pos : pos+msgLen])
 	return OrderError{
 		ClientOrderID: clientOrderID,
@@ -104,7 +116,7 @@ func NewOrderErrorFromBytes(buf []byte) OrderError {
 		AccountID:     accountID,
 		ErrorCode:     errorCode,
 		Msg:           msg,
-	}
+	}, nil
 }
 
 // ============================================================================
@@ -140,7 +152,10 @@ func (o OrderRejected) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
+func NewOrderRejectedFromBytes(buf []byte) (OrderRejected, error) {
+	if len(buf) < orderRejectedFixedSize {
+		return OrderRejected{}, ErrBufferTooSmall
+	}
 	pos := 0
 	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
@@ -154,6 +169,9 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
+	if msgLen < 0 || len(buf)-pos < msgLen {
+		return OrderRejected{}, ErrInvalidBuffer
+	}
 	msg := string(buf[pos : pos+msgLen])
 	return OrderRejected{
 		ClientOrderID: clientOrderID,
@@ -162,7 +180,7 @@ func NewOrderRejectedFromBytes(buf []byte) OrderRejected {
 		ErrorCode:     errorCode,
 		UpdatedAt:     updatedAt,
 		Msg:           msg,
-	}
+	}, nil
 }
 
 // ============================================================================
@@ -194,7 +212,10 @@ func (o OrderRiskInvalid) Encode(buf []byte) error {
 	return nil
 }
 
-func NewOrderRiskInvalidFromBytes(buf []byte) OrderRiskInvalid {
+func NewOrderRiskInvalidFromBytes(buf []byte) (OrderRiskInvalid, error) {
+	if len(buf) < orderRiskInvalidFixedSize {
+		return OrderRiskInvalid{}, ErrBufferTooSmall
+	}
 	pos := 0
 	clientOrderID := int(binary.LittleEndian.Uint64(buf[pos:]))
 	pos += 8
@@ -204,11 +225,14 @@ func NewOrderRiskInvalidFromBytes(buf []byte) OrderRiskInvalid {
 	pos += 8
 	msgLen := int(binary.LittleEndian.Uint32(buf[pos:]))
 	pos += 4
+	if msgLen < 0 || len(buf)-pos < msgLen {
+		return OrderRiskInvalid{}, ErrInvalidBuffer
+	}
 	msg := string(buf[pos : pos+msgLen])
 	return OrderRiskInvalid{
 		ClientOrderID: clientOrderID,
 		AccountID:     accountID,
 		ErrorCode:     errorCode,
 		Msg:           msg,
-	}
+	}, nil
 }

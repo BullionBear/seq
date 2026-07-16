@@ -9,13 +9,18 @@ import (
 // It abstracts the event publishing functionality so that both
 // EventBus and MsgBus can be used.
 type EventPublisher interface {
-	Allocate(size uint64) (offset uint64, buffer []byte)
-	Publish(ref EventRef)
+	Allocate(topic event.Topic, size uint64) (EventRef, []byte, bool)
+	Publish(ref EventRef) bool
+	Cancel(ref EventRef)
 }
 
 // StateNotifier publishes engine state events to the event bus.
 // It provides a convenient interface for engines to report their lifecycle states
 // (Ready, Stop, Finished, Abnormal) through the event bus system.
+//
+// State topics are critical-class: Allocate/Publish never drop them, so the
+// ok returns below can only be false for droppable topics and are effectively
+// always true here (kept for interface symmetry).
 type StateNotifier struct {
 	publisher EventPublisher
 }
@@ -29,51 +34,55 @@ func NewStateNotifier(publisher EventPublisher) *StateNotifier {
 // NotifyReady publishes a ReadyEvent indicating an engine is ready.
 func (n *StateNotifier) NotifyReady(source common.EngineType, timestamp uint64) {
 	e := event.ReadyEvent{Source: source, Timestamp: timestamp}
-	size := uint64(e.GetBufferLength())
-	offset, buf := n.publisher.Allocate(size)
-	e.Encode(buf)
-	n.publisher.Publish(EventRef{
-		Topic:  event.TopicEventReady,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := n.publisher.Allocate(event.TopicEventReady, uint64(e.GetBufferLength()))
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		n.publisher.Cancel(ref)
+		return
+	}
+	n.publisher.Publish(ref)
 }
 
 // NotifyStop publishes a StopEvent indicating an engine is stopping.
 func (n *StateNotifier) NotifyStop(source common.EngineType, timestamp uint64) {
 	e := event.StopEvent{Source: source, Timestamp: timestamp}
-	size := uint64(e.GetBufferLength())
-	offset, buf := n.publisher.Allocate(size)
-	e.Encode(buf)
-	n.publisher.Publish(EventRef{
-		Topic:  event.TopicEventStop,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := n.publisher.Allocate(event.TopicEventStop, uint64(e.GetBufferLength()))
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		n.publisher.Cancel(ref)
+		return
+	}
+	n.publisher.Publish(ref)
 }
 
 // NotifyFinished publishes a FinishedEvent indicating an engine has finished.
 func (n *StateNotifier) NotifyFinished(source common.EngineType, timestamp uint64) {
 	e := event.FinishedEvent{Source: source, Timestamp: timestamp}
-	size := uint64(e.GetBufferLength())
-	offset, buf := n.publisher.Allocate(size)
-	e.Encode(buf)
-	n.publisher.Publish(EventRef{
-		Topic:  event.TopicEventFinished,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := n.publisher.Allocate(event.TopicEventFinished, uint64(e.GetBufferLength()))
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		n.publisher.Cancel(ref)
+		return
+	}
+	n.publisher.Publish(ref)
 }
 
 // NotifyAbnormal publishes an AbnormalEvent indicating an engine encountered an error.
 func (n *StateNotifier) NotifyAbnormal(source common.EngineType, errorCode int, timestamp uint64) {
 	e := event.AbnormalEvent{Source: source, ErrorCode: errorCode, Timestamp: timestamp}
-	size := uint64(e.GetBufferLength())
-	offset, buf := n.publisher.Allocate(size)
-	e.Encode(buf)
-	n.publisher.Publish(EventRef{
-		Topic:  event.TopicEventAbnormal,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := n.publisher.Allocate(event.TopicEventAbnormal, uint64(e.GetBufferLength()))
+	if !ok {
+		return
+	}
+	if err := e.Encode(buf); err != nil {
+		n.publisher.Cancel(ref)
+		return
+	}
+	n.publisher.Publish(ref)
 }

@@ -33,7 +33,29 @@ const (
 	TopicEventBalanceUpdate
 	// Timer
 	TopicEventTimer
+
+	// TopicCount is a sentinel: the number of defined topics. It must remain
+	// the last entry in this block (used to size per-topic counter arrays).
+	TopicCount
 )
+
+// IsDroppable reports whether events of this topic may be dropped under
+// overflow (ring buffer or arena full). Droppable topics are recoverable by
+// construction: market-data topics are re-synced via depth-snapshot
+// re-request on DepthID gap detection, and timer events are superseded by the
+// next tick. All other topics (engine state, order lifecycle, execution,
+// balance) are critical and must never be dropped.
+func (t Topic) IsDroppable() bool {
+	switch t {
+	case TopicEventDepthSnapshot,
+		TopicEventRespDepthSnapshot,
+		TopicEventDepthUpdate,
+		TopicEventTick,
+		TopicEventTimer:
+		return true
+	}
+	return false
+}
 
 func (t Topic) String() string {
 	switch t {

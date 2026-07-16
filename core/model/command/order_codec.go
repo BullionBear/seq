@@ -30,8 +30,13 @@ func (r RiskCheck) Encode(buf []byte) error {
 	return nil
 }
 
-func NewRiskCheckFromBytes(buf []byte) RiskCheck {
-	return *(*RiskCheck)(unsafe.Pointer(&buf[0]))
+func NewRiskCheckFromBytes(buf []byte) (RiskCheck, error) {
+	var v RiskCheck
+	if len(buf) < sizeOfRiskCheck {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfRiskCheck]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -49,8 +54,13 @@ func (s SubmitOrder) Encode(buf []byte) error {
 	return nil
 }
 
-func NewSubmitOrderFromBytes(buf []byte) SubmitOrder {
-	return *(*SubmitOrder)(unsafe.Pointer(&buf[0]))
+func NewSubmitOrderFromBytes(buf []byte) (SubmitOrder, error) {
+	var v SubmitOrder
+	if len(buf) < sizeOfSubmitOrder {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfSubmitOrder]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -68,8 +78,13 @@ func (c CancelOrder) Encode(buf []byte) error {
 	return nil
 }
 
-func NewCancelOrderFromBytes(buf []byte) CancelOrder {
-	return *(*CancelOrder)(unsafe.Pointer(&buf[0]))
+func NewCancelOrderFromBytes(buf []byte) (CancelOrder, error) {
+	var v CancelOrder
+	if len(buf) < sizeOfCancelOrder {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfCancelOrder]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }
 
 // ============================================================================
@@ -87,6 +102,11 @@ func (c CancelAll) Encode(buf []byte) error {
 	return nil
 }
 
-func NewCancelAllFromBytes(buf []byte) CancelAll {
-	return *(*CancelAll)(unsafe.Pointer(&buf[0]))
+func NewCancelAllFromBytes(buf []byte) (CancelAll, error) {
+	var v CancelAll
+	if len(buf) < sizeOfCancelAll {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfCancelAll]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

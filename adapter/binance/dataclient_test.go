@@ -163,7 +163,10 @@ func TestProcessDepthUpdate(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	depthUpdate := event.NewDepthUpdateFromBytes(buf)
+	depthUpdate, err := event.NewDepthUpdateFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if depthUpdate.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", depthUpdate.SymbolID)
@@ -238,7 +241,10 @@ func TestProcessTrade(t *testing.T) {
 	}
 
 	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	tick := event.NewTickFromBytes(buf)
+	tick, err := event.NewTickFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if tick.SymbolID != 1 {
 		t.Errorf("Expected SymbolID 1, got %d", tick.SymbolID)
@@ -280,7 +286,10 @@ func TestProcessTrade(t *testing.T) {
 	}
 
 	buf = eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
-	tick = event.NewTickFromBytes(buf)
+	tick, err = event.NewTickFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if tick.Side != common.SideBuy {
 		t.Errorf("Expected SideBuy (m=false), got %v", tick.Side)
@@ -696,7 +705,10 @@ loop:
 			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventTick {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					tick := event.NewTickFromBytes(buf)
+					tick, err := event.NewTickFromBytes(buf)
+					if err != nil {
+						t.Fatalf("decode failed: %v", err)
+					}
 					t.Logf("Received trade: Price=%.2f, Qty=%.4f, Side=%v",
 						tick.Price, tick.Qty, tick.Side)
 					receivedCount++
@@ -760,7 +772,10 @@ loop:
 			ok := eb.Poll(func(e msgbus.Event) {
 				if e.Ref.Topic == event.TopicEventDepthUpdate {
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					depth := event.NewDepthUpdateFromBytes(buf)
+					depth, err := event.NewDepthUpdateFromBytes(buf)
+					if err != nil {
+						t.Fatalf("decode failed: %v", err)
+					}
 					t.Logf("Received depth update: DepthID=%d, Bids=%d, Asks=%d",
 						depth.DepthID, len(depth.Bids), len(depth.Asks))
 					receivedCount++
@@ -830,7 +845,10 @@ loop:
 				switch e.Ref.Topic {
 				case event.TopicEventTick:
 					buf := eb.ReadBuffer(e.Ref.Index, e.Ref.Length)
-					tick := event.NewTickFromBytes(buf)
+					tick, err := event.NewTickFromBytes(buf)
+					if err != nil {
+						t.Fatalf("decode failed: %v", err)
+					}
 					if tick.SymbolID == 1 {
 						btcTrades++
 					} else if tick.SymbolID == 2 {

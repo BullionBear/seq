@@ -1,6 +1,7 @@
 package msgbus
 
 import (
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -14,6 +15,16 @@ const (
 
 	// DefaultEventRingBufferSize is the default size for the event ring buffer
 	DefaultEventRingBufferSize = 4096
+
+	// DefaultOverflowDeadline is how long a critical-class producer waits for
+	// ring/arena space before the process fails hard. Overflow of critical
+	// topics means the dispatch loop has been stalled for this long — the
+	// system can no longer guarantee order/balance state consistency.
+	DefaultOverflowDeadline = 5 * time.Second
+
+	// droppableSpinBudget is the number of Gosched-yielding retries a
+	// droppable-class producer performs before dropping the event.
+	droppableSpinBudget = 64
 )
 
 // EventHandler is a function type for handling events
@@ -24,10 +35,25 @@ type EventHandler func(event Event)
 // for events, allowing multiple goroutines to publish events concurrently
 // while a single consumer (the dispatch loop) processes them.
 //
+// Overflow policy (per topic class, see event.Topic.IsDroppable):
+//   - Critical topics (engine state, order lifecycle, execution, balance):
+//     Allocate/Publish spin (with runtime.Gosched escalation) until space
+//     frees; after the configured overflow deadline the process fails hard
+//     with a fatal log. Critical events are NEVER dropped.
+//   - Droppable topics (depth, tick, timer): after a bounded spin the event
+//     is dropped, the arena reservation is released, and the per-topic drop
+//     counter is incremented. Consumers recover via snapshot re-request
+//     (orderbook DepthID gap detection) or the next timer tick.
+//
+// Deadlock note: a publisher running ON the dispatch goroutine (command
+// processors, notifier calls from handlers) cannot be drained past a full
+// ring, since it is itself the consumer. The overflow deadline converts that
+// would-be deadlock into a detected fatal. Size the ring so that
+// dispatch-thread publishers always have headroom.
+//
 // Thread safety:
-//   - Publish can be called from multiple goroutines concurrently
+//   - Allocate/Publish/Cancel can be called from multiple goroutines
 //   - Dispatch should be called from a single goroutine
-//   - Allocate is NOT thread-safe (arena access should be serialized or use per-producer arenas)
 type EventBus struct {
 	nextEventID uint64
 
@@ -43,33 +69,52 @@ type EventBus struct {
 
 	// Optional binary logger for persisting events to .dat files
 	msgLogger *MsgLogger
+
+	// Overflow accounting (indexed by topic).
+	dropCounts [event.TopicCount]uint64
+	waitCounts [event.TopicCount]uint64
+
+	overflowDeadline time.Duration
 }
 
 // NewEventBus creates a new EventBus with default capacity.
 func NewEventBus() *EventBus {
-	return &EventBus{
-		nextEventID: 0,
-		rbEvent:     mem.NewMPSCRingBuffer[Event](DefaultEventRingBufferSize),
-		byteArena:   mem.NewCircularByteArena(DefaultByteArenaCapacity),
-		consumers:   make([]*Consumer, 0),
-		minSequence: 0,
-	}
+	return NewEventBusWithCapacity(DefaultByteArenaCapacity)
 }
 
 // NewEventBusWithCapacity creates a new EventBus with the specified byte arena capacity.
 func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
 	return &EventBus{
-		nextEventID: 0,
-		rbEvent:     mem.NewMPSCRingBuffer[Event](DefaultEventRingBufferSize),
-		byteArena:   mem.NewCircularByteArena(arenaCapacity),
-		consumers:   make([]*Consumer, 0),
-		minSequence: 0,
+		nextEventID:      0,
+		rbEvent:          mem.NewMPSCRingBuffer[Event](DefaultEventRingBufferSize),
+		byteArena:        mem.NewCircularByteArena(arenaCapacity),
+		consumers:        make([]*Consumer, 0),
+		minSequence:      0,
+		overflowDeadline: DefaultOverflowDeadline,
 	}
 }
 
 // SetMsgLogger sets the binary message logger for persisting events to disk.
 func (e *EventBus) SetMsgLogger(l *MsgLogger) {
 	e.msgLogger = l
+}
+
+// SetOverflowDeadline configures how long critical-class producers wait for
+// space before failing hard. Must be called before concurrent publishing.
+func (e *EventBus) SetOverflowDeadline(d time.Duration) {
+	e.overflowDeadline = d
+}
+
+// DropCount returns the number of events dropped for the given topic.
+// Only droppable-class topics can ever have a non-zero count.
+func (e *EventBus) DropCount(topic event.Topic) uint64 {
+	return atomic.LoadUint64(&e.dropCounts[topic])
+}
+
+// WaitCount returns the number of Allocate/Publish calls for the given topic
+// that had to wait for ring or arena space.
+func (e *EventBus) WaitCount(topic event.Topic) uint64 {
+	return atomic.LoadUint64(&e.waitCounts[topic])
 }
 
 // Register adds a consumer to the EventBus with optional topic filtering.
@@ -83,11 +128,9 @@ func (e *EventBus) Register(name string, topics []event.Topic, handler EventHand
 // Dispatch reads the next event from the ring buffer and dispatches it to all
 // consumers whose topic filter matches. Returns true if an event was dispatched,
 // false if the ring buffer is empty.
-// After all consumers process the event, their sequences are updated.
+// After all consumers have processed the event, its arena reservation is
+// released — event payload slices must not be retained past the handler.
 func (e *EventBus) Dispatch() bool {
-	if e.rbEvent.IsEmpty() {
-		return false
-	}
 	ev, ok := e.rbEvent.Read()
 	if !ok {
 		return false
@@ -108,13 +151,12 @@ func (e *EventBus) Dispatch() bool {
 		consumer.Sequence = ev.EventID
 	}
 
-	ev.UpdatedAt = uint64(time.Now().UnixNano())
+	e.byteArena.Release(ev.Ref.reservation())
 	return true
 }
 
 // Release updates minSequence to the minimum sequence across all consumers.
 // This indicates the oldest event that is still being processed.
-// Arena memory up to minSequence can be safely reclaimed.
 func (e *EventBus) Release() {
 	if len(e.consumers) == 0 {
 		return
@@ -130,16 +172,14 @@ func (e *EventBus) Release() {
 }
 
 // MinSequence returns the minimum sequence across all consumers.
-// This can be used to determine which arena slots are safe to overwrite.
 func (e *EventBus) MinSequence() uint64 {
 	return e.minSequence
 }
 
-// ReleaseArenas is kept for backward compatibility.
-// With CircularByteArena, memory management is handled automatically
-// through write-time overwrite detection.
+// ReleaseArenas is kept for backward compatibility. Arena space is released
+// per event by Dispatch/Poll.
 func (e *EventBus) ReleaseArenas() {
-	// No-op: CircularByteArena handles overwrite detection internally
+	// No-op: reservations are released as events are dispatched.
 }
 
 // ConsumerCount returns the number of registered consumers.
@@ -147,49 +187,145 @@ func (e *EventBus) ConsumerCount() int {
 	return len(e.consumers)
 }
 
+// Poll reads the next event from the ring buffer and calls the handler.
+// The event's arena reservation is released after the handler returns.
 func (e *EventBus) Poll(handler EventHandler) bool {
-	if e.rbEvent.IsEmpty() {
-		return false
-	}
-	event, ok := e.rbEvent.Read()
+	ev, ok := e.rbEvent.Read()
 	if !ok {
 		return false
 	}
 	if e.msgLogger != nil {
-		payload := e.byteArena.ReadSlice(event.Ref.Index, event.Ref.Length)
-		e.msgLogger.LogEvent(event, payload)
+		payload := e.byteArena.ReadSlice(ev.Ref.Index, ev.Ref.Length)
+		e.msgLogger.LogEvent(ev, payload)
 	}
-	handler(event)
-	event.UpdatedAt = uint64(time.Now().UnixNano())
+	handler(ev)
+	e.byteArena.Release(ev.Ref.reservation())
 	return true
 }
 
-// Allocate reserves space in the arena and returns the offset and a []byte slice
-// for the caller to write data into. The caller is responsible for serializing
-// data into the returned buffer before calling Publish.
-func (e *EventBus) Allocate(size uint64) (offset uint64, buffer []byte) {
-	offset = e.byteArena.Reserve(size)
-	buffer = e.byteArena.GetSlice(offset, size)
-	return offset, buffer
+// Allocate reserves arena space for an event of the given topic and returns a
+// fully-populated EventRef plus the []byte slice to serialize into. After
+// encoding, pass the EventRef to Publish (or Cancel if publishing is
+// abandoned — the reservation must not leak).
+//
+// Returns ok=false only for droppable topics when the arena stays full past
+// the spin budget (the drop counter is incremented). Critical topics never
+// fail: they wait, and fail hard after the overflow deadline.
+func (e *EventBus) Allocate(topic event.Topic, size uint64) (EventRef, []byte, bool) {
+	res, ok := e.byteArena.TryReserve(size)
+	if !ok {
+		res, ok = e.reserveSlow(topic, size)
+		if !ok {
+			return EventRef{}, nil, false
+		}
+	}
+	ref := EventRef{
+		Topic:    topic,
+		Index:    res.Offset,
+		Length:   size,
+		resStart: res.Start,
+		resEnd:   res.End,
+	}
+	return ref, e.byteArena.GetSlice(res.Offset, size), true
 }
 
-// Publish publishes an EventRef to the ring buffer. The caller should have
-// already serialized data into the arena buffer obtained via Allocate.
+// reserveSlow is the overflow path of Allocate.
+func (e *EventBus) reserveSlow(topic event.Topic, size uint64) (mem.Reservation, bool) {
+	atomic.AddUint64(&e.waitCounts[topic], 1)
+	droppable := topic.IsDroppable()
+	var deadline time.Time
+	spins := 0
+	for {
+		runtime.Gosched()
+		if res, ok := e.byteArena.TryReserve(size); ok {
+			return res, true
+		}
+		if droppable {
+			spins++
+			if spins >= droppableSpinBudget {
+				atomic.AddUint64(&e.dropCounts[topic], 1)
+				return mem.Reservation{}, false
+			}
+		} else {
+			if deadline.IsZero() {
+				deadline = time.Now().Add(e.overflowDeadline)
+			} else if time.Now().After(deadline) {
+				log().Fatal().
+					Str("topic", topic.String()).
+					Uint64("size", size).
+					Dur("deadline", e.overflowDeadline).
+					Msg("EventBus: arena full past overflow deadline for critical topic; dispatch loop stalled")
+			}
+		}
+	}
+}
+
+// Publish publishes an EventRef to the ring buffer. The caller must have
+// serialized data into the arena buffer obtained via Allocate.
 // This method is thread-safe and can be called from multiple goroutines.
-func (e *EventBus) Publish(ref EventRef) {
+//
+// Returns false only for droppable topics when the ring stays full past the
+// spin budget; the event is dropped, its arena reservation released, and the
+// drop counter incremented. Critical topics never fail (see EventBus doc).
+func (e *EventBus) Publish(ref EventRef) bool {
 	now := uint64(time.Now().UnixNano())
 	// Use atomic increment to get unique event ID for concurrent publishers
 	eventID := atomic.AddUint64(&e.nextEventID, 1) - 1
-	e.rbEvent.Write(Event{
+	ev := Event{
 		Ref:       ref,
 		EventID:   eventID,
 		CreatedAt: now,
 		UpdatedAt: now,
-	})
+	}
+	if e.rbEvent.Write(ev) {
+		return true
+	}
+	return e.publishSlow(ev)
+}
+
+// publishSlow is the overflow path of Publish.
+func (e *EventBus) publishSlow(ev Event) bool {
+	topic := ev.Ref.Topic
+	atomic.AddUint64(&e.waitCounts[topic], 1)
+	droppable := topic.IsDroppable()
+	var deadline time.Time
+	spins := 0
+	for {
+		runtime.Gosched()
+		if e.rbEvent.Write(ev) {
+			return true
+		}
+		if droppable {
+			spins++
+			if spins >= droppableSpinBudget {
+				e.byteArena.Release(ev.Ref.reservation())
+				atomic.AddUint64(&e.dropCounts[topic], 1)
+				return false
+			}
+		} else {
+			if deadline.IsZero() {
+				deadline = time.Now().Add(e.overflowDeadline)
+			} else if time.Now().After(deadline) {
+				log().Fatal().
+					Str("topic", topic.String()).
+					Uint64("eventID", ev.EventID).
+					Dur("deadline", e.overflowDeadline).
+					Msg("EventBus: ring full past overflow deadline for critical topic; dispatch loop stalled")
+			}
+		}
+	}
+}
+
+// Cancel releases the arena reservation of an allocated-but-never-published
+// EventRef (e.g. after an encode error). Every Allocate must be balanced by
+// exactly one Publish or Cancel.
+func (e *EventBus) Cancel(ref EventRef) {
+	e.byteArena.Release(ref.reservation())
 }
 
 // ReadBuffer returns a []byte slice at the given offset/length for consumers
-// to deserialize event data from.
+// to deserialize event data from. The slice is valid only until the event's
+// reservation is released (i.e. within the dispatch handler).
 func (e *EventBus) ReadBuffer(offset, length uint64) []byte {
 	return e.byteArena.ReadSlice(offset, length)
 }

@@ -30,7 +30,10 @@ func TestEncodeDecodeSubmitOrder(t *testing.T) {
 		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := command.NewSubmitOrderFromBytes(buf)
+	result, err := command.NewSubmitOrderFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -68,7 +71,10 @@ func TestEncodeDecodeCancelOrder(t *testing.T) {
 		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := command.NewCancelOrderFromBytes(buf)
+	result, err := command.NewCancelOrderFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -91,7 +97,10 @@ func TestEncodeDecodeCancelAll(t *testing.T) {
 		t.Fatalf("Encode failed: %v", err)
 	}
 
-	result := command.NewCancelAllFromBytes(buf)
+	result, err := command.NewCancelAllFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 
 	if result.AccountID != cmd.AccountID {
 		t.Errorf("AccountID mismatch: got %d, want %d", result.AccountID, cmd.AccountID)
@@ -141,14 +150,9 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 		Price:     50000.0,
 		Quantity:  1.5,
 	}
-	size := uint64(cmd.GetBufferLength())
-	offset, buf := bus.AllocateCmd(size)
+	ref, buf := bus.AllocateCmd(command.CommandTypeOrderSubmit, uint64(cmd.GetBufferLength()))
 	cmd.Encode(buf)
-	bus.Send(CommandRef{
-		CommandType: command.CommandTypeOrderSubmit,
-		Index:       offset,
-		Length:      size,
-	})
+	bus.Send(ref)
 
 	// Dispatch should process the command
 	hasWork := bus.Dispatch()
@@ -164,7 +168,10 @@ func TestMsgBus_SendAndDispatchCommand(t *testing.T) {
 
 	// Verify command payload
 	cmdBuf := bus.ReadCmdBuffer(handledCmd.Ref.Index, handledCmd.Ref.Length)
-	result := command.NewSubmitOrderFromBytes(cmdBuf)
+	result, err := command.NewSubmitOrderFromBytes(cmdBuf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
 	if result.AccountID != 1 {
 		t.Errorf("Expected AccountID 1, got %d", result.AccountID)
 	}
@@ -191,28 +198,18 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 
 	// Publish an event first
 	tick := event.Tick{SymbolID: 1, Price: 50000.0}
-	size := uint64(tick.GetBufferLength())
-	offset, buf := bus.Allocate(size)
+	ref, buf, _ := bus.Allocate(event.TopicEventTick, uint64(tick.GetBufferLength()))
 	tick.Encode(buf)
-	bus.Publish(EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	bus.Publish(ref)
 
 	// Then send a command
 	submitCmd := command.SubmitOrder{
 		AccountID: 1,
 		SymbolID:  42,
 	}
-	cmdSize := uint64(submitCmd.GetBufferLength())
-	cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
+	cmdRef, cmdBuf := bus.AllocateCmd(command.CommandTypeOrderSubmit, uint64(submitCmd.GetBufferLength()))
 	submitCmd.Encode(cmdBuf)
-	bus.Send(CommandRef{
-		CommandType: command.CommandTypeOrderSubmit,
-		Index:       cmdOffset,
-		Length:      cmdSize,
-	})
+	bus.Send(cmdRef)
 
 	// Dispatch should process command FIRST, then event
 	bus.Dispatch()
@@ -246,26 +243,16 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 
 	// Publish an event
 	tick := event.Tick{SymbolID: 1}
-	size := uint64(tick.GetBufferLength())
-	offset, buf := bus.Allocate(size)
+	ref, buf, _ := bus.Allocate(event.TopicEventTick, uint64(tick.GetBufferLength()))
 	tick.Encode(buf)
-	bus.Publish(EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	bus.Publish(ref)
 
 	// Send 3 commands
 	for i := 0; i < 3; i++ {
 		submitCmd := command.SubmitOrder{AccountID: i}
-		cmdSize := uint64(submitCmd.GetBufferLength())
-		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
+		cmdRef, cmdBuf := bus.AllocateCmd(command.CommandTypeOrderSubmit, uint64(submitCmd.GetBufferLength()))
 		submitCmd.Encode(cmdBuf)
-		bus.Send(CommandRef{
-			CommandType: command.CommandTypeOrderSubmit,
-			Index:       cmdOffset,
-			Length:      cmdSize,
-		})
+		bus.Send(cmdRef)
 	}
 
 	// Single Dispatch call should drain all 3 commands + 1 event
@@ -311,14 +298,9 @@ func TestMsgBus_EventDispatchDelegation(t *testing.T) {
 	})
 
 	tick := event.Tick{SymbolID: 1, Price: 100.0}
-	size := uint64(tick.GetBufferLength())
-	offset, buf := bus.Allocate(size)
+	ref, buf, _ := bus.Allocate(event.TopicEventTick, uint64(tick.GetBufferLength()))
 	tick.Encode(buf)
-	bus.Publish(EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	bus.Publish(ref)
 
 	bus.Dispatch()
 
@@ -347,13 +329,9 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		cmdOffset, cmdBuf := bus.AllocateCmd(cmdSize)
+		cmdRef, cmdBuf := bus.AllocateCmd(command.CommandTypeOrderSubmit, cmdSize)
 		cmd.Encode(cmdBuf)
-		bus.Send(CommandRef{
-			CommandType: command.CommandTypeOrderSubmit,
-			Index:       cmdOffset,
-			Length:      cmdSize,
-		})
+		bus.Send(cmdRef)
 		bus.Dispatch()
 	}
 }
@@ -368,13 +346,12 @@ func BenchmarkMsgBus_DispatchEvent(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		offset, buf := bus.Allocate(tickSize)
+		ref, buf, ok := bus.Allocate(event.TopicEventTick, tickSize)
+		if !ok {
+			b.Fatal("allocation failed")
+		}
 		tick.Encode(buf)
-		bus.Publish(EventRef{
-			Topic:  event.TopicEventTick,
-			Index:  offset,
-			Length: tickSize,
-		})
+		bus.Publish(ref)
 		bus.Dispatch()
 		bus.Release()
 	}

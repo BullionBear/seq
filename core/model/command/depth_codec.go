@@ -15,6 +15,11 @@ func (r ReqDepthSnapshot) Encode(buf []byte) error {
 	return nil
 }
 
-func NewReqDepthSnapshotFromBytes(buf []byte) ReqDepthSnapshot {
-	return *(*ReqDepthSnapshot)(unsafe.Pointer(&buf[0]))
+func NewReqDepthSnapshotFromBytes(buf []byte) (ReqDepthSnapshot, error) {
+	var v ReqDepthSnapshot
+	if len(buf) < sizeOfReqDepthSnapshot {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfReqDepthSnapshot]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

@@ -468,15 +468,17 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 	depthUpdate.Bids = c.parsePriceLevels(data, "b", symbol.PricePrecision, symbol.SizePrecision)
 	depthUpdate.Asks = c.parsePriceLevels(data, "a", symbol.PricePrecision, symbol.SizePrecision)
 
-	// Publish to event bus using new generic API
+	// Publish to event bus
 	size := uint64(depthUpdate.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	depthUpdate.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventDepthUpdate,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthUpdate, size)
+	if !ok {
+		return // dropped under overflow; orderbook re-syncs via DepthID gap
+	}
+	if err := depthUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // processTrade parses and publishes a trade event
@@ -517,15 +519,17 @@ func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 		tick.Side = common.SideBuy
 	}
 
-	// Publish to event bus using new generic API
+	// Publish to event bus
 	size := uint64(tick.GetBufferLength())
-	offset, buf := c.msgBus.Allocate(size)
-	tick.Encode(buf)
-	c.msgBus.Publish(msgbus.EventRef{
-		Topic:  event.TopicEventTick,
-		Index:  offset,
-		Length: size,
-	})
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventTick, size)
+	if !ok {
+		return // dropped under overflow
+	}
+	if err := tick.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // parsePriceLevels parses an array of [price, qty] arrays from JSON.

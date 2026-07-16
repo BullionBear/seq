@@ -62,14 +62,9 @@ func (s *StrategyActorBase) SubmitOrder(accountID int, symbolID int, side common
 		Quantity:      quantity,
 		Timestamp:     uint64(now),
 	}
-	size := uint64(riskCmd.GetBufferLength())
-	offset, buf := s.msgbus.AllocateCmd(size)
+	ref, buf := s.msgbus.AllocateCmd(command.CommandTypeOrderRiskCheck, uint64(riskCmd.GetBufferLength()))
 	riskCmd.Encode(buf)
-	s.msgbus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeOrderRiskCheck,
-		Index:       offset,
-		Length:      size,
-	})
+	s.msgbus.Send(ref)
 	return clientOrderId
 }
 
@@ -78,14 +73,9 @@ func (s *StrategyActorBase) CancelOrder(clientOrderID int, accountID int) {
 		AccountID:     accountID,
 		ClientOrderID: clientOrderID,
 	}
-	size := uint64(cancelCmd.GetBufferLength())
-	offset, buf := s.msgbus.AllocateCmd(size)
+	ref, buf := s.msgbus.AllocateCmd(command.CommandTypeOrderCancel, uint64(cancelCmd.GetBufferLength()))
 	cancelCmd.Encode(buf)
-	s.msgbus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeOrderCancel,
-		Index:       offset,
-		Length:      size,
-	})
+	s.msgbus.Send(ref)
 }
 
 func (s *StrategyActorBase) CancelAllOrders(accountID int, symbolID int) {
@@ -93,12 +83,7 @@ func (s *StrategyActorBase) CancelAllOrders(accountID int, symbolID int) {
 		AccountID: accountID,
 		SymbolID:  symbolID,
 	}
-	size := uint64(cancelAllCmd.GetBufferLength())
-	offset, buf := s.msgbus.AllocateCmd(size)
+	ref, buf := s.msgbus.AllocateCmd(command.CommandTypeCancelAll, uint64(cancelAllCmd.GetBufferLength()))
 	cancelAllCmd.Encode(buf)
-	s.msgbus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeCancelAll,
-		Index:       offset,
-		Length:      size,
-	})
+	s.msgbus.Send(ref)
 }

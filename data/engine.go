@@ -130,7 +130,11 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 	switch cmd.Ref.CommandType {
 	case command.CommandTypeReqDepthSnapshot:
 		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
-		req := command.NewReqDepthSnapshotFromBytes(buf)
+		req, err := command.NewReqDepthSnapshotFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("DataEngine: failed to decode command")
+			return
+		}
 		e.execReqDepthSnapshot(req)
 	}
 }

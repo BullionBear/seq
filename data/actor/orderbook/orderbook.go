@@ -169,14 +169,9 @@ func (sb *SymbolBook) requestSnapshot(bus *msgbus.MsgBus) {
 	sb.snapshotPending = true
 
 	req := command.ReqDepthSnapshot{SymbolID: sb.symbolID}
-	size := uint64(req.GetBufferLength())
-	offset, buf := bus.AllocateCmd(size)
+	ref, buf := bus.AllocateCmd(command.CommandTypeReqDepthSnapshot, uint64(req.GetBufferLength()))
 	req.Encode(buf)
-	bus.Send(msgbus.CommandRef{
-		CommandType: command.CommandTypeReqDepthSnapshot,
-		Index:       offset,
-		Length:      size,
-	})
+	bus.Send(ref)
 
 	sb.log.Debug().Int("symbolID", sb.symbolID).Msg("SymbolBook: requested depth snapshot")
 }
@@ -381,17 +376,29 @@ func (a *Actor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewDepthSnapshotFromBytes(buf)
+		snapshot, err := event.NewDepthSnapshotFromBytes(buf)
+		if err != nil {
+			a.Log().Error().Err(err).Msg("OrderbookActor: failed to decode event")
+			return
+		}
 		a.onDepthSnapshot(snapshot)
 
 	case event.TopicEventRespDepthSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		resp := event.NewRespDepthSnapshotFromBytes(buf)
+		resp, err := event.NewRespDepthSnapshotFromBytes(buf)
+		if err != nil {
+			a.Log().Error().Err(err).Msg("OrderbookActor: failed to decode event")
+			return
+		}
 		a.onRespDepthSnapshot(resp)
 
 	case event.TopicEventDepthUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewDepthUpdateFromBytes(buf)
+		update, err := event.NewDepthUpdateFromBytes(buf)
+		if err != nil {
+			a.Log().Error().Err(err).Msg("OrderbookActor: failed to decode event")
+			return
+		}
 		a.onDepthUpdate(update, bus)
 	}
 }

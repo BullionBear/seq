@@ -25,6 +25,11 @@ func (t TimeEvent) Encode(buf []byte) error {
 	return nil
 }
 
-func NewTimeEventFromBytes(buf []byte) TimeEvent {
-	return *(*TimeEvent)(unsafe.Pointer(&buf[0]))
+func NewTimeEventFromBytes(buf []byte) (TimeEvent, error) {
+	var v TimeEvent
+	if len(buf) < sizeOfTimeEvent {
+		return v, ErrBufferTooSmall
+	}
+	copy((*[sizeOfTimeEvent]byte)(unsafe.Pointer(&v))[:], buf)
+	return v, nil
 }

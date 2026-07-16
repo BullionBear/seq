@@ -112,7 +112,11 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		update := event.NewBalanceUpdateFromBytes(buf)
+		update, err := event.NewBalanceUpdateFromBytes(buf)
+		if err != nil {
+			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			return
+		}
 		if update.WalletID != b.walletID {
 			return
 		}
@@ -120,7 +124,11 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 
 	case event.TopicEventRespBalanceSnapshot:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		snapshot := event.NewRespBalanceSnapshotFromBytes(buf)
+		snapshot, err := event.NewRespBalanceSnapshotFromBytes(buf)
+		if err != nil {
+			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			return
+		}
 		if snapshot.WalletID != b.walletID {
 			return
 		}
@@ -128,7 +136,11 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 
 	case event.TopicEventExecution:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
-		exec := event.NewExecutionFromBytes(buf)
+		exec, err := event.NewExecutionFromBytes(buf)
+		if err != nil {
+			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			return
+		}
 		if exec.AccountID != b.accountID {
 			return
 		}

@@ -78,13 +78,13 @@ func (c *Clock) Tick(nowNs uint64) {
 
 			t.callback(ev)
 
-			offset, buf := c.msgBus.Allocate(uint64(ev.GetBufferLength()))
-			ev.Encode(buf)
-			c.msgBus.Publish(msgbus.EventRef{
-				Topic:  event.TopicEventTimer,
-				Index:  offset,
-				Length: uint64(ev.GetBufferLength()),
-			})
+			if ref, buf, ok := c.msgBus.Allocate(event.TopicEventTimer, uint64(ev.GetBufferLength())); ok {
+				if err := ev.Encode(buf); err != nil {
+					c.msgBus.Cancel(ref)
+				} else {
+					c.msgBus.Publish(ref)
+				}
+			}
 
 			t.nextFireNs += t.intervalNs
 		}
