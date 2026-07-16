@@ -426,7 +426,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	}`)
 
 	// Process the message
-	client.processMessage(msg)
+	client.processMessage(&wsConnection{}, msg)
 
 	// Verify event was published
 	var receivedEvent msgbus.Event
@@ -511,7 +511,7 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	}`)
 
 	// Process the message
-	client.processMessage(msg)
+	client.processMessage(&wsConnection{}, msg)
 
 	// Verify event was published
 	var receivedEvent msgbus.Event

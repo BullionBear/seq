@@ -3,13 +3,14 @@ package bybit
 import (
 	"bytes"
 	"context"
+	"math"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -28,6 +29,33 @@ const (
 	wsPingInterval      = 20 * time.Second // Bybit recommends 20s
 	wsPingWait          = 10 * time.Second
 )
+
+// Byte constants for allocation-free message dispatch (P2-2): ops, topic
+// prefixes, and message types are compared as []byte, never converted to
+// string.
+var (
+	bytesOpPong         = []byte("pong")
+	bytesOpSubscribe    = []byte("subscribe")
+	bytesTopicOrderbook = []byte("orderbook.")
+	bytesTopicTrade     = []byte("publicTrade.")
+	bytesTypeSnapshot   = []byte("snapshot")
+	bytesTypeDelta      = []byte("delta")
+	bytesSideSell       = []byte("Sell")
+)
+
+// symbolPrecision caches per-symbol tick multipliers so the per-message path
+// needs neither a catalog lookup (which allocates) nor math.Pow.
+type symbolPrecision struct {
+	priceMul float64 // 10^PricePrecision
+	sizeMul  float64 // 10^SizePrecision
+}
+
+func newSymbolPrecision(pricePrecision, sizePrecision int) symbolPrecision {
+	return symbolPrecision{
+		priceMul: math.Pow(10, float64(pricePrecision)),
+		sizeMul:  math.Pow(10, float64(sizePrecision)),
+	}
+}
 
 // BybitDataClient handles Bybit market data via WebSocket and HTTP
 // It provides a unified interface for both real-time streaming data (WebSocket)
@@ -54,7 +82,9 @@ type BybitDataClient struct {
 
 	// Topic to symbolID mapping for fast lookup during message processing
 	topicToSymbol map[string]int // "orderbook.50.BTCUSDT" -> symbolID
-	topicMapLock  sync.RWMutex
+	// symbolID -> cached tick multipliers for the per-message parse path.
+	precisions   map[int]symbolPrecision
+	topicMapLock sync.RWMutex // guards topicToSymbol, precisions
 
 	// Connection state
 	shouldStop atomic.Bool
@@ -74,6 +104,14 @@ type wsConnection struct {
 	connected atomic.Bool
 	category  Category
 	client    *BybitDataClient
+
+	// Scratch price-level buffers reused across depth messages (grow-only,
+	// high-water sized). They are per-connection because one client owns
+	// several category connections whose ReadLoop goroutines run
+	// concurrently; within a connection frames are processed sequentially
+	// (gws ParallelEnabled is off).
+	scratchBids []common.PriceLevel
+	scratchAsks []common.PriceLevel
 }
 
 // NewBybitDataClient creates a new Bybit data client
@@ -87,6 +125,7 @@ func NewBybitDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *BybitD
 		depthSubs:     make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:     make(map[int]struct{}, 64),
 		topicToSymbol: make(map[string]int, 128),
+		precisions:    make(map[int]symbolPrecision, 128),
 	}
 }
 
@@ -273,10 +312,7 @@ func (c *BybitDataClient) buildCategoryTopics() map[Category][]string {
 		// Topic format: orderbook.{depth}.{symbol}
 		topic := "orderbook." + strconv.Itoa(int(opts.Depth)) + "." + symbol.Name
 		categoryTopics[category] = append(categoryTopics[category], topic)
-
-		c.topicMapLock.Lock()
-		c.topicToSymbol[topic] = symbolID
-		c.topicMapLock.Unlock()
+		c.registerTopic(topic, symbol)
 	}
 
 	for symbolID := range c.tradeSubs {
@@ -295,13 +331,19 @@ func (c *BybitDataClient) buildCategoryTopics() map[Category][]string {
 		// Topic format: publicTrade.{symbol}
 		topic := "publicTrade." + symbol.Name
 		categoryTopics[category] = append(categoryTopics[category], topic)
-
-		c.topicMapLock.Lock()
-		c.topicToSymbol[topic] = symbolID
-		c.topicMapLock.Unlock()
+		c.registerTopic(topic, symbol)
 	}
 
 	return categoryTopics
+}
+
+// registerTopic records the topic -> symbol mapping plus the symbolID ->
+// tick multipliers the hot parse path needs.
+func (c *BybitDataClient) registerTopic(topic string, symbol *cpanel.Symbol) {
+	c.topicMapLock.Lock()
+	c.topicToSymbol[topic] = symbol.ID
+	c.precisions[symbol.ID] = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)
+	c.topicMapLock.Unlock()
 }
 
 // sendSubscriptions sends subscription messages for topics
@@ -344,10 +386,7 @@ func (c *BybitDataClient) subscribeToDepthStream(symbolID int, depth DepthLevel,
 	}
 
 	topic := "orderbook." + strconv.Itoa(int(depth)) + "." + symbol.Name
-
-	c.topicMapLock.Lock()
-	c.topicToSymbol[topic] = symbolID
-	c.topicMapLock.Unlock()
+	c.registerTopic(topic, symbol)
 
 	c.connsLock.RLock()
 	wsConn, exists := c.conns[category]
@@ -367,10 +406,7 @@ func (c *BybitDataClient) subscribeToTradeStream(symbolID int, category Category
 	}
 
 	topic := "publicTrade." + symbol.Name
-
-	c.topicMapLock.Lock()
-	c.topicToSymbol[topic] = symbolID
-	c.topicMapLock.Unlock()
+	c.registerTopic(topic, symbol)
 
 	c.connsLock.RLock()
 	wsConn, exists := c.conns[category]
@@ -462,33 +498,41 @@ func (c *BybitDataClient) handleDisconnect(category Category) {
 	}
 }
 
-// processMessage processes a raw WebSocket message
-func (c *BybitDataClient) processMessage(data []byte) {
+// processMessage processes a raw WebSocket message.
+//
+// P2-2 contract: all field extraction stays on []byte subslices of the
+// connection read buffer — no string conversions, no per-message
+// allocations. Topic resolution goes through a map[string]int lookup keyed
+// with string(b) (compiler-optimized, non-allocating); only integer IDs
+// cross into the arena. Nothing derived from data may be retained past this
+// call (P2-1 buffer lifetime contract). ws carries the per-connection
+// scratch buffers.
+func (c *BybitDataClient) processMessage(ws *wsConnection, data []byte) {
 	// Check if this is a pong or subscription response
-	op, err := jsonparser.GetString(data, "op")
+	op, _, _, err := jsonparser.Get(data, "op")
 	if err == nil {
-		if op == "pong" || op == "subscribe" {
+		if bytes.Equal(op, bytesOpPong) || bytes.Equal(op, bytesOpSubscribe) {
 			// Ignore pong and subscription responses
 			return
 		}
 	}
 
 	// Get topic to determine message type
-	topic, err := jsonparser.GetString(data, "topic")
+	topic, _, _, err := jsonparser.Get(data, "topic")
 	if err != nil {
 		return
 	}
 
 	// Get message type (snapshot or delta)
-	msgType, err := jsonparser.GetString(data, "type")
+	msgType, _, _, err := jsonparser.Get(data, "type")
 	if err != nil {
 		return
 	}
 
 	// Route to appropriate handler
-	if strings.HasPrefix(topic, "orderbook.") {
-		c.processOrderbook(topic, msgType, data)
-	} else if strings.HasPrefix(topic, "publicTrade.") {
+	if bytes.HasPrefix(topic, bytesTopicOrderbook) {
+		c.processOrderbook(ws, topic, msgType, data)
+	} else if bytes.HasPrefix(topic, bytesTopicTrade) {
 		c.processTrade(topic, data)
 	}
 }
@@ -509,14 +553,13 @@ func (c *BybitDataClient) processMessage(data []byte) {
 //	  },
 //	  "cts": 1672304484976
 //	}
-func (c *BybitDataClient) processOrderbook(topic, msgType string, data []byte) {
+func (c *BybitDataClient) processOrderbook(ws *wsConnection, topic, msgType []byte, data []byte) {
 	c.topicMapLock.RLock()
-	symbolID, ok := c.topicToSymbol[topic]
+	symbolID, ok := c.topicToSymbol[string(topic)]
 	c.topicMapLock.RUnlock()
 
 	if !ok {
-		log().Warn().Str("topic", topic).Msg("Received message for unknown topic")
-		return
+		return // unknown topic (cold: only after a subscription bug)
 	}
 
 	// Get data object
@@ -532,34 +575,58 @@ func (c *BybitDataClient) processOrderbook(topic, msgType string, data []byte) {
 
 	// Parse update ID
 	updateID, _ := jsonparser.GetInt(dataObj, "u")
-	switch msgType {
-	case "snapshot":
-		c.processDepthSnapshot(symbolID, int(updateID), timestamp, dataObj)
-	case "delta":
-		c.processDepthUpdate(symbolID, int(updateID), timestamp, dataObj)
+	switch {
+	case bytes.Equal(msgType, bytesTypeSnapshot):
+		c.processDepthSnapshot(ws, symbolID, int(updateID), timestamp, dataObj)
+	case bytes.Equal(msgType, bytesTypeDelta):
+		c.processDepthUpdate(ws, symbolID, int(updateID), timestamp, dataObj)
 	}
 }
 
-// processDepthSnapshot handles snapshot messages
-func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp uint64, dataObj []byte) {
-	// Get symbol precision for tick computation
+// getPrecision returns the cached tick multipliers for a symbol. On a miss
+// (topic registered without going through registerTopic, e.g. in tests) it
+// falls back to the catalog once and caches the result — the hot path
+// afterwards is a read-locked map hit.
+func (c *BybitDataClient) getPrecision(symbolID int) (symbolPrecision, bool) {
+	c.topicMapLock.RLock()
+	prec, ok := c.precisions[symbolID]
+	c.topicMapLock.RUnlock()
+	if ok {
+		return prec, true
+	}
+
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth snapshot")
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth message")
+		return symbolPrecision{}, false
+	}
+	prec = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)
+	c.topicMapLock.Lock()
+	c.precisions[symbolID] = prec
+	c.topicMapLock.Unlock()
+	return prec, true
+}
+
+// processDepthSnapshot handles snapshot messages
+func (c *BybitDataClient) processDepthSnapshot(ws *wsConnection, symbolID, depthID int, timestamp uint64, dataObj []byte) {
+	prec, ok := c.getPrecision(symbolID)
+	if !ok {
 		return
 	}
 
-	// Parse bids and asks with precision for PriceTick/QuantityTick
-	bids := c.parsePriceLevels(dataObj, "b", symbol.PricePrecision, symbol.SizePrecision)
-	asks := c.parsePriceLevels(dataObj, "a", symbol.PricePrecision, symbol.SizePrecision)
+	// Parse bids and asks into the per-connection scratch buffers. The
+	// slices are only referenced until Encode below copies the levels into
+	// the arena.
+	ws.scratchBids = appendPriceLevels(ws.scratchBids[:0], dataObj, "b", prec)
+	ws.scratchAsks = appendPriceLevels(ws.scratchAsks[:0], dataObj, "a", prec)
 
 	// Create DepthSnapshot struct
 	snapshot := event.DepthSnapshot{
 		SymbolID:  symbolID,
 		DepthID:   depthID,
 		Timestamp: timestamp,
-		Asks:      asks,
-		Bids:      bids,
+		Asks:      ws.scratchAsks,
+		Bids:      ws.scratchBids,
 	}
 
 	// Calculate size and allocate buffer
@@ -576,17 +643,17 @@ func (c *BybitDataClient) processDepthSnapshot(symbolID, depthID int, timestamp 
 }
 
 // processDepthUpdate handles delta messages
-func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp uint64, dataObj []byte) {
-	// Get symbol precision for tick computation
-	symbol, err := c.catalog.GetSymbol(symbolID)
-	if err != nil {
-		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth update")
+func (c *BybitDataClient) processDepthUpdate(ws *wsConnection, symbolID, depthID int, timestamp uint64, dataObj []byte) {
+	prec, ok := c.getPrecision(symbolID)
+	if !ok {
 		return
 	}
 
-	// Parse bids and asks with precision for PriceTick/QuantityTick
-	bids := c.parsePriceLevels(dataObj, "b", symbol.PricePrecision, symbol.SizePrecision)
-	asks := c.parsePriceLevels(dataObj, "a", symbol.PricePrecision, symbol.SizePrecision)
+	// Parse bids and asks into the per-connection scratch buffers. The
+	// slices are only referenced until Encode below copies the levels into
+	// the arena.
+	ws.scratchBids = appendPriceLevels(ws.scratchBids[:0], dataObj, "b", prec)
+	ws.scratchAsks = appendPriceLevels(ws.scratchAsks[:0], dataObj, "a", prec)
 
 	// Create DepthUpdate struct
 	depthUpdate := event.DepthUpdate{
@@ -596,8 +663,8 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 		CurrentDepthID:  depthID,
 		NextDepthID:     depthID + 1,
 		Timestamp:       timestamp,
-		Asks:            asks,
-		Bids:            bids,
+		Asks:            ws.scratchAsks,
+		Bids:            ws.scratchBids,
 	}
 
 	// Calculate size and allocate buffer
@@ -614,9 +681,9 @@ func (c *BybitDataClient) processDepthUpdate(symbolID, depthID int, timestamp ui
 }
 
 // processTrade processes trade messages
-func (c *BybitDataClient) processTrade(topic string, data []byte) {
+func (c *BybitDataClient) processTrade(topic []byte, data []byte) {
 	c.topicMapLock.RLock()
-	symbolID, ok := c.topicToSymbol[topic]
+	symbolID, ok := c.topicToSymbol[string(topic)]
 	c.topicMapLock.RUnlock()
 
 	if !ok {
@@ -647,11 +714,11 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	tick.Qty = parseFloat64(qtyBytes)
 
 	// Parse side: S = "Buy" or "Sell"
-	sideStr, _ := jsonparser.GetString(tradeData, "S")
-	if sideStr == "Sell" {
-		tick.Side = 1 // SideSell
+	side, _, _, _ := jsonparser.Get(tradeData, "S")
+	if bytes.Equal(side, bytesSideSell) {
+		tick.Side = common.SideSell
 	} else {
-		tick.Side = 0 // SideBuy
+		tick.Side = common.SideBuy
 	}
 
 	// Publish to event bus
@@ -667,49 +734,30 @@ func (c *BybitDataClient) processTradeItem(symbolID int, tradeData []byte) {
 	c.msgBus.Publish(ref)
 }
 
-// parsePriceLevels parses an array of [price, qty] arrays from JSON.
-// Uses pricePrecision and sizePrecision to compute PriceTick and QuantityTick.
-func (c *BybitDataClient) parsePriceLevels(data []byte, key string, pricePrecision, sizePrecision int) []common.PriceLevel {
-	// First pass: count elements
-	count := 0
-	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		count++
-	}, key)
-
-	if count == 0 {
-		return nil
-	}
-
-	// Allocate slice
-	levels := make([]common.PriceLevel, count)
-
-	// Second pass: parse values
-	idx := 0
-	_, _ = jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		if idx >= count {
-			return
-		}
-
-		// Parse [price, qty] array
+// appendPriceLevels parses an array of [price, qty] arrays from JSON and
+// appends the levels to dst (single pass, amortized zero allocation once the
+// caller's scratch buffer has reached its high-water capacity).
+func appendPriceLevels(dst []common.PriceLevel, data []byte, key string, prec symbolPrecision) []common.PriceLevel {
+	_, _ = jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+		var pl common.PriceLevel
 		elemIdx := 0
-		_, _ = jsonparser.ArrayEach(value, func(elem []byte, dt jsonparser.ValueType, off int, e error) {
+		_, _ = jsonparser.ArrayEach(value, func(elem []byte, _ jsonparser.ValueType, _ int, _ error) {
 			// Remove quotes if present
 			if len(elem) >= 2 && elem[0] == '"' {
 				elem = elem[1 : len(elem)-1]
 			}
 			if elemIdx == 0 {
-				levels[idx].Price = parseFloat64(elem)
+				pl.Price = parseFloat64(elem)
 			} else if elemIdx == 1 {
-				levels[idx].Quantity = parseFloat64(elem)
+				pl.Quantity = parseFloat64(elem)
 			}
 			elemIdx++
 		})
-		levels[idx].PriceTick = common.PriceToTick(levels[idx].Price, pricePrecision)
-		levels[idx].QuantityTick = common.QuantityToTick(levels[idx].Quantity, sizePrecision)
-		idx++
+		pl.PriceTick = int(math.Round(pl.Price * prec.priceMul))
+		pl.QuantityTick = int(math.Round(pl.Quantity * prec.sizeMul))
+		dst = append(dst, pl)
 	}, key)
-
-	return levels[:idx]
+	return dst
 }
 
 // parseFloat64 parses a float64 from bytes without string allocation
@@ -785,8 +833,17 @@ func (h *wsEventHandler) OnPong(socket *gws.Conn, payload []byte) {
 	_ = socket.SetDeadline(time.Now().Add(wsPingInterval + wsPingWait))
 }
 
+// OnMessage handles one WebSocket frame.
+//
+// Buffer lifetime contract (P2-1): message.Bytes() aliases a pooled read
+// buffer owned by gws; message.Close() recycles it into the pool, so frame
+// reads allocate nothing in steady state. The contents are valid only until
+// this handler returns — parsing (processMessage) and the arena encode must
+// complete synchronously here, and no subslice of the payload may be
+// retained. Frames arrive sequentially per connection (gws ParallelEnabled
+// is off), which is what makes the per-connection scratch buffers safe.
 func (h *wsEventHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	_ = socket.SetDeadline(time.Now().Add(wsPingInterval + wsPingWait))
-	h.wsConn.client.processMessage(message.Bytes())
+	h.wsConn.client.processMessage(h.wsConn, message.Bytes())
 }

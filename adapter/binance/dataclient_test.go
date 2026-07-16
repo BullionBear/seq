@@ -349,6 +349,7 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 	client.streamToSymbol["btcusdt@trade"] = 1
+	client.symbolToID["BTCUSDT"] = 1
 
 	// Single stream format (no "stream" wrapper)
 	singleMsg := []byte(`{
@@ -627,6 +628,7 @@ func TestConcurrentMessageProcessing(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 	client.streamToSymbol["btcusdt@trade"] = 1
+	client.symbolToID["BTCUSDT"] = 1
 
 	tradeMsg := []byte(`{"e":"trade","E":1672531200000,"s":"BTCUSDT","t":12345,"p":"50000.00","q":"1.0","T":1672531200123,"m":false,"M":true}`)
 
