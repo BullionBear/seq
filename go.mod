@@ -5,8 +5,9 @@ go 1.25.1
 require (
 	github.com/alphadose/haxmap v1.4.1
 	github.com/buger/jsonparser v1.1.1
-	github.com/bytedance/sonic v1.14.2
+	github.com/bytedance/sonic v1.15.2
 	github.com/lxzan/gws v1.8.8
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/rs/zerolog v1.34.0
 	github.com/tidwall/btree v1.8.1
 	github.com/valyala/fasthttp v1.69.0
@@ -17,7 +18,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.4.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.1 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
@@ -25,7 +26,6 @@ require (
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
