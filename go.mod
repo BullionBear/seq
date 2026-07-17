@@ -1,10 +1,10 @@
 module github.com/BullionBear/seq
 
-go 1.25.1
+go 1.26.0
 
 require (
 	github.com/alphadose/haxmap v1.4.1
-	github.com/buger/jsonparser v1.1.1
+	github.com/buger/jsonparser v1.1.2
 	github.com/bytedance/sonic v1.15.2
 	github.com/lxzan/gws v1.8.8
 	github.com/mitchellh/mapstructure v1.5.0
@@ -32,6 +32,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
