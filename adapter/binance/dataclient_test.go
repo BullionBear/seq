@@ -11,7 +11,6 @@ import (
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -119,8 +118,8 @@ func TestProcessDepthUpdate(t *testing.T) {
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -202,8 +201,8 @@ func TestProcessTrade(t *testing.T) {
 	cat := &catalog.Catalog{}
 
 	// Inject symbols
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -300,8 +299,8 @@ func TestProcessMessage_CombinedStream(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -343,8 +342,8 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -388,8 +387,8 @@ func BenchmarkProcessDepthUpdate(b *testing.B) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -431,8 +430,8 @@ func BenchmarkProcessTrade(b *testing.B) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -463,8 +462,8 @@ func BenchmarkProcessMessage_CombinedStream(b *testing.B) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -488,9 +487,9 @@ func TestSubscribeDepthUpdate(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
-	symbols[2] = cpanel.Symbol{ID: 2, Name: "ETHUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols[2] = catalog.Symbol{ID: 2, Name: "ETHUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -515,8 +514,8 @@ func TestSubscribeTrade(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -536,9 +535,9 @@ func TestBuildStreamList(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
-	symbols[2] = cpanel.Symbol{ID: 2, Name: "ETHUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols[2] = catalog.Symbol{ID: 2, Name: "ETHUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -588,9 +587,9 @@ func TestConcurrentSubscriptions(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
+	symbols := make(map[int]catalog.Symbol)
 	for i := 1; i <= 100; i++ {
-		symbols[i] = cpanel.Symbol{ID: i, Name: fmt.Sprintf("SYM%d", i)}
+		symbols[i] = catalog.Symbol{ID: i, Name: fmt.Sprintf("SYM%d", i)}
 	}
 	setPrivateField(cat, "symbols", symbols)
 
@@ -622,8 +621,8 @@ func TestConcurrentMessageProcessing(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -673,8 +672,8 @@ func TestIntegration_RealConnection(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -741,8 +740,8 @@ func TestIntegration_DepthUpdates(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
@@ -808,9 +807,9 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
-	symbols[2] = cpanel.Symbol{ID: 2, Name: "ETHUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols[2] = catalog.Symbol{ID: 2, Name: "ETHUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)

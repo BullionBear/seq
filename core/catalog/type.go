@@ -1,4 +1,4 @@
-package cpanel
+package catalog
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 )
 
-// Symbol represents a trading symbol from the LynxLinkage API
+// Symbol represents a trading symbol (instrument)
 type Symbol struct {
 	ID              int      `json:"id"`
 	Name            string   `json:"name"`
@@ -40,16 +40,6 @@ type Token struct {
 	Slug string `json:"slug"`
 }
 
-// SymbolParams represents query parameters for the symbol endpoint
-type SymbolParams struct {
-	ExchangeID   *int    `json:"exchange_id,omitempty"`
-	ExchangeSlug *string `json:"exchange_slug,omitempty"`
-	ProductID    *int    `json:"product_id,omitempty"`
-	ProductSlug  *string `json:"product_slug,omitempty"`
-	BaseTokenID  *int    `json:"base_token_id,omitempty"`
-	QuoteTokenID *int    `json:"quote_token_id,omitempty"`
-}
-
 // APIType represents the type of API authentication
 type APIType string
 
@@ -59,7 +49,7 @@ const (
 	APITypeED25519 APIType = "ED25519"
 )
 
-// Account represents an exchange account from the v2 API
+// Account represents an exchange account
 type Account struct {
 	ID        int             `json:"id"`
 	UID       int             `json:"uid"`
@@ -101,7 +91,7 @@ func (a *Account) SetWallets(wallets []Wallet) {
 	a.wallets = wallets
 }
 
-// APIKey represents API credentials from the v2 API
+// APIKey represents API credentials
 type APIKey struct {
 	ID         int             `json:"id"`
 	UserID     int             `json:"user_id"`
@@ -116,7 +106,7 @@ type APIKey struct {
 	CreatedAt  string          `json:"created_at"`
 }
 
-// Wallet represents a wallet from the v2 API
+// Wallet represents a wallet belonging to an account
 type Wallet struct {
 	ID         int               `json:"id"`
 	Name       string            `json:"name"`

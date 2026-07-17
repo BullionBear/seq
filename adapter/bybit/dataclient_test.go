@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -19,11 +18,11 @@ func newTestDataClient(t testing.TB) (*BybitDataClient, *msgbus.MsgBus, *wsConne
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   1,
 			Name: "Linear",
 			Slug: "linear",

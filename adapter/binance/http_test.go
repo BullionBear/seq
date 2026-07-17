@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -175,20 +174,20 @@ func TestReqCreateOrder(t *testing.T) {
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
 	}
 
-	acct := cpanel.Account{ID: 10}
-	acct.SetAPIKeys([]cpanel.APIKey{{
+	acct := catalog.Account{ID: 10}
+	acct.SetAPIKeys([]catalog.APIKey{{
 		ID:   1,
 		Name: "test-key",
 		Key:  "test-api-key",
 		Secret: "test-secret",
 	}})
-	accounts := make(map[int]cpanel.Account)
+	accounts := make(map[int]catalog.Account)
 	accounts[10] = acct
 
 	setPrivateField(cat, "symbols", symbols)
@@ -237,17 +236,17 @@ func TestReqCreateOrder_PostOnly(t *testing.T) {
 	eb := *msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 
-	acct := cpanel.Account{ID: 10}
-	acct.SetAPIKeys([]cpanel.APIKey{{
+	acct := catalog.Account{ID: 10}
+	acct.SetAPIKeys([]catalog.APIKey{{
 		ID:     1,
 		Name:   "test-key",
 		Key:    "k",
 		Secret: "s",
 	}})
-	accounts := make(map[int]cpanel.Account)
+	accounts := make(map[int]catalog.Account)
 	accounts[10] = acct
 
 	setPrivateField(cat, "symbols", symbols)

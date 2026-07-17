@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -339,7 +338,7 @@ func (c *BybitDataClient) buildCategoryTopics() map[Category][]string {
 
 // registerTopic records the topic -> symbol mapping plus the symbolID ->
 // tick multipliers the hot parse path needs.
-func (c *BybitDataClient) registerTopic(topic string, symbol *cpanel.Symbol) {
+func (c *BybitDataClient) registerTopic(topic string, symbol *catalog.Symbol) {
 	c.topicMapLock.Lock()
 	c.topicToSymbol[topic] = symbol.ID
 	c.precisions[symbol.ID] = newSymbolPrecision(symbol.PricePrecision, symbol.SizePrecision)

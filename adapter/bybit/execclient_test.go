@@ -4,12 +4,13 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"gopkg.in/yaml.v3"
@@ -17,10 +18,7 @@ import (
 
 // testConfig mirrors the config structure for loading test config
 type testConfig struct {
-	Catalog struct {
-		BaseURL  string `yaml:"base_url"`
-		APIToken string `yaml:"api_token"`
-	} `yaml:"catalog"`
+	Catalog catalog.Config `yaml:"catalog"`
 }
 
 func loadTestConfig(path string) (*testConfig, error) {
@@ -42,53 +40,53 @@ func setPrivateFieldExec(obj interface{}, fieldName string, value interface{}) {
 	f.Set(reflect.ValueOf(value))
 }
 
-// loadBybitTestAccount is a helper that loads config, fetches a Bybit account and its API keys.
-func loadBybitTestAccount(t *testing.T) (*cpanel.Account, string) {
+// loadBybitTestAccount is a helper that loads config and builds a Bybit account
+// with its API keys from the catalog accounts config (env vars expanded).
+func loadBybitTestAccount(t *testing.T) (*catalog.Account, string) {
 	t.Helper()
-	cfg, err := loadTestConfig("../../../config/xarb.yml")
+	cfg, err := loadTestConfig("../../config/xarb.yml")
 	if err != nil {
 		t.Skipf("Skipping test: failed to load config: %v", err)
 	}
 
-	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	accounts, err := cpanelClient.GetAccounts(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get accounts: %v", err)
-	}
-
-	apiKeys, err := cpanelClient.GetAPIKeys(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get API keys: %v", err)
-	}
-
-	var targetAccount *cpanel.Account
-	var apiKeyName string
-	for i := range accounts {
-		if accounts[i].ID == 19 || accounts[i].Name == "bybit_lynxapp" {
-			var acctKeys []cpanel.APIKey
-			for _, key := range apiKeys {
-				if key.UID == accounts[i].UID {
-					if apiKeyName == "" {
-						apiKeyName = key.Name
-					}
-					acctKeys = append(acctKeys, key)
-				}
-			}
-			if len(acctKeys) > 0 {
-				accounts[i].SetAPIKeys(acctKeys)
-				targetAccount = &accounts[i]
-			}
-			break
+	for i, ac := range cfg.Catalog.Accounts {
+		if !strings.EqualFold(ac.Exchange, "bybit") {
+			continue
 		}
+		account := &catalog.Account{
+			ID:       i + 1,
+			UID:      i + 1,
+			ExchID:   common.ExchangeBybit,
+			Exchange: ac.Exchange,
+			Name:     ac.Name,
+		}
+		var acctKeys []catalog.APIKey
+		for j, kc := range ac.APIKeys {
+			key := os.ExpandEnv(kc.Key)
+			secret := os.ExpandEnv(kc.Secret)
+			if key == "" || secret == "" {
+				continue
+			}
+			acctKeys = append(acctKeys, catalog.APIKey{
+				ID:         j + 1,
+				UID:        account.UID,
+				ExchID:     common.ExchangeBybit,
+				Name:       kc.Name,
+				APIType:    catalog.APIType(strings.ToUpper(kc.Type)),
+				Key:        key,
+				Secret:     secret,
+				Passphrase: os.ExpandEnv(kc.Passphrase),
+			})
+		}
+		if len(acctKeys) == 0 {
+			continue
+		}
+		account.SetAPIKeys(acctKeys)
+		return account, acctKeys[0].Name
 	}
 
-	if targetAccount == nil {
-		t.Skip("Skipping test: bybit_lynxapp account not found or has no API keys")
-	}
-	return targetAccount, apiKeyName
+	t.Skip("Skipping test: no Bybit account with API credentials found in config")
+	return nil, ""
 }
 
 // TestIntegration_BybitPrivateStream tests the Bybit private stream connection and authentication
@@ -105,7 +103,7 @@ func TestIntegration_BybitPrivateStream(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
@@ -189,7 +187,7 @@ func TestIntegration_BybitOrderEntry(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
@@ -250,7 +248,7 @@ func TestIntegration_BybitExecutionClient(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
@@ -336,7 +334,7 @@ func TestIntegration_BybitWalletUpdate(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
@@ -412,7 +410,7 @@ loop:
 // TestUnit_HMACSignature tests the HMAC signature generation
 func TestUnit_HMACSignature(t *testing.T) {
 	client := &BybitPrivateStreamClient{
-		apiKey: cpanel.APIKey{
+		apiKey: catalog.APIKey{
 			Key:    "test_api_key",
 			Secret: "test_api_secret",
 		},
@@ -438,7 +436,7 @@ func TestUnit_HMACSignature(t *testing.T) {
 // TestUnit_OrderEntrySignature tests the order entry HMAC signature generation
 func TestUnit_OrderEntrySignature(t *testing.T) {
 	client := &BybitOrderEntryClient{
-		apiKey: cpanel.APIKey{
+		apiKey: catalog.APIKey{
 			Key:    "test_api_key",
 			Secret: "test_api_secret",
 		},

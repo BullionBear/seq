@@ -11,7 +11,6 @@ import (
 	"github.com/BullionBear/seq/adapter/bybit"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
@@ -165,7 +164,7 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, 
 }
 
 // createExecutionClient creates an execution client for the given account.
-func (n *Node) createExecutionClient(account *cpanel.Account, apiKeyName string, walletID int) (adapter.ExecutionClient, error) {
+func (n *Node) createExecutionClient(account *catalog.Account, apiKeyName string, walletID int) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE", "Binance":
 		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)

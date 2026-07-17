@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "name": "UNIUSDT",
+    "exchange": { "id": 1, "name": "Binance", "slug": "binance" },
+    "product": { "id": 1, "name": "SPOT", "slug": "spot" },
+    "base_token": { "id": 1, "name": "UNI", "slug": "uni" },
+    "quote_token": { "id": 2, "name": "USDT", "slug": "usdt" },
+    "price_precision": 3,
+    "size_precision": 2,
+    "universal_ticker": "BINANCE_SPOT_UNIUSDT"
+  },
+  {
+    "id": 2,
+    "name": "UNIUSDT",
+    "exchange": { "id": 2, "name": "Bybit", "slug": "bybit" },
+    "product": { "id": 1, "name": "SPOT", "slug": "spot" },
+    "base_token": { "id": 1, "name": "UNI", "slug": "uni" },
+    "quote_token": { "id": 2, "name": "USDT", "slug": "usdt" },
+    "price_precision": 4,
+    "size_precision": 2,
+    "universal_ticker": "BYBIT_SPOT_UNIUSDT"
+  },
+  {
+    "id": 3,
+    "name": "BTCUSDT",
+    "exchange": { "id": 2, "name": "Bybit", "slug": "bybit" },
+    "product": { "id": 1, "name": "SPOT", "slug": "spot" },
+    "base_token": { "id": 3, "name": "BTC", "slug": "btc" },
+    "quote_token": { "id": 2, "name": "USDT", "slug": "usdt" },
+    "price_precision": 2,
+    "size_precision": 6,
+    "universal_ticker": "BYBIT_SPOT_BTCUSDT"
+  }
+]

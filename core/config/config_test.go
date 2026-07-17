@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/BullionBear/seq/core/tradingmode"
@@ -10,8 +9,7 @@ import (
 func TestLoadConfigFromBytes_DefaultTradingModeIsPaper(t *testing.T) {
 	yaml := `
 catalog:
-  base_url: https://cpanel.example.test
-  api_token: ""
+  instruments: ./config/instruments.json
 logger:
   level: info
   output: stdout
@@ -25,13 +23,21 @@ logger:
 	}
 }
 
-func TestLoadConfigFromBytes_ExpandsCatalogTokenPlaceholder(t *testing.T) {
-	t.Setenv("CATALOG_API_TOKEN", "test-token-from-env")
+func TestLoadConfigFromBytes_ExpandsAPIKeySecrets(t *testing.T) {
+	t.Setenv("TEST_API_KEY", "key-from-env")
+	t.Setenv("TEST_API_SECRET", "secret-from-env")
 
 	yaml := `
 catalog:
-  base_url: https://cpanel.example.test
-  api_token: ${CATALOG_API_TOKEN}
+  instruments: ./config/instruments.json
+  accounts:
+    - name: test-account
+      exchange: Bybit
+      api_keys:
+        - name: test-hmac
+          type: HMAC
+          key: ${TEST_API_KEY}
+          secret: ${TEST_API_SECRET}
 logger:
   level: info
   output: stdout
@@ -40,39 +46,29 @@ logger:
 	if err != nil {
 		t.Fatalf("LoadConfigFromBytes: %v", err)
 	}
-	if cfg.Catalog.APIToken != "test-token-from-env" {
-		t.Fatalf("APIToken = %q, want expanded env value", cfg.Catalog.APIToken)
+	apiKey := cfg.Catalog.Accounts[0].APIKeys[0]
+	if apiKey.Key != "key-from-env" {
+		t.Fatalf("Key = %q, want expanded env value", apiKey.Key)
 	}
-}
-
-func TestLoadConfigFromBytes_FillsEmptyTokenFromEnv(t *testing.T) {
-	t.Setenv("CATALOG_API_TOKEN", "filled-from-env")
-
-	yaml := `
-catalog:
-  base_url: https://cpanel.example.test
-  api_token: ""
-logger:
-  level: info
-  output: stdout
-`
-	cfg, err := LoadConfigFromBytes([]byte(yaml))
-	if err != nil {
-		t.Fatalf("LoadConfigFromBytes: %v", err)
-	}
-	if cfg.Catalog.APIToken != "filled-from-env" {
-		t.Fatalf("APIToken = %q, want env fill-in", cfg.Catalog.APIToken)
+	if apiKey.Secret != "secret-from-env" {
+		t.Fatalf("Secret = %q, want expanded env value", apiKey.Secret)
 	}
 }
 
 func TestLoadConfigFromBytes_MissingEnvLeavesEmpty(t *testing.T) {
-	_ = os.Unsetenv("CATALOG_API_TOKEN_UNSET_TEST")
-	t.Setenv("CATALOG_API_TOKEN", "")
+	t.Setenv("TEST_API_KEY_UNSET", "")
 
 	yaml := `
 catalog:
-  base_url: https://example.test
-  api_token: ${CATALOG_API_TOKEN_UNSET_TEST}
+  instruments: ./config/instruments.json
+  accounts:
+    - name: test-account
+      exchange: Binance
+      api_keys:
+        - name: test-hmac
+          type: HMAC
+          key: ${TEST_API_KEY_UNSET}
+          secret: ""
 logger:
   level: info
   output: stdout
@@ -81,7 +77,7 @@ logger:
 	if err != nil {
 		t.Fatalf("LoadConfigFromBytes: %v", err)
 	}
-	if cfg.Catalog.APIToken != "" {
-		t.Fatalf("APIToken = %q, want empty when env unset", cfg.Catalog.APIToken)
+	if got := cfg.Catalog.Accounts[0].APIKeys[0].Key; got != "" {
+		t.Fatalf("Key = %q, want empty when env unset", got)
 	}
 }

@@ -14,7 +14,7 @@ Seq is an **in-process, actor-oriented crypto trading runtime** written in Go. A
 | --- | --- |
 | Shared pub/sub + command bus | `core/msgbus` |
 | Shared read model | `core/cache` |
-| Instrument / account metadata | `core/catalog` (+ remote cpanel API) |
+| Instrument / account metadata | `core/catalog` (local `instruments.json` + config-defined accounts) |
 | Market data | `data` engine + `adapter` data clients |
 | Order lifecycle cache | `execution` engine + OMS actor |
 | Balances | `portfolio` engine + balance actors |
@@ -52,7 +52,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 1. Load YAML via `core/config.LoadConfig` (`-c` or `CONFIG`).
 2. Init `core/logger` (zerolog + optional lumberjack rotation).
 3. Resolve paper/live gate via `tradingmode.Resolve(cfg.TradingMode, os.Getenv)` — default `paper`; `live` also requires `SEQ_ALLOW_LIVE=1|true|yes` or the process exits. Result is logged and passed into `Node.Init`.
-4. Build `catalog.Catalog` from cpanel (`base_url` + `api_token`); load symbols and accounts.
+4. Build `catalog.Catalog` from the local instruments file (`catalog.instruments`) and config-defined accounts (`catalog.accounts`).
 5. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter`, `tpnl`, `obtest`, `xarb`).
 6. `node.NewNode` → wire msgbus, cache, five engines, execution router.
 7. Optional `msgbus.MsgLogger` for binary event/command audit logs.
@@ -134,7 +134,7 @@ Writers: data/execution/portfolio/risk actors. Readers: strategies and risk rule
 
 ### 3.6 `core/catalog`
 
-Remote instrument/account registry via `core/catalog/cpanel` HTTP client. Resolves universal tickers (`BINANCE_SPOT_UNIUSDT`), accounts, wallets, API key names used by adapters.
+Local instrument/account registry: symbols load from a JSON file (`catalog.instruments`), accounts/wallets/API keys from the YAML config (`catalog.accounts`, secrets via `${ENV_VAR}` expansion). Resolves universal tickers (`BINANCE_SPOT_UNIUSDT`), accounts, wallets, API key names used by adapters.
 
 ### 3.7 Supporting core packages
 
@@ -236,7 +236,7 @@ Top-level YAML (`core/config.AppConfig`):
 trading_mode: paper|live   # optional; default paper; live also requires SEQ_ALLOW_LIVE env
 logger: { ... }
 msgbus: { msglog: { enabled, dir } }
-catalog: { base_url, api_token }
+catalog: { instruments, accounts: [ { name, exchange, api_keys: [...], wallets: [...] } ] }
 execrouter: [ { account, wallet, api } ]
 datarouter: [ { symbol, depth?, trade?, endpoint? } ]
 node:
@@ -248,9 +248,9 @@ node:
     strategy: { actor: [...] }
 ```
 
-Actor entries are uniformly `{ type, name?, config: map }`. Sample scenarios live under `config/` (`xarb.yml`, `obtest.yml`, `test.yml`) with `${CATALOG_API_TOKEN}` placeholders; see `config/README.md`.
+Actor entries are uniformly `{ type, name?, config: map }`. Sample scenarios live under `config/` (`xarb.yml`, `obtest.yml`, `test.yml`) with `${ENV_VAR}` placeholders for API keys/secrets; see `config/README.md`.
 
-**Security note:** sample YAML no longer embeds catalog API tokens. Credentials that were previously committed remain in git history until rotated at the provider and (if needed) history is rewritten.
+**Security note:** sample YAML no longer embeds credentials. Credentials that were previously committed remain in git history until rotated at the venue and (if needed) history is rewritten.
 
 ---
 
@@ -329,7 +329,7 @@ seq/
 
 **Risks / follow-ups**
 
-1. **Secrets in sample YAML** — scrubbed from working tree (`${CATALOG_API_TOKEN}` + gitignored `*.local.yml`); **rotate** any previously exposed tokens at the provider (history may still contain them).
+1. **Secrets in sample YAML** — scrubbed from working tree (`${ENV_VAR}` placeholders + gitignored `*.local.yml`); **rotate** any previously exposed credentials at the venue (history may still contain them).
 2. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` and `SEQ_ALLOW_LIVE=1|true|yes`, logged at boot. Running live still needs separate CEO/board approval.
 3. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
 4. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.

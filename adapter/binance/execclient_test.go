@@ -7,12 +7,12 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -69,7 +69,7 @@ func TestBuildAccountStatusRequest(t *testing.T) {
 
 	client := &BinanceSpotExecutionClient{
 		privateKey: privateKey,
-		apiKey: cpanel.APIKey{
+		apiKey: catalog.APIKey{
 			Key: "test-api-key",
 		},
 	}
@@ -101,7 +101,7 @@ func TestBuildAccountStatusRequest(t *testing.T) {
 
 func TestBuildOrderNewRequest(t *testing.T) {
 	client := &BinanceSpotExecutionClient{
-		apiKey: cpanel.APIKey{
+		apiKey: catalog.APIKey{
 			Key: "test-api-key",
 		},
 	}
@@ -690,10 +690,7 @@ func TestProcessUserDataStreamEvent(t *testing.T) {
 
 // testConfig is a minimal config struct for integration tests
 type testConfig struct {
-	Catalog struct {
-		BaseURL  string `yaml:"base_url"`
-		APIToken string `yaml:"api_token"`
-	} `yaml:"catalog"`
+	Catalog catalog.Config `yaml:"catalog"`
 }
 
 func loadTestConfig(path string) (*testConfig, error) {
@@ -708,6 +705,52 @@ func loadTestConfig(path string) (*testConfig, error) {
 	return &cfg, nil
 }
 
+// loadBinanceTestAccount builds a Binance account with an ED25519 API key from
+// the catalog accounts config (env vars expanded). Skips the test if none found.
+func loadBinanceTestAccount(t *testing.T) (*catalog.Account, string) {
+	t.Helper()
+	cfg, err := loadTestConfig("../../config/xarb.yml")
+	if err != nil {
+		t.Skipf("Skipping test: failed to load config: %v", err)
+	}
+
+	for i, ac := range cfg.Catalog.Accounts {
+		if !strings.EqualFold(ac.Exchange, "binance") {
+			continue
+		}
+		account := &catalog.Account{
+			ID:       i + 1,
+			UID:      i + 1,
+			ExchID:   common.ExchangeBinance,
+			Exchange: ac.Exchange,
+			Name:     ac.Name,
+		}
+		for j, kc := range ac.APIKeys {
+			if !strings.EqualFold(kc.Type, string(catalog.APITypeED25519)) {
+				continue
+			}
+			key := os.ExpandEnv(kc.Key)
+			secret := os.ExpandEnv(kc.Secret)
+			if key == "" || secret == "" {
+				continue
+			}
+			account.SetAPIKeys([]catalog.APIKey{{
+				ID:      j + 1,
+				UID:     account.UID,
+				ExchID:  common.ExchangeBinance,
+				Name:    kc.Name,
+				APIType: catalog.APITypeED25519,
+				Key:     key,
+				Secret:  secret,
+			}})
+			return account, kc.Name
+		}
+	}
+
+	t.Skip("Skipping test: no Binance account with ED25519 key found in config")
+	return nil, ""
+}
+
 // TestIntegration_ReqBalanceSnapshot tests requesting balance snapshot via WebSocket API
 // This test requires a valid Ed25519 API key configured in the catalog
 func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
@@ -715,56 +758,17 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	cfg, err := loadTestConfig("../../../config/xarb.yml")
-	if err != nil {
-		t.Skipf("Skipping test: failed to load config: %v", err)
-	}
-
-	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	accounts, err := cpanelClient.GetAccounts(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get accounts: %v", err)
-	}
-
-	apiKeys, err := cpanelClient.GetAPIKeys(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get API keys: %v", err)
-	}
-
-	// Find a Binance account and an ED25519 API key for it
-	var targetAccount *cpanel.Account
-	var targetAPIKeyName string
-	for i := range accounts {
-		if accounts[i].Exchange != "Binance" {
-			continue
-		}
-		for _, key := range apiKeys {
-			if key.UID == accounts[i].UID && key.APIType == cpanel.APITypeED25519 {
-				targetAccount = &accounts[i]
-				targetAPIKeyName = key.Name
-				// Attach key to account
-				targetAccount.SetAPIKeys([]cpanel.APIKey{key})
-				break
-			}
-		}
-		if targetAccount != nil {
-			break
-		}
-	}
-
-	if targetAccount == nil {
-		t.Skip("Skipping test: no Binance account with ED25519 key found")
-	}
+	targetAccount, targetAPIKeyName := loadBinanceTestAccount(t)
 
 	t.Logf("Found account: ID=%d, Name=%s, APIKey=%s", targetAccount.ID, targetAccount.Name, targetAPIKeyName)
 
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 
@@ -841,54 +845,17 @@ func TestIntegration_ConnectAndPing(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	cfg, err := loadTestConfig("../../../config/xarb.yml")
-	if err != nil {
-		t.Skipf("Skipping test: failed to load config: %v", err)
-	}
-
-	cpanelClient := cpanel.NewCpanelClient(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	accounts, err := cpanelClient.GetAccounts(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get accounts: %v", err)
-	}
-
-	apiKeys, err := cpanelClient.GetAPIKeys(ctx)
-	if err != nil {
-		t.Skipf("Skipping test: failed to get API keys: %v", err)
-	}
-
-	var targetAccount *cpanel.Account
-	var targetAPIKeyName string
-	for i := range accounts {
-		if accounts[i].Exchange != "Binance" {
-			continue
-		}
-		for _, key := range apiKeys {
-			if key.UID == accounts[i].UID && key.APIType == cpanel.APITypeED25519 {
-				targetAccount = &accounts[i]
-				targetAPIKeyName = key.Name
-				targetAccount.SetAPIKeys([]cpanel.APIKey{key})
-				break
-			}
-		}
-		if targetAccount != nil {
-			break
-		}
-	}
-
-	if targetAccount == nil {
-		t.Skip("Skipping test: no Binance account with ED25519 key found")
-	}
+	targetAccount, targetAPIKeyName := loadBinanceTestAccount(t)
 
 	t.Logf("Found account: ID=%d, Name=%s", targetAccount.ID, targetAccount.Name)
 
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateFieldExec(cat, "accounts", accountsMap)
 

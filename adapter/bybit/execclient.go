@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -39,8 +38,8 @@ type BybitPrivateStreamClient struct {
 	msgBus    *msgbus.MsgBus
 	accountID int
 	walletID  int
-	account   cpanel.Account
-	apiKey    cpanel.APIKey
+	account   catalog.Account
+	apiKey    catalog.APIKey
 
 	// WebSocket connection
 	conn     *gws.Conn
@@ -828,8 +827,8 @@ type BybitOrderEntryClient struct {
 	catalog   *catalog.Catalog
 	msgBus    *msgbus.MsgBus
 	accountID int
-	account   cpanel.Account
-	apiKey    cpanel.APIKey
+	account   catalog.Account
+	apiKey    catalog.APIKey
 
 	// WebSocket connection
 	conn     *gws.Conn

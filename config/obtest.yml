@@ -13,9 +13,7 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://capi.lynxlinkage.com
-  # Set CATALOG_API_TOKEN in the environment, or copy to a gitignored *.local.yml
-  api_token: ${CATALOG_API_TOKEN}
+  instruments: ./instruments.json  # relative to this config file's directory
 
 node:
   engine:

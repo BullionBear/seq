@@ -1,60 +1,62 @@
 package catalog
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
+	"github.com/bytedance/sonic"
 	"github.com/rs/zerolog"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 type Catalog struct {
-	cpanelClient *cpanel.CpanelClient
-	symbols      map[int]cpanel.Symbol   // symbolID -> symbol
-	exchanges    map[int]cpanel.Exchange // exchangeID -> exchange
-	products     map[int]cpanel.Product  // productID -> product
-	tokens       map[int]cpanel.Token    // tokenID -> token
+	symbols   map[int]Symbol   // symbolID -> symbol
+	exchanges map[int]Exchange // exchangeID -> exchange
+	products  map[int]Product  // productID -> product
+	tokens    map[int]Token    // tokenID -> token
 
-	accounts map[int]cpanel.Account // accountID -> account
+	accounts map[int]Account // accountID -> account
 
 	// exchangeID -> symbolName -> symbol (for O(1) lookup by exchange and name)
-	symbolsByExchangeAndName map[int]map[string]cpanel.Symbol
+	symbolsByExchangeAndName map[int]map[string]Symbol
 	exchangeNameToID         map[string]int // lowercase exchange name -> exchangeID (for case-insensitive lookup)
 	tokenNameToID            map[string]int // lowercase token name -> tokenID (for case-insensitive lookup)
 }
 
-func NewCatalog(baseURL string, apiToken string) *Catalog {
-	cpanelClient := cpanel.NewCpanelClient(baseURL, apiToken)
+// NewCatalog builds a catalog from a local instruments JSON file and the
+// accounts defined in the configuration.
+func NewCatalog(cfg Config) (*Catalog, error) {
 	catalog := Catalog{
-		cpanelClient:             cpanelClient,
-		symbols:                  make(map[int]cpanel.Symbol, 1024),
-		exchanges:                make(map[int]cpanel.Exchange, 64),
-		products:                 make(map[int]cpanel.Product, 16),
-		tokens:                   make(map[int]cpanel.Token, 256),
-		accounts:                 make(map[int]cpanel.Account, 1024),
-		symbolsByExchangeAndName: make(map[int]map[string]cpanel.Symbol),
+		symbols:                  make(map[int]Symbol, 1024),
+		exchanges:                make(map[int]Exchange, 64),
+		products:                 make(map[int]Product, 16),
+		tokens:                   make(map[int]Token, 256),
+		accounts:                 make(map[int]Account, 1024),
+		symbolsByExchangeAndName: make(map[int]map[string]Symbol),
 		exchangeNameToID:         make(map[string]int, 64),
 		tokenNameToID:            make(map[string]int, 256),
 	}
-	if err := catalog.LoadAllSymbols(); err != nil {
-		log().Error().Err(err).Msg("Failed to load all symbols")
-		return nil
+	if err := catalog.loadSymbolsFromFile(cfg.Instruments); err != nil {
+		return nil, fmt.Errorf("failed to load instruments from %s: %w", cfg.Instruments, err)
 	}
-	if err := catalog.LoadAllAccounts(); err != nil {
-		log().Error().Err(err).Msg("Failed to load all accounts")
-		return nil
+	if err := catalog.loadAccountsFromConfig(cfg.Accounts); err != nil {
+		return nil, fmt.Errorf("failed to load accounts from config: %w", err)
 	}
-	return &catalog
+	return &catalog, nil
 }
 
-func (c *Catalog) LoadAllSymbols() error {
-	symbols, err := c.cpanelClient.GetSymbol(context.Background(), cpanel.SymbolParams{})
+func (c *Catalog) loadSymbolsFromFile(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	var symbols []Symbol
+	if err := sonic.Unmarshal(data, &symbols); err != nil {
+		return fmt.Errorf("failed to unmarshal instruments: %w", err)
 	}
 	for _, symbol := range symbols {
 		c.symbols[symbol.ID] = symbol
@@ -62,7 +64,7 @@ func (c *Catalog) LoadAllSymbols() error {
 		c.exchanges[symbol.Exchange.ID] = symbol.Exchange
 		c.exchangeNameToID[strings.ToLower(symbol.Exchange.Name)] = symbol.Exchange.ID
 		if c.symbolsByExchangeAndName[symbol.Exchange.ID] == nil {
-			c.symbolsByExchangeAndName[symbol.Exchange.ID] = make(map[string]cpanel.Symbol)
+			c.symbolsByExchangeAndName[symbol.Exchange.ID] = make(map[string]Symbol)
 		}
 		c.symbolsByExchangeAndName[symbol.Exchange.ID][symbol.Name] = symbol
 		c.products[symbol.Product.ID] = symbol.Product
@@ -80,73 +82,116 @@ func (c *Catalog) LoadAllSymbols() error {
 	return nil
 }
 
-func (c *Catalog) LoadAllAccounts() error {
-	ctx := context.Background()
-
-	// Fetch accounts
-	accounts, err := c.cpanelClient.GetAccounts(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get accounts: %w", err)
-	}
-
-	// Fetch API keys
-	apiKeys, err := c.cpanelClient.GetAPIKeys(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get API keys: %w", err)
-	}
-
-	// Fetch wallets
-	wallets, err := c.cpanelClient.GetWallets(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get wallets: %w", err)
-	}
-
-	// Build UID -> index map for API key association
-	uidToIdx := make(map[int]int, len(accounts))
-	for i := range accounts {
-		uidToIdx[accounts[i].UID] = i
-	}
-
-	// Group API keys by account UID
-	apiKeysByUID := make(map[int][]cpanel.APIKey)
-	for _, apiKey := range apiKeys {
-		if idx, ok := uidToIdx[apiKey.UID]; ok {
-			// Set ExchID from account
-			apiKey.ExchID = accounts[idx].ExchID
-			apiKeysByUID[apiKey.UID] = append(apiKeysByUID[apiKey.UID], apiKey)
+func (c *Catalog) loadAccountsFromConfig(accountConfigs []AccountConfig) error {
+	walletID := 0
+	apiKeyID := 0
+	for i, ac := range accountConfigs {
+		exchID, err := parseExchange(ac.Exchange)
+		if err != nil {
+			return fmt.Errorf("account %q: %w", ac.Name, err)
 		}
-	}
 
-	// Group wallets by account ID
-	walletsByAcctID := make(map[int][]cpanel.Wallet)
-	for _, wallet := range wallets {
-		walletsByAcctID[wallet.AcctID] = append(walletsByAcctID[wallet.AcctID], wallet)
-	}
-
-	// Associate API keys and wallets with accounts
-	for i := range accounts {
-		if keys, ok := apiKeysByUID[accounts[i].UID]; ok {
-			accounts[i].SetAPIKeys(keys)
+		accountID := i + 1
+		account := Account{
+			ID:       accountID,
+			UID:      accountID,
+			ExchID:   exchID,
+			Exchange: ac.Exchange,
+			Name:     ac.Name,
 		}
-		if ws, ok := walletsByAcctID[accounts[i].ID]; ok {
-			accounts[i].SetWallets(ws)
+
+		apiKeys := make([]APIKey, 0, len(ac.APIKeys))
+		for _, kc := range ac.APIKeys {
+			apiType, err := parseAPIType(kc.Type)
+			if err != nil {
+				return fmt.Errorf("account %q, api key %q: %w", ac.Name, kc.Name, err)
+			}
+			apiKeyID++
+			apiKeys = append(apiKeys, APIKey{
+				ID:         apiKeyID,
+				UID:        accountID,
+				ExchID:     exchID,
+				Name:       kc.Name,
+				APIType:    apiType,
+				Key:        kc.Key,
+				Secret:     kc.Secret,
+				Passphrase: kc.Passphrase,
+			})
 		}
-	}
+		account.SetAPIKeys(apiKeys)
 
-	// Store accounts in catalog
-	for _, account := range accounts {
-		c.accounts[account.ID] = account
-	}
+		wallets := make([]Wallet, 0, len(ac.Wallets))
+		for _, wc := range ac.Wallets {
+			walletType, err := parseWalletType(wc.Type)
+			if err != nil {
+				return fmt.Errorf("account %q, wallet %q: %w", ac.Name, wc.Name, err)
+			}
+			walletID++
+			wallets = append(wallets, Wallet{
+				ID:         walletID,
+				Name:       wc.Name,
+				WalletType: walletType,
+				AcctID:     accountID,
+				IsActive:   true,
+			})
+		}
+		account.SetWallets(wallets)
 
-	log().Info().
-		Int("accounts", len(c.accounts)).
-		Int("apiKeys", len(apiKeys)).
-		Int("wallets", len(wallets)).
-		Msg("Loaded accounts with API keys and wallets")
+		c.accounts[accountID] = account
+		log().Info().
+			Str("account", account.Name).
+			Int("id", account.ID).
+			Str("exchange", account.Exchange).
+			Int("apiKeys", len(apiKeys)).
+			Int("wallets", len(wallets)).
+			Msg("Loaded account from config")
+	}
+	log().Info().Int("accounts", len(c.accounts)).Msg("Loaded accounts")
 	return nil
 }
 
-func (c *Catalog) GetSymbol(symbolID int) (*cpanel.Symbol, error) {
+func parseExchange(name string) (common.Exchange, error) {
+	switch strings.ToLower(name) {
+	case "binance":
+		return common.ExchangeBinance, nil
+	case "bybit":
+		return common.ExchangeBybit, nil
+	default:
+		return common.ExchangeUnknown, fmt.Errorf("unknown exchange: %s", name)
+	}
+}
+
+func parseAPIType(name string) (APIType, error) {
+	switch strings.ToUpper(name) {
+	case string(APITypeHMAC):
+		return APITypeHMAC, nil
+	case string(APITypeRSA):
+		return APITypeRSA, nil
+	case string(APITypeED25519):
+		return APITypeED25519, nil
+	default:
+		return "", fmt.Errorf("unknown API type: %s", name)
+	}
+}
+
+func parseWalletType(name string) (common.WalletType, error) {
+	switch strings.ToLower(name) {
+	case "spot":
+		return common.WalletTypeSpot, nil
+	case "umargin":
+		return common.WalletTypeUMargin, nil
+	case "cmargin":
+		return common.WalletTypeCMargin, nil
+	case "leverage":
+		return common.WalletTypeLeverage, nil
+	case "unified":
+		return common.WalletTypeUnified, nil
+	default:
+		return common.WalletTypeUnknown, fmt.Errorf("unknown wallet type: %s", name)
+	}
+}
+
+func (c *Catalog) GetSymbol(symbolID int) (*Symbol, error) {
 	symbol, ok := c.symbols[symbolID]
 	if !ok {
 		return nil, fmt.Errorf("symbol not found for symbolID: %d", symbolID)
@@ -154,7 +199,7 @@ func (c *Catalog) GetSymbol(symbolID int) (*cpanel.Symbol, error) {
 	return &symbol, nil
 }
 
-func (c *Catalog) GetToken(tokenID int) (*cpanel.Token, error) {
+func (c *Catalog) GetToken(tokenID int) (*Token, error) {
 	token, ok := c.tokens[tokenID]
 	if !ok {
 		return nil, fmt.Errorf("token not found for tokenID: %d", tokenID)
@@ -170,7 +215,7 @@ func (c *Catalog) GetTokenIDByName(name string) (int, error) {
 	return tokenID, nil
 }
 
-func (c *Catalog) GetSymbolByUniversalTicker(universalTicker string) (*cpanel.Symbol, error) {
+func (c *Catalog) GetSymbolByUniversalTicker(universalTicker string) (*Symbol, error) {
 	for _, symbol := range c.symbols {
 		if symbol.UniversalTicker == universalTicker {
 			return &symbol, nil
@@ -181,7 +226,7 @@ func (c *Catalog) GetSymbolByUniversalTicker(universalTicker string) (*cpanel.Sy
 
 // GetSymbolByExchangeAndName returns the symbol for the given exchange name and symbol name (e.g. "Binance", "BTCUSDT").
 // Exchange name comparison is case-insensitive. Uses exchangeID -> symbolName -> symbol index for O(1) lookup.
-func (c *Catalog) GetSymbolByExchangeAndName(exchangeName, symbolName string) (*cpanel.Symbol, error) {
+func (c *Catalog) GetSymbolByExchangeAndName(exchangeName, symbolName string) (*Symbol, error) {
 	exchangeID, ok := c.exchangeNameToID[strings.ToLower(exchangeName)]
 	if !ok {
 		return nil, fmt.Errorf("symbol not found for exchange %s and name %s", exchangeName, symbolName)
@@ -197,7 +242,7 @@ func (c *Catalog) GetSymbolByExchangeAndName(exchangeName, symbolName string) (*
 	return &symbol, nil
 }
 
-func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
+func (c *Catalog) GetAccount(accountID int) (*Account, error) {
 	account, ok := c.accounts[accountID]
 	if !ok {
 		return nil, fmt.Errorf("account not found for accountID: %d", accountID)
@@ -206,7 +251,7 @@ func (c *Catalog) GetAccount(accountID int) (*cpanel.Account, error) {
 }
 
 // GetWalletByName searches all accounts and returns the wallet with the given name.
-func (c *Catalog) GetWalletByName(name string) (*cpanel.Wallet, error) {
+func (c *Catalog) GetWalletByName(name string) (*Wallet, error) {
 	for _, account := range c.accounts {
 		if wallet, err := account.GetWallet(name); err == nil {
 			return wallet, nil
@@ -216,7 +261,7 @@ func (c *Catalog) GetWalletByName(name string) (*cpanel.Wallet, error) {
 }
 
 // GetAccountByName returns the account with the given name, or nil if not found.
-func (c *Catalog) GetAccountByName(name string) *cpanel.Account {
+func (c *Catalog) GetAccountByName(name string) *Account {
 	for _, account := range c.accounts {
 		if account.Name == name {
 			return &account

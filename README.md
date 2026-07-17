@@ -12,7 +12,7 @@ For the module-by-module source of truth (package responsibilities, boot order, 
 | --- | --- |
 | Shared pub/sub + command bus | `core/msgbus` |
 | Shared read model | `core/cache` |
-| Instrument / account metadata | `core/catalog` (+ remote cpanel API) |
+| Instrument / account metadata | `core/catalog` (local `instruments.json` + config-defined accounts) |
 | Market data | `data` engine + `adapter` data clients |
 | Order lifecycle | `execution` engine + OMS actor |
 | Balances | `portfolio` engine + balance actors |
@@ -58,7 +58,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 
 - Go **1.25.1** or later
 - Make (for build automation)
-- Access to a catalog/cpanel endpoint and venue credentials for live scenarios (not required to build or unit-test)
+- Venue API credentials for live scenarios (not required to build or unit-test)
 
 ### Install and build
 
@@ -74,10 +74,10 @@ make build                # → bin/seq-linux-amd64
 
 ### Configure
 
-Sample scenarios under `config/` use `${CATALOG_API_TOKEN}` (no live secrets in git). See [`config/README.md`](config/README.md).
+Instruments (symbols) load from a local JSON file (`catalog.instruments`, e.g. `config/instruments.json`). Accounts, wallets, and API keys are defined under `catalog.accounts`; key/secret values use `${ENV_VAR}` placeholders (no live secrets in git). See [`config/README.md`](config/README.md).
 
 ```bash
-export CATALOG_API_TOKEN='your-token-here'
+export BYBIT_HEPHE_API_KEY='...' BYBIT_HEPHE_API_SECRET='...'
 # or: cp config/obtest.yml config/obtest.local.yml  # gitignored; edit secrets there
 ```
 
@@ -120,8 +120,18 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://your-cpanel.example
-  api_token: ${CATALOG_API_TOKEN}   # never commit real tokens
+  instruments: ./instruments.json   # relative to this config file's directory
+  accounts:
+    - name: <account_name>
+      exchange: Binance             # Binance | Bybit
+      api_keys:
+        - name: <api_key_name>
+          type: HMAC                # HMAC | RSA | ED25519
+          key: ${MY_API_KEY}        # never commit real keys
+          secret: ${MY_API_SECRET}
+      wallets:
+        - name: <wallet_name>
+          type: spot                # spot | umargin | cmargin | leverage | unified
 
 execrouter:
   - account: <account_name>

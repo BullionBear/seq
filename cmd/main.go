@@ -99,10 +99,10 @@ func main() {
 			Msg("Runtime fencing: GC disabled, memory limit acts as fuse (see docs/DEPLOYMENT.md)")
 	}
 
-	// Initialize Catalog service
-	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	if catalogService == nil {
-		log.Error().Msg("Failed to initialize catalog service")
+	// Initialize Catalog service from local instruments file and configured accounts
+	catalogService, err := catalog.NewCatalog(cfg.Catalog)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize catalog service")
 		os.Exit(1)
 	}
 	log.Info().Msg("Catalog service initialized successfully")
