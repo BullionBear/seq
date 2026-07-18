@@ -12,7 +12,7 @@ For the module-by-module source of truth (package responsibilities, boot order, 
 | --- | --- |
 | Shared pub/sub + command bus | `core/msgbus` |
 | Shared read model | `core/cache` |
-| Instrument / account metadata | `core/catalog` (+ remote cpanel API) |
+| Instrument / account metadata | `core/catalog` (local `instruments.json` + config-defined accounts) |
 | Market data | `data` engine + `adapter` data clients |
 | Order lifecycle | `execution` engine + OMS actor |
 | Balances | `portfolio` engine + balance actors |
@@ -58,7 +58,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 
 - Go **1.25.1** or later
 - Make (for build automation)
-- Access to a catalog/cpanel endpoint and venue credentials for live scenarios (not required to build or unit-test)
+- Venue API credentials for live scenarios (not required to build or unit-test)
 
 ### Install and build
 
@@ -74,14 +74,14 @@ make build                # → bin/seq-linux-amd64
 
 ### Configure
 
-Sample scenarios under `config/` use `${CATALOG_API_TOKEN}` (no live secrets in git). See [`config/README.md`](config/README.md).
+Instruments (symbols) load from a local JSON file (`catalog.instruments`, e.g. `config/instruments.json`). Accounts, wallets, and API keys are defined under `catalog.accounts`; key/secret values use `${ENV_VAR}` placeholders (no live secrets in git). See [`config/README.md`](config/README.md).
 
 ```bash
-export CATALOG_API_TOKEN='your-token-here'
+export BYBIT_HEPHE_API_KEY='...' BYBIT_HEPHE_API_SECRET='...'
 # or: cp config/obtest.yml config/obtest.local.yml  # gitignored; edit secrets there
 ```
 
-Trading mode defaults to **paper**. Live venue order submit/cancel requires dual opt-in (`trading_mode: live` or `SEQ_TRADING_MODE=live`, plus `SEQ_ALLOW_LIVE=1`) and separate CEO/board approval — do not enable live casually.
+Trading mode defaults to **paper**. Live venue order submit/cancel requires `trading_mode: live` (or `SEQ_TRADING_MODE=live`) — do not enable live casually.
 
 ### Run
 
@@ -104,7 +104,7 @@ make parse-event i=logs/event_YYYY-MM-DD.dat o=out.jsonl
 Top-level YAML (`core/config.AppConfig`). Actor entries are uniformly `{ type, name?, config: map }`.
 
 ```yaml
-# Defaults to paper when omitted. Live also requires SEQ_ALLOW_LIVE=1.
+# Defaults to paper when omitted.
 trading_mode: paper
 
 logger:
@@ -120,8 +120,18 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://your-cpanel.example
-  api_token: ${CATALOG_API_TOKEN}   # never commit real tokens
+  instruments: ./instruments.json   # relative to this config file's directory
+  accounts:
+    - name: <account_name>
+      exchange: Binance             # Binance | Bybit
+      api_keys:
+        - name: <api_key_name>
+          type: HMAC                # HMAC | RSA | ED25519
+          key: ${MY_API_KEY}        # never commit real keys
+          secret: ${MY_API_SECRET}
+      wallets:
+        - name: <wallet_name>
+          type: spot                # spot | umargin | cmargin | leverage | unified
 
 execrouter:
   - account: <account_name>
@@ -231,7 +241,7 @@ CI: `.github/workflows/go.yml`.
 | `cmd/parser` | Offline decode to JSONL |
 | Engine state events | Ready / stop / abnormal fan-out |
 
-Not yet first-class: metrics/latency dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is in place (`trading_mode` + `SEQ_ALLOW_LIVE`). See `architecture.md` §9 and §13 for gaps and suggested follow-ups.
+Not yet first-class: metrics/latency dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is in place (`trading_mode`). See `architecture.md` §9 and §13 for gaps and suggested follow-ups.
 
 ## License
 

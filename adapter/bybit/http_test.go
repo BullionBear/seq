@@ -8,7 +8,6 @@ import (
 	"unsafe"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/bytedance/sonic"
@@ -257,11 +256,11 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 	cat := &catalog.Catalog{}
 
 	// Inject Catalog Data
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   1,
 			Name: "Spot",
 			Slug: "spot",
@@ -324,11 +323,11 @@ func TestReqDepthSnapshot_LinearCategory(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   2,
 			Name: "Linear",
 			Slug: "linear", // USDT perpetual
@@ -359,11 +358,11 @@ func TestDataClient_SubscribeDepthUpdate(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   1,
 			Name: "Spot",
 			Slug: "spot",
@@ -385,11 +384,11 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   1,
 			Name: "Spot",
 			Slug: "spot",
@@ -470,11 +469,11 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{
 		ID:   1,
 		Name: "BTCUSDT",
-		Product: cpanel.Product{
+		Product: catalog.Product{
 			ID:   1,
 			Name: "Linear",
 			Slug: "linear",
@@ -610,7 +609,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	accountsMap := make(map[int]cpanel.Account)
+	accountsMap := make(map[int]catalog.Account)
 	accountsMap[targetAccount.ID] = *targetAccount
 	setPrivateField(cat, "accounts", accountsMap)
 

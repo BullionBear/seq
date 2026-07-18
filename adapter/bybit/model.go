@@ -11,7 +11,7 @@ const (
 	CategoryOption  Category = "option"
 )
 
-// ProductSlugToCategory maps cpanel product slugs to Bybit categories
+// ProductSlugToCategory maps catalog product slugs to Bybit categories
 var ProductSlugToCategory = map[string]Category{
 	"spot":    CategorySpot,
 	"linear":  CategoryLinear,

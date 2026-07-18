@@ -4,7 +4,6 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/BullionBear/seq/strategy"
@@ -23,7 +22,7 @@ var _ actor.Actor = (*OBTest)(nil)
 // OBTest is a debugging strategy that subscribes to one orderbook and prints debug messages.
 type OBTest struct {
 	strategy.StrategyActorBase // Embed StrategyBase for Actor + StrategyCommon
-	symbol                     cpanel.Symbol
+	symbol                     catalog.Symbol
 
 	// Counter for update messages to avoid flooding logs
 	updateCount int
@@ -35,14 +34,14 @@ type OBTest struct {
 }
 
 // NewOBTest creates a new OBTest strategy.
-func NewOBTest(catalog *catalog.Catalog, cache *cache.Cache, msgbus *msgbus.MsgBus) *OBTest {
+func NewOBTest(cat *catalog.Catalog, cache *cache.Cache, msgbus *msgbus.MsgBus) *OBTest {
 	return &OBTest{
-		StrategyActorBase: strategy.NewStrategyActorBase("obtest", catalog, cache, msgbus, []event.Topic{
+		StrategyActorBase: strategy.NewStrategyActorBase("obtest", cat, cache, msgbus, []event.Topic{
 			event.TopicEventDepthSnapshot,
 			event.TopicEventDepthUpdate,
 			event.TopicEventRespDepthSnapshot,
 		}),
-		symbol:      cpanel.Symbol{},
+		symbol:      catalog.Symbol{},
 		updateCount: 0,
 	}
 }

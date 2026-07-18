@@ -50,43 +50,10 @@ func TestResolve_DefaultIsPaper(t *testing.T) {
 	}
 }
 
-func TestResolve_LiveRejectedWithoutAllowEnv(t *testing.T) {
+func TestResolve_LiveFromConfig(t *testing.T) {
 	t.Parallel()
 
-	getenv := func(key string) string {
-		if key == EnvTradingMode {
-			return ""
-		}
-		return ""
-	}
-	_, err := Resolve("live", getenv)
-	if !errors.Is(err, ErrLiveNotAllowed) {
-		t.Fatalf("Resolve(live) err=%v, want ErrLiveNotAllowed", err)
-	}
-
-	getenv = func(key string) string {
-		if key == EnvTradingMode {
-			return "live"
-		}
-		return ""
-	}
-	_, err = Resolve("paper", getenv)
-	if !errors.Is(err, ErrLiveNotAllowed) {
-		t.Fatalf("Resolve via SEQ_TRADING_MODE=live err=%v, want ErrLiveNotAllowed", err)
-	}
-}
-
-func TestResolve_LiveRequiresDualOptIn(t *testing.T) {
-	t.Parallel()
-
-	getenv := func(key string) string {
-		switch key {
-		case EnvAllowLive:
-			return "1"
-		default:
-			return ""
-		}
-	}
+	getenv := func(string) string { return "" }
 	mode, err := Resolve("live", getenv)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -94,18 +61,18 @@ func TestResolve_LiveRequiresDualOptIn(t *testing.T) {
 	if mode != ModeLive {
 		t.Fatalf("mode=%q, want live", mode)
 	}
+}
 
-	getenv = func(key string) string {
-		switch key {
-		case EnvTradingMode:
+func TestResolve_EnvOverridesConfig(t *testing.T) {
+	t.Parallel()
+
+	getenv := func(key string) string {
+		if key == EnvTradingMode {
 			return "live"
-		case EnvAllowLive:
-			return "yes"
-		default:
-			return ""
 		}
+		return ""
 	}
-	mode, err = Resolve("paper", getenv)
+	mode, err := Resolve("paper", getenv)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

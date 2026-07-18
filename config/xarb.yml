@@ -1,4 +1,4 @@
-trading_mode: paper  # live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval)
+trading_mode: paper  # set to live to enable venue order submit/cancel
 
 logger:
   level: debug
@@ -12,9 +12,29 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://capi.lynxlinkage.com
-  # Set CATALOG_API_TOKEN in the environment, or copy to a gitignored *.local.yml
-  api_token: ${CATALOG_API_TOKEN}
+  instruments: ./instruments.json  # relative to this config file's directory
+  # API keys/secrets are injected via environment variables (or copy to a gitignored *.local.yml)
+  accounts:
+    - name: bybit-hephe
+      exchange: Bybit
+      api_keys:
+        - name: bybit-hephe-hmac
+          type: HMAC
+          key: ${BYBIT_HEPHE_API_KEY}
+          secret: ${BYBIT_HEPHE_API_SECRET}
+      wallets:
+        - name: bybit-hephe-unified
+          type: unified
+    - name: bn-hephe
+      exchange: Binance
+      api_keys:
+        - name: bn-hephe-ed25519
+          type: ED25519
+          key: ${BN_HEPHE_API_KEY}
+          secret: ${BN_HEPHE_API_SECRET}
+      wallets:
+        - name: bn-hephe-spot
+          type: spot
 
 execrouter:
   - account: bybit-hephe
@@ -97,10 +117,10 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: BUY
-            profit_bps: 7
+            profit_bps: 10
             qty: 5
-            price_tolerance_bps: 2
-            order_ttl: 200ms
+            price_tolerance_bps: 5
+            order_ttl: 2000ms
 
         - type: xarb
           name: xarb-uni-sell-5bps
@@ -110,8 +130,8 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: SELL
-            profit_bps: 7
+            profit_bps: 10
             qty: 5
-            price_tolerance_bps: 2
-            order_ttl: 200ms
+            price_tolerance_bps: 5
+            order_ttl: 2000ms
 

@@ -32,9 +32,9 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 		t.Fatalf("Failed to initialize logger: %v", err)
 	}
 
-	cat := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	if cat == nil {
-		t.Fatal("Failed to initialize catalog")
+	cat, err := catalog.NewCatalog(cfg.Catalog)
+	if err != nil {
+		t.Fatalf("Failed to initialize catalog: %v", err)
 	}
 
 	n := node.NewNode(cat)
@@ -151,9 +151,9 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 		t.Fatalf("Failed to initialize logger: %v", err)
 	}
 
-	cat := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	if cat == nil {
-		t.Fatal("Failed to initialize catalog")
+	cat, err := catalog.NewCatalog(cfg.Catalog)
+	if err != nil {
+		t.Fatalf("Failed to initialize catalog: %v", err)
 	}
 
 	n := node.NewNode(cat)

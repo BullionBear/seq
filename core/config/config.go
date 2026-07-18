@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/BullionBear/seq/adapter"
@@ -17,7 +18,6 @@ import (
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
 	// TradingMode is paper|live. Empty defaults to paper after load.
-	// Live also requires SEQ_ALLOW_LIVE at process start.
 	TradingMode string                    `yaml:"trading_mode"`
 	Logger      logger.Config             `yaml:"logger"`
 	Catalog     catalog.Config            `yaml:"catalog"`
@@ -32,14 +32,22 @@ type AppConfig struct {
 	Metrics telemetry.MetricsConfig `yaml:"metrics"`
 }
 
-// LoadConfig loads configuration from a YAML file.
+// LoadConfig loads configuration from a YAML file. A relative
+// catalog.instruments path is resolved against the config file's directory.
 func LoadConfig(path string) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return LoadConfigFromBytes(data)
+	cfg, err := LoadConfigFromBytes(data)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Catalog.Instruments != "" && !filepath.IsAbs(cfg.Catalog.Instruments) {
+		cfg.Catalog.Instruments = filepath.Join(filepath.Dir(path), cfg.Catalog.Instruments)
+	}
+	return cfg, nil
 }
 
 // LoadConfigFromBytes loads configuration from YAML bytes.
@@ -64,13 +72,15 @@ func (c *AppConfig) applyDefaults() {
 	}
 }
 
-// applyEnvSecrets expands ${VAR} placeholders in secret fields and fills
-// empty catalog.api_token from CATALOG_API_TOKEN when set.
+// applyEnvSecrets expands ${VAR} placeholders in secret fields of the
+// catalog account API keys.
 func applyEnvSecrets(cfg *AppConfig) {
-	cfg.Catalog.APIToken = os.ExpandEnv(cfg.Catalog.APIToken)
-	if cfg.Catalog.APIToken == "" {
-		if tok := os.Getenv("CATALOG_API_TOKEN"); tok != "" {
-			cfg.Catalog.APIToken = tok
+	for i := range cfg.Catalog.Accounts {
+		for j := range cfg.Catalog.Accounts[i].APIKeys {
+			key := &cfg.Catalog.Accounts[i].APIKeys[j]
+			key.Key = os.ExpandEnv(key.Key)
+			key.Secret = os.ExpandEnv(key.Secret)
+			key.Passphrase = os.ExpandEnv(key.Passphrase)
 		}
 	}
 }

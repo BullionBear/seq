@@ -71,7 +71,6 @@ func main() {
 		log.Error().Err(err).
 			Str("config_trading_mode", cfg.TradingMode).
 			Str("env_trading_mode", os.Getenv(tradingmode.EnvTradingMode)).
-			Str("env_allow_live", os.Getenv(tradingmode.EnvAllowLive)).
 			Msg("Trading mode gate refused to start")
 		os.Exit(1)
 	}
@@ -79,12 +78,11 @@ func main() {
 	if mode.IsLive() {
 		log.Warn().
 			Str("trading_mode", mode.String()).
-			Str("gate", tradingmode.EnvAllowLive).
-			Msg("TRADING MODE: LIVE — venue order submit/cancel enabled; CEO/board approval required outside this process")
+			Msg("TRADING MODE: LIVE — venue order submit/cancel enabled")
 	} else {
 		log.Info().
 			Str("trading_mode", mode.String()).
-			Msg("TRADING MODE: PAPER — venue order submit/cancel refused; set trading_mode=live and SEQ_ALLOW_LIVE=1 only after CEO/board approval")
+			Msg("TRADING MODE: PAPER — venue order submit/cancel refused; set trading_mode=live to enable")
 	}
 
 	// Fence the Go runtime (P2-4): optional GOMAXPROCS cap, memory limit,
@@ -99,10 +97,10 @@ func main() {
 			Msg("Runtime fencing: GC disabled, memory limit acts as fuse (see docs/DEPLOYMENT.md)")
 	}
 
-	// Initialize Catalog service
-	catalogService := catalog.NewCatalog(cfg.Catalog.BaseURL, cfg.Catalog.APIToken)
-	if catalogService == nil {
-		log.Error().Msg("Failed to initialize catalog service")
+	// Initialize Catalog service from local instruments file and configured accounts
+	catalogService, err := catalog.NewCatalog(cfg.Catalog)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize catalog service")
 		os.Exit(1)
 	}
 	log.Info().Msg("Catalog service initialized successfully")

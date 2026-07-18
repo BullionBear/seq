@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/msgbus"
 )
 
@@ -16,8 +15,8 @@ func newAllocTestClient(t testing.TB) (*BinanceSpotDataClient, *msgbus.MsgBus) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
 
-	symbols := make(map[int]cpanel.Symbol)
-	symbols[1] = cpanel.Symbol{ID: 1, Name: "BTCUSDT", PricePrecision: 2, SizePrecision: 8}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT", PricePrecision: 2, SizePrecision: 8}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)

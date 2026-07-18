@@ -1,4 +1,4 @@
-trading_mode: paper  # live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval)
+trading_mode: paper  # set to live to enable venue order submit/cancel
 
 logger:
   level: debug
@@ -13,9 +13,7 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://capi.lynxlinkage.com
-  # Set CATALOG_API_TOKEN in the environment, or copy to a gitignored *.local.yml
-  api_token: ${CATALOG_API_TOKEN}
+  instruments: ./instruments.json  # relative to this config file's directory
 
 node:
   engine:

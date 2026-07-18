@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/BullionBear/seq/core/catalog"
-	"github.com/BullionBear/seq/core/catalog/cpanel"
 	"github.com/BullionBear/seq/core/logger"
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
@@ -282,7 +281,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 // registerStream records the stream -> symbol mapping plus the lookups the
 // hot parse path needs: symbol name -> ID (single-stream dispatch) and
 // symbolID -> tick multipliers.
-func (c *BinanceSpotDataClient) registerStream(streamName string, symbol *cpanel.Symbol) {
+func (c *BinanceSpotDataClient) registerStream(streamName string, symbol *catalog.Symbol) {
 	c.streamMapLock.Lock()
 	c.streamToSymbol[streamName] = symbol.ID
 	c.symbolToID[symbol.Name] = symbol.ID

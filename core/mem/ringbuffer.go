@@ -1,8 +1,17 @@
 package mem
 
 import (
+	"runtime"
 	"sync/atomic"
 )
+
+// commitSpinLimit is how many times a writer busy-spins waiting for an
+// earlier producer to commit before yielding the OS thread. Commits are
+// normally fast, so a short spin avoids the cost of a scheduler round-trip
+// in the common case; yielding afterward keeps a stalled predecessor from
+// being starved of CPU time by goroutines that only have work once it
+// finishes.
+const commitSpinLimit = 64
 
 // nextPowerOf2 rounds up to the next power of 2
 func nextPowerOf2(n uint64) uint64 {
@@ -210,9 +219,15 @@ func (rb *MPSCRingBuffer[T]) Write(item T) bool {
 
 			// Two-phase commit: wait for all previous writers to commit, then commit ours
 			// This ensures items become visible to the consumer in order
+			spins := 0
 			for !atomic.CompareAndSwapUint64(&rb.committed, write, write+1) {
-				// Spin until previous writers commit
-				// This is typically very short as writers commit quickly after writing
+				spins++
+				if spins > commitSpinLimit {
+					// A predecessor hasn't committed yet after a short spin;
+					// yield so it (or whatever it's waiting on) gets scheduled
+					// instead of losing the core to us spinning.
+					runtime.Gosched()
+				}
 			}
 			return true
 		}

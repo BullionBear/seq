@@ -1,4 +1,4 @@
-# Default paper. Live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval).
+# Default paper. Set trading_mode: live to enable venue order submit/cancel.
 trading_mode: paper
 
 logger:
@@ -13,9 +13,29 @@ msgbus:
     dir: ./logs/
 
 catalog:
-  base_url: https://capi.lynxlinkage.com
-  # Set CATALOG_API_TOKEN in the environment, or copy to a gitignored *.local.yml
-  api_token: ${CATALOG_API_TOKEN}
+  instruments: ./instruments.json  # relative to this config file's directory
+  # API keys/secrets are injected via environment variables (or copy to a gitignored *.local.yml)
+  accounts:
+    - name: bybit-hephe
+      exchange: Bybit
+      api_keys:
+        - name: bybit-hephe-hmac
+          type: HMAC
+          key: ${BYBIT_HEPHE_API_KEY}
+          secret: ${BYBIT_HEPHE_API_SECRET}
+      wallets:
+        - name: bybit-hephe-unified
+          type: unified
+    - name: bn-hephe
+      exchange: Binance
+      api_keys:
+        - name: bn-hephe-ed25519
+          type: ED25519
+          key: ${BN_HEPHE_API_KEY}
+          secret: ${BN_HEPHE_API_SECRET}
+      wallets:
+        - name: bn-hephe-spot
+          type: spot
 
 execrouter:
   - account: bybit-hephe
