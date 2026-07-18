@@ -22,7 +22,7 @@ Seq is an **in-process, actor-oriented crypto trading runtime** written in Go. A
 | Trading logic | `strategy` engine + strategy actors |
 | Venue I/O | `adapter/binance`, `adapter/bybit` |
 
-There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional binary msgbus logging (`.dat` files) plus remote catalog. The root `README.md` was rewritten to match this architecture and is current.
+There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional plaintext msgbus logging (`.jsonl` files) plus remote catalog. The root `README.md` was rewritten to match this architecture and is current.
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -55,7 +55,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 4. Build `catalog.Catalog` from the local instruments file (`catalog.instruments`) and config-defined accounts (`catalog.accounts`).
 5. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter`, `tpnl`, `obtest`, `xarb`).
 6. `node.NewNode` → wire msgbus, cache, five engines, execution router.
-7. Optional `msgbus.MsgLogger` for binary event/command audit logs.
+7. Optional `msgbus.MsgLogger` for plaintext JSONL event/command audit logs.
 8. `Init` → `Start` → `Run` (blocks until SIGINT/SIGTERM).
 
 ### Node event loop (`node/node.go`)
@@ -73,10 +73,6 @@ Shutdown order is intentional for safety:
 3. Drain msgbus (~3s / idle rounds).
 4. Stop risk / execution / portfolio actors.
 5. Disconnect execution clients.
-
-### Parser tool (`cmd/parser`)
-
-Offline helper to deserialize `event_*.dat` / command logs to JSONL (`make parse-event`). Supports research/audit replay of the msglog.
 
 ---
 
@@ -96,7 +92,7 @@ Design notes:
 - Events are **topic-filtered fan-out** to actors.
 - Commands are **point-to-point** and always higher priority than events.
 - Payloads live in arenas; refs carry `(topic|commandType, index, length)`.
-- Optional `MsgLogger` persists binary payloads for auditability.
+- Optional `MsgLogger` writes decoded payloads as JSONL for auditability.
 
 ### 3.2 `core/actor`
 
@@ -281,8 +277,7 @@ Strategy or stop path → `OrderCancel` / cancel-all → execution engine marks 
 | Mechanism | What it covers |
 | --- | --- |
 | Zerolog structured logs | Ops / debug |
-| Msgbus msglog (`.dat`) | Binary event+command audit trail |
-| `cmd/parser` | Offline decode to JSONL |
+| Msgbus msglog (`.jsonl`) | Plaintext event+command audit trail |
 | Engine state events | Ready / stop / abnormal fan-out |
 
 Gaps relative to a production trading desk (not present as first-class modules today): metrics/latency histograms, reject/slippage dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is implemented (`trading_mode`; see `core/tradingmode`).
@@ -292,7 +287,7 @@ Gaps relative to a production trading desk (not present as first-class modules t
 ## 10. Build and quality
 
 - Go **1.25.1**, module `github.com/BullionBear/seq`.
-- `Makefile`: local/linux builds with version ldflags, `go test -race`, coverage, benchmarks, escape analysis, parser targets.
+- `Makefile`: local/linux builds with version ldflags, `go test -race`, coverage, benchmarks, escape analysis.
 - CI: `.github/workflows/go.yml`.
 - `docker-compose.yml` still defines a legacy Postgres service; `README.md` correctly disclaims it as not part of this runtime.
 
@@ -302,7 +297,7 @@ Gaps relative to a production trading desk (not present as first-class modules t
 
 ```
 seq/
-├── cmd/                 # seq binary + event log parser
+├── cmd/                 # seq binary
 ├── config/              # YAML scenarios
 ├── node/                # composition root + event loop
 ├── core/
@@ -325,7 +320,7 @@ seq/
 - Command-before-event dispatch and arena-backed payloads suit low-latency in-process trading.
 - Risk gate sits on the mandatory path between strategy intent and venue submit.
 - Config-driven actor factories keep the binary “all-in-one” while allowing scenario YAML composition.
-- Optional binary msglog supports post-trade audit.
+- Optional plaintext msglog (JSONL) supports post-trade audit.
 
 **Risks / follow-ups**
 
@@ -333,7 +328,7 @@ seq/
 2. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` (or `SEQ_TRADING_MODE=live`), logged at boot.
 3. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
 4. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.
-5. **Research/backtest** — msglog parser exists; full deterministic replay/backtest stack is not yet a first-class module.
+5. **Research/backtest** — plaintext msglog JSONL is available for audit/research; full deterministic replay/backtest stack is not yet a first-class module.
 
 ---
 

@@ -2,9 +2,9 @@
 //
 // # Logging discipline (P2-3)
 //
-// The binary msglog (core/msgbus.MsgLogger) is the SOLE per-event record.
-// Text logging exists for lifecycle transitions (startup, connect,
-// disconnect, shutdown) and cold error paths only. The rules:
+// The plaintext msglog (core/msgbus.MsgLogger, JSONL) is the SOLE per-event
+// record. Zerolog text logging exists for lifecycle transitions (startup,
+// connect, disconnect, shutdown) and cold error paths only. The rules:
 //
 //  1. No log statement above Debug on hot paths: the dispatch loop,
 //     ring-buffer and arena operations (core/mem, core/msgbus

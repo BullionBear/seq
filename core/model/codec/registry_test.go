@@ -15,8 +15,8 @@ type fieldGolden struct {
 // wireType is one entry in the registry of every memcpy'd wire type.
 // size and fields are the golden layout constants: they were generated once
 // from the layout in production at the time the format was frozen. If a
-// guard test fails against them, the wire format changed — bump the msglog
-// schema version (core/msgbus) and regenerate these constants deliberately.
+// guard test fails against them, the wire format changed — regenerate these
+// constants deliberately.
 type wireType struct {
 	name   string
 	zero   any

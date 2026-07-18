@@ -20,7 +20,7 @@ For the module-by-module source of truth (package responsibilities, boot order, 
 | Trading logic | `strategy` engine + strategy actors |
 | Venue I/O | `adapter/binance`, `adapter/bybit` |
 
-There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional binary msgbus logging (`.dat` files) plus the remote catalog. The legacy `docker-compose.yml` Postgres service is not part of this runtime.
+There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional plaintext msgbus logging (`.jsonl` files) plus the remote catalog. The legacy `docker-compose.yml` Postgres service is not part of this runtime.
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -49,7 +49,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 - **Mandatory risk gate** — strategies call `SubmitOrder` → `OrderRiskCheck`; venue submit only on pass
 - **Venue adapters** — Binance/Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
 - **Config-driven actors** — YAML factories for orderbook, OMS, balance, ratelimiter, tpnl, `xarb`, `obtest`
-- **Optional msglog** — binary event/command audit trail; offline decode via `cmd/parser`
+- **Optional msglog** — plaintext JSONL event/command audit trail written at dispatch
 - **Structured logging** — zerolog with optional lumberjack rotation
 
 ## Getting started
@@ -93,11 +93,9 @@ CONFIG=config/myconfig.yml ./bin/seq
 
 `make run` builds `bin/seq` but does not pass a config path; always supply `-c` or `CONFIG`.
 
-### Parse msglog (audit / research)
-
-```bash
-make parse-event i=logs/event_YYYY-MM-DD.dat o=out.jsonl
-```
+When `msgbus.msglog.enabled` is true, the node writes date-stamped
+`event_YYYY-MM-DD.jsonl` and `command_YYYY-MM-DD.jsonl` files under
+`msgbus.msglog.dir` (one JSON object per line).
 
 ## Configuration
 
@@ -202,7 +200,7 @@ Strategies never talk to venues directly; risk sits on the mandatory path betwee
 
 ```
 seq/
-├── cmd/                 # seq binary + event log parser
+├── cmd/                 # seq binary
 ├── config/              # YAML scenarios
 ├── node/                # composition root + event loop
 ├── core/
@@ -237,8 +235,7 @@ CI: `.github/workflows/go.yml`.
 | Mechanism | Coverage |
 | --- | --- |
 | Zerolog structured logs | Ops / debug |
-| Msgbus msglog (`.dat`) | Binary event + command audit trail |
-| `cmd/parser` | Offline decode to JSONL |
+| Msgbus msglog (`.jsonl`) | Plaintext event + command audit trail |
 | Engine state events | Ready / stop / abnormal fan-out |
 
 Not yet first-class: metrics/latency dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is in place (`trading_mode`). See `architecture.md` §9 and §13 for gaps and suggested follow-ups.

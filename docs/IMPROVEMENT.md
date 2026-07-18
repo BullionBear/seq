@@ -117,27 +117,12 @@ any future atomic field).
 
 ### P0-4 · Msglog records carry no version or layout contract
 
-**Location:** `core/msgbus/msglog.go`, `cmd/parser`, `core/model`
+**Location:** `core/msgbus/msglog.go`, `core/model`
 
-**Problem (hidden bug):**
-The `.dat` wire format is currently *whatever the Go compiler laid out*:
-`unsafe.Sizeof` whole-struct memcpy includes implicit padding, and there is no
-record version. Reordering one struct field, or a compiler layout change,
-silently invalidates all historical logs; the parser has no way to detect it.
-
-**Fix conditions:**
-1. Prepend a per-record header: `{schemaVersion u16, msgType u16, length u32}`.
-2. Prepend a per-file header: magic, endianness marker, build/commit,
-   schema version.
-3. `cmd/parser` refuses (with a clear error) files whose schema version it
-   does not support.
-4. Struct layout becomes an explicit contract (see P1-2 guard tests).
-
-**Verification:**
-- Round-trip test: write a log with the current version, mutate the schema
-  version constant, assert parser rejects with the expected error.
-- Golden-file test: a checked-in `.dat` fixture decodes to a checked-in JSONL
-  fixture byte-for-byte.
+**Status:** Resolved by writing plaintext JSONL at dispatch time (no offline
+parser, no binary `.dat` schema). In-memory bus payloads remain memcpy wire
+types guarded by `core/model/codec` layout goldens; the on-disk audit trail
+is decoded JSON objects (one per line in `event_*.jsonl` / `command_*.jsonl`).
 
 ---
 
@@ -186,8 +171,7 @@ currently prevents someone adding a `string` field or reordering fields.
    and fails on any pointer, slice, map, string, chan, func, or interface field.
 2. Golden layout test: assert `unsafe.Sizeof` and `unsafe.Offsetof` of every
    field of every wire type against checked-in constants. Any layout change
-   fails CI until the constants (and msglog schema version, per P0-4) are
-   bumped deliberately.
+   fails CI until the constants are bumped deliberately.
 3. Style rule (documented in the package doc): wire structs order fields
    largest-first and spell out padding as `_ [N]byte` so layout is declared,
    not inherited.
@@ -232,7 +216,7 @@ arena (unsafe post-P0-2) or allocates.
 ### P1-4 · (Deferred decision) schema-driven code generation
 
 **Trigger condition:** next time a batch of new event/command types is added,
-or when a non-Go consumer (research tooling) needs to read the msglog.
+or when a non-Go consumer needs a typed schema for the in-memory wire format.
 
 **Options to evaluate:** SBE (matches the Aeron/LMAX lineage; flyweights +
 built-in schema evolution; adds a Java tool to the build), or an in-repo
@@ -322,8 +306,9 @@ system is already stressed.
    per-message adapter paths. High-frequency conditions (overflow, drop,
    overwrite-wait) become atomic counters reported by a low-frequency
    observer goroutine (1 s cadence).
-2. The binary msglog is the sole per-event record; text logging is for
-   lifecycle and cold paths only. Document this rule in `core/logger`.
+2. The plaintext msglog (JSONL) is the sole per-event record; zerolog text
+   logging is for lifecycle and cold paths only. Document this rule in
+   `core/logger`.
 
 **Verification:**
 - Static check in CI: a lint rule (forbidigo or a small analyzer) rejecting

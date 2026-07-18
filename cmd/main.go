@@ -112,7 +112,7 @@ func main() {
 	// Create the Node
 	n := node.NewNode(catalogService)
 
-	// Set up binary message logger if configured
+	// Set up plaintext JSONL message logger if configured
 	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.Dir != "" {
 		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.Dir)
 		if err != nil {

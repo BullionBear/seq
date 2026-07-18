@@ -9,7 +9,7 @@ import (
 // or provide (Decode) the full wire representation of the value.
 // The message deliberately carries no package prefix: it predates this
 // package (event/command re-export the same value) and is pinned by the
-// cmd/parser golden fixture.
+// msglog JSONL golden in core/msgbus.
 var ErrBufferTooSmall = errors.New("buffer too small")
 
 // Size returns the wire size of T: its in-memory size including padding.

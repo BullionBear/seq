@@ -67,7 +67,7 @@ type EventBus struct {
 	consumers   []*Consumer
 	minSequence uint64 // minimum sequence across all consumers (for arena release)
 
-	// Optional binary logger for persisting events to .dat files
+	// Optional logger for persisting events as JSONL
 	msgLogger *MsgLogger
 
 	// Overflow accounting (indexed by topic).
@@ -94,7 +94,7 @@ func NewEventBusWithCapacity(arenaCapacity uint64) *EventBus {
 	}
 }
 
-// SetMsgLogger sets the binary message logger for persisting events to disk.
+// SetMsgLogger sets the message logger for persisting events as JSONL.
 func (e *EventBus) SetMsgLogger(l *MsgLogger) {
 	e.msgLogger = l
 }
