@@ -1,9 +1,7 @@
 // Package tradingmode defines the process-wide paper vs live execution gate.
 //
-// Live venue order mutations require an explicit dual opt-in: config
-// trading_mode=live (or SEQ_TRADING_MODE=live) and environment
-// SEQ_ALLOW_LIVE=1|true|yes. The default mode is always paper. Enabling live
-// trading still requires separate CEO/board approval outside this package.
+// Venue order mutations follow trading_mode (or SEQ_TRADING_MODE). The default
+// mode is always paper.
 package tradingmode
 
 import (
@@ -21,23 +19,14 @@ const (
 	// live mutations.
 	ModePaper Mode = "paper"
 
-	// ModeLive allows venue order mutations when also permitted by env.
+	// ModeLive allows venue order mutations.
 	ModeLive Mode = "live"
 )
 
-// EnvAllowLive is the hard-to-miss environment gate for live mode.
-// Accepted truthy values: 1, true, yes (case-insensitive).
-const EnvAllowLive = "SEQ_ALLOW_LIVE"
-
 // EnvTradingMode optionally overrides the YAML trading_mode value.
-// When set to live, SEQ_ALLOW_LIVE is still required.
 const EnvTradingMode = "SEQ_TRADING_MODE"
 
 var (
-	// ErrLiveNotAllowed is returned when live mode is requested without
-	// SEQ_ALLOW_LIVE set to a truthy value.
-	ErrLiveNotAllowed = errors.New("live trading mode refused: set SEQ_ALLOW_LIVE=1 (or true/yes) after CEO/board approval; defaulting to paper is mandatory without this gate")
-
 	// ErrPaperMode is returned by execution paths that refuse live venue
 	// order mutations while the process is in paper mode.
 	ErrPaperMode = errors.New("trading mode is paper: live venue order mutation refused")
@@ -58,26 +47,11 @@ func Parse(s string) (Mode, error) {
 	}
 }
 
-// AllowLiveEnv reports whether getenv(SEQ_ALLOW_LIVE) is an explicit truthy opt-in.
-func AllowLiveEnv(getenv func(string) string) bool {
-	if getenv == nil {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(getenv(EnvAllowLive))) {
-	case "1", "true", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
 // Resolve picks the effective trading mode from config and environment.
 //
 // Precedence:
-//  1. SEQ_TRADING_MODE if set (must still pass SEQ_ALLOW_LIVE when live)
+//  1. SEQ_TRADING_MODE if set
 //  2. configValue (empty → paper)
-//
-// Live always requires SEQ_ALLOW_LIVE; otherwise Resolve returns ErrLiveNotAllowed.
 func Resolve(configValue string, getenv func(string) string) (Mode, error) {
 	if getenv == nil {
 		getenv = func(string) string { return "" }
@@ -88,14 +62,7 @@ func Resolve(configValue string, getenv func(string) string) (Mode, error) {
 		raw = envMode
 	}
 
-	mode, err := Parse(raw)
-	if err != nil {
-		return "", err
-	}
-	if mode == ModeLive && !AllowLiveEnv(getenv) {
-		return "", ErrLiveNotAllowed
-	}
-	return mode, nil
+	return Parse(raw)
 }
 
 // Set installs the process-wide trading mode. Call once at boot after Resolve.

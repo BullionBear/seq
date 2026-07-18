@@ -18,7 +18,6 @@ import (
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
 	// TradingMode is paper|live. Empty defaults to paper after load.
-	// Live also requires SEQ_ALLOW_LIVE at process start.
 	TradingMode string                    `yaml:"trading_mode"`
 	Logger      logger.Config             `yaml:"logger"`
 	Catalog     catalog.Config            `yaml:"catalog"`

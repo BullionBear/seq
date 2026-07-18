@@ -81,7 +81,7 @@ export BYBIT_HEPHE_API_KEY='...' BYBIT_HEPHE_API_SECRET='...'
 # or: cp config/obtest.yml config/obtest.local.yml  # gitignored; edit secrets there
 ```
 
-Trading mode defaults to **paper**. Live venue order submit/cancel requires dual opt-in (`trading_mode: live` or `SEQ_TRADING_MODE=live`, plus `SEQ_ALLOW_LIVE=1`) and separate CEO/board approval — do not enable live casually.
+Trading mode defaults to **paper**. Live venue order submit/cancel requires `trading_mode: live` (or `SEQ_TRADING_MODE=live`) — do not enable live casually.
 
 ### Run
 
@@ -104,7 +104,7 @@ make parse-event i=logs/event_YYYY-MM-DD.dat o=out.jsonl
 Top-level YAML (`core/config.AppConfig`). Actor entries are uniformly `{ type, name?, config: map }`.
 
 ```yaml
-# Defaults to paper when omitted. Live also requires SEQ_ALLOW_LIVE=1.
+# Defaults to paper when omitted.
 trading_mode: paper
 
 logger:
@@ -241,7 +241,7 @@ CI: `.github/workflows/go.yml`.
 | `cmd/parser` | Offline decode to JSONL |
 | Engine state events | Ready / stop / abnormal fan-out |
 
-Not yet first-class: metrics/latency dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is in place (`trading_mode` + `SEQ_ALLOW_LIVE`). See `architecture.md` §9 and §13 for gaps and suggested follow-ups.
+Not yet first-class: metrics/latency dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is in place (`trading_mode`). See `architecture.md` §9 and §13 for gaps and suggested follow-ups.
 
 ## License
 

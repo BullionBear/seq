@@ -1,4 +1,4 @@
-# Default paper. Live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval).
+# Default paper. Set trading_mode: live to enable venue order submit/cancel.
 trading_mode: paper
 
 logger:

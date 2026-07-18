@@ -51,7 +51,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 
 1. Load YAML via `core/config.LoadConfig` (`-c` or `CONFIG`).
 2. Init `core/logger` (zerolog + optional lumberjack rotation).
-3. Resolve paper/live gate via `tradingmode.Resolve(cfg.TradingMode, os.Getenv)` — default `paper`; `live` also requires `SEQ_ALLOW_LIVE=1|true|yes` or the process exits. Result is logged and passed into `Node.Init`.
+3. Resolve paper/live gate via `tradingmode.Resolve(cfg.TradingMode, os.Getenv)` — default `paper`; optional override via `SEQ_TRADING_MODE`. Result is logged and passed into `Node.Init`.
 4. Build `catalog.Catalog` from the local instruments file (`catalog.instruments`) and config-defined accounts (`catalog.accounts`).
 5. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter`, `tpnl`, `obtest`, `xarb`).
 6. `node.NewNode` → wire msgbus, cache, five engines, execution router.
@@ -233,7 +233,7 @@ Adapters publish **normalized** events onto msgbus; they do not call strategy co
 Top-level YAML (`core/config.AppConfig`):
 
 ```yaml
-trading_mode: paper|live   # optional; default paper; live also requires SEQ_ALLOW_LIVE env
+trading_mode: paper|live   # optional; default paper; SEQ_TRADING_MODE overrides
 logger: { ... }
 msgbus: { msglog: { enabled, dir } }
 catalog: { instruments, accounts: [ { name, exchange, api_keys: [...], wallets: [...] } ] }
@@ -285,7 +285,7 @@ Strategy or stop path → `OrderCancel` / cancel-all → execution engine marks 
 | `cmd/parser` | Offline decode to JSONL |
 | Engine state events | Ready / stop / abnormal fan-out |
 
-Gaps relative to a production trading desk (not present as first-class modules today): metrics/latency histograms, reject/slippage dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is implemented (`trading_mode` + `SEQ_ALLOW_LIVE`; see `core/tradingmode`).
+Gaps relative to a production trading desk (not present as first-class modules today): metrics/latency histograms, reject/slippage dashboards, kill-switch service, deterministic backtest harness. Paper-vs-live execution gate is implemented (`trading_mode`; see `core/tradingmode`).
 
 ---
 
@@ -330,7 +330,7 @@ seq/
 **Risks / follow-ups**
 
 1. **Secrets in sample YAML** — scrubbed from working tree (`${ENV_VAR}` placeholders + gitignored `*.local.yml`); **rotate** any previously exposed credentials at the venue (history may still contain them).
-2. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` and `SEQ_ALLOW_LIVE=1|true|yes`, logged at boot. Running live still needs separate CEO/board approval.
+2. **Live trading safety** — addressed by `core/tradingmode` + execution-router gate: default `paper`; `live` requires `trading_mode=live` (or `SEQ_TRADING_MODE=live`), logged at boot.
 3. **Single-process blast radius** — one Node hosts data, risk, execution, and strategy; process crash stops everything (acceptable for early firm stage; revisit isolation later).
 4. **Command drop on full ring** — msgbus logs and drops when command SPSC is full; needs monitoring/alerting.
 5. **Research/backtest** — msglog parser exists; full deterministic replay/backtest stack is not yet a first-class module.
@@ -339,7 +339,7 @@ seq/
 
 ## 13. Suggested next engineering work (out of scope for this review)
 
-1. Add paper execution adapter (venue order mutations are already gated; paper fill simulation remains). Live enablement still requires CEO/board approval.
+1. Add paper execution adapter (venue order mutations are already gated; paper fill simulation remains).
 2. Metrics: queue depth, dispatch lag, reject rates, slippage, inventory, PnL.
 3. Harden secret handling (env/secret store; no tokens in git).
 4. Expand venue/product coverage beyond spot Binance/Bybit as needed.

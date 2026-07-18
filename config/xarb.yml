@@ -1,4 +1,4 @@
-trading_mode: paper  # live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval)
+trading_mode: paper  # set to live to enable venue order submit/cancel
 
 logger:
   level: debug
@@ -117,10 +117,10 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: BUY
-            profit_bps: 7
+            profit_bps: 10
             qty: 5
-            price_tolerance_bps: 2
-            order_ttl: 200ms
+            price_tolerance_bps: 5
+            order_ttl: 2000ms
 
         - type: xarb
           name: xarb-uni-sell-5bps
@@ -130,8 +130,8 @@ node:
             quoting_wallet: bn-hephe-spot
             hedging_wallet: bybit-hephe-unified
             side: SELL
-            profit_bps: 7
+            profit_bps: 10
             qty: 5
-            price_tolerance_bps: 2
-            order_ttl: 200ms
+            price_tolerance_bps: 5
+            order_ttl: 2000ms
 

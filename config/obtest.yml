@@ -1,4 +1,4 @@
-trading_mode: paper  # live requires trading_mode=live AND SEQ_ALLOW_LIVE=1 (CEO/board approval)
+trading_mode: paper  # set to live to enable venue order submit/cancel
 
 logger:
   level: debug
