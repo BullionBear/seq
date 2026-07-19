@@ -87,3 +87,19 @@ func (s *StrategyActorBase) CancelAllOrders(accountID int, symbolID int) {
 	cancelAllCmd.Encode(buf)
 	s.msgbus.Send(ref)
 }
+
+// ReqHistoricalKline requests historical candles. The data engine publishes
+// TopicEventRespHistoricalKline when the HTTP response is ready.
+// startTimeNs/endTimeNs are nanoseconds; 0 omits that bound. limit 0 uses venue default.
+func (s *StrategyActorBase) ReqHistoricalKline(symbolID int, interval common.Interval, startTimeNs, endTimeNs uint64, limit int) {
+	req := command.ReqHistoricalKline{
+		SymbolID:  symbolID,
+		Interval:  interval,
+		StartTime: startTimeNs,
+		EndTime:   endTimeNs,
+		Limit:     limit,
+	}
+	ref, buf := s.msgbus.AllocateCmd(command.CommandTypeReqHistoricalKline, uint64(req.GetBufferLength()))
+	req.Encode(buf)
+	s.msgbus.Send(ref)
+}

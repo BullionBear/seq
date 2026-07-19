@@ -37,6 +37,7 @@ var (
 	bytesOpSubscribe    = []byte("subscribe")
 	bytesTopicOrderbook = []byte("orderbook.")
 	bytesTopicTrade     = []byte("publicTrade.")
+	bytesTopicKline     = []byte("kline.")
 	bytesTypeSnapshot   = []byte("snapshot")
 	bytesTypeDelta      = []byte("delta")
 	bytesSideSell       = []byte("Sell")
@@ -77,6 +78,7 @@ type BybitDataClient struct {
 	// Subscription management
 	depthSubs map[int]*DepthSubscriptionOptions // symbolID -> options
 	tradeSubs map[int]struct{}                  // symbolID -> exists
+	klineSubs map[int]common.Interval           // symbolID -> interval
 	subsLock  sync.RWMutex
 
 	// Topic to symbolID mapping for fast lookup during message processing
@@ -123,6 +125,7 @@ func NewBybitDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *BybitD
 		conns:         make(map[Category]*wsConnection, 4),
 		depthSubs:     make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:     make(map[int]struct{}, 64),
+		klineSubs:     make(map[int]common.Interval, 64),
 		topicToSymbol: make(map[string]int, 128),
 		precisions:    make(map[int]symbolPrecision, 128),
 	}
@@ -132,7 +135,7 @@ func NewBybitDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *BybitD
 func (c *BybitDataClient) HasSub() bool {
 	c.subsLock.RLock()
 	defer c.subsLock.RUnlock()
-	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0
+	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0 || len(c.klineSubs) > 0
 }
 
 // SubscribeDepthUpdate subscribes to depth update stream for a symbol.
@@ -201,9 +204,53 @@ func (c *BybitDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
 	}
 }
 
+// SubscribeKline subscribes to a kline stream for a symbol.
+// interval is a Binance-style string (e.g. "1m", "1h"); mapped to Bybit tokens.
+func (c *BybitDataClient) SubscribeKline(symbolID int, interval string) {
+	iv, err := common.ParseInterval(interval)
+	if err != nil {
+		log().Error().Str("interval", interval).Msg("Invalid kline interval for Bybit")
+		return
+	}
+	if _, ok := iv.BybitTopic(); !ok {
+		log().Error().Str("interval", interval).Msg("Kline interval not supported by Bybit")
+		return
+	}
+
+	c.subsLock.Lock()
+	defer c.subsLock.Unlock()
+
+	c.klineSubs[symbolID] = iv
+
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for kline subscription")
+		return
+	}
+
+	category, ok := ProductSlugToCategory[symbol.Product.Slug]
+	if !ok {
+		log().Error().Str("product", symbol.Product.Slug).Msg("Unsupported product type for Bybit")
+		return
+	}
+
+	c.connsLock.RLock()
+	wsConn, exists := c.conns[category]
+	c.connsLock.RUnlock()
+
+	if exists && wsConn.connected.Load() {
+		c.subscribeToKlineStream(symbolID, iv, category)
+	}
+}
+
 // ReqDepthSnapshot requests a depth snapshot via HTTP REST API
 func (c *BybitDataClient) ReqDepthSnapshot(symbolID int, limit int) error {
 	return c.httpClient.ReqDepthSnapshot(symbolID, limit)
+}
+
+// ReqHistoricalKline requests historical klines via HTTP REST API.
+func (c *BybitDataClient) ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error {
+	return c.httpClient.ReqHistoricalKline(symbolID, interval, startTimeNs, endTimeNs, limit)
 }
 
 // Connect establishes WebSocket connections and starts processing
@@ -333,6 +380,31 @@ func (c *BybitDataClient) buildCategoryTopics() map[Category][]string {
 		c.registerTopic(topic, symbol)
 	}
 
+	for symbolID, iv := range c.klineSubs {
+		symbol, err := c.catalog.GetSymbol(symbolID)
+		if err != nil {
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for kline subscription")
+			continue
+		}
+
+		category, ok := ProductSlugToCategory[symbol.Product.Slug]
+		if !ok {
+			log().Error().Str("product", symbol.Product.Slug).Msg("Unsupported product type for Bybit")
+			continue
+		}
+
+		bybitIV, ok := iv.BybitTopic()
+		if !ok {
+			log().Error().Str("interval", iv.String()).Msg("Kline interval not supported by Bybit")
+			continue
+		}
+
+		// Topic format: kline.{interval}.{symbol}
+		topic := "kline." + bybitIV + "." + symbol.Name
+		categoryTopics[category] = append(categoryTopics[category], topic)
+		c.registerTopic(topic, symbol)
+	}
+
 	return categoryTopics
 }
 
@@ -405,6 +477,31 @@ func (c *BybitDataClient) subscribeToTradeStream(symbolID int, category Category
 	}
 
 	topic := "publicTrade." + symbol.Name
+	c.registerTopic(topic, symbol)
+
+	c.connsLock.RLock()
+	wsConn, exists := c.conns[category]
+	c.connsLock.RUnlock()
+
+	if exists {
+		c.sendSubscriptions(wsConn, []string{topic})
+	}
+}
+
+// subscribeToKlineStream sends a subscription message for kline stream
+func (c *BybitDataClient) subscribeToKlineStream(symbolID int, iv common.Interval, category Category) {
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for kline subscription")
+		return
+	}
+
+	bybitIV, ok := iv.BybitTopic()
+	if !ok {
+		return
+	}
+
+	topic := "kline." + bybitIV + "." + symbol.Name
 	c.registerTopic(topic, symbol)
 
 	c.connsLock.RLock()
@@ -533,6 +630,8 @@ func (c *BybitDataClient) processMessage(ws *wsConnection, data []byte) {
 		c.processOrderbook(ws, topic, msgType, data)
 	} else if bytes.HasPrefix(topic, bytesTopicTrade) {
 		c.processTrade(topic, data)
+	} else if bytes.HasPrefix(topic, bytesTopicKline) {
+		c.processKline(topic, data)
 	}
 }
 
@@ -675,6 +774,80 @@ func (c *BybitDataClient) processDepthUpdate(ws *wsConnection, symbolID, depthID
 		return // dropped under overflow; orderbook re-syncs via DepthID gap
 	}
 	if err := depthUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
+}
+
+// processKline processes kline messages.
+// Bybit kline format:
+//
+//	{
+//	  "topic": "kline.5.BTCUSDT",
+//	  "type": "snapshot",
+//	  "ts": 1672324988882,
+//	  "data": [{
+//	    "start": 1672324800000, "end": 1672325099999, "interval": "5",
+//	    "open": "16649.5", "close": "16677", "high": "16677", "low": "16608",
+//	    "volume": "2.081", "turnover": "34666.4005",
+//	    "confirm": false, "timestamp": 1672324988882
+//	  }]
+//	}
+func (c *BybitDataClient) processKline(topic []byte, data []byte) {
+	c.topicMapLock.RLock()
+	symbolID, ok := c.topicToSymbol[string(topic)]
+	c.topicMapLock.RUnlock()
+	if !ok {
+		return
+	}
+
+	_, _ = jsonparser.ArrayEach(data, func(item []byte, _ jsonparser.ValueType, _ int, _ error) {
+		c.processKlineItem(symbolID, item)
+	}, "data")
+}
+
+func (c *BybitDataClient) processKlineItem(symbolID int, item []byte) {
+	intervalBytes, _, _, _ := jsonparser.Get(item, "interval")
+	iv, err := common.ParseInterval(string(intervalBytes))
+	if err != nil {
+		return
+	}
+
+	startMs, _ := jsonparser.GetInt(item, "start")
+	endMs, _ := jsonparser.GetInt(item, "end")
+	tsMs, _ := jsonparser.GetInt(item, "timestamp")
+	closed, _ := jsonparser.GetBoolean(item, "confirm")
+
+	openBytes, _, _, _ := jsonparser.Get(item, "open")
+	highBytes, _, _, _ := jsonparser.Get(item, "high")
+	lowBytes, _, _, _ := jsonparser.Get(item, "low")
+	closeBytes, _, _, _ := jsonparser.Get(item, "close")
+	volBytes, _, _, _ := jsonparser.Get(item, "volume")
+	quoteBytes, _, _, _ := jsonparser.Get(item, "turnover")
+
+	kline := event.Kline{
+		SymbolID:    symbolID,
+		Interval:    iv,
+		StartTime:   uint64(startMs) * 1_000_000,
+		EndTime:     uint64(endMs) * 1_000_000,
+		Timestamp:   uint64(tsMs) * 1_000_000,
+		Open:        parseFloat64(openBytes),
+		High:        parseFloat64(highBytes),
+		Low:         parseFloat64(lowBytes),
+		Close:       parseFloat64(closeBytes),
+		Volume:      parseFloat64(volBytes),
+		QuoteVolume: parseFloat64(quoteBytes),
+		TradeCount:  0, // Bybit WS kline does not include trade count
+		Closed:      closed,
+	}
+
+	size := uint64(kline.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventKline, size)
+	if !ok {
+		return
+	}
+	if err := kline.Encode(buf); err != nil {
 		c.msgBus.Cancel(ref)
 		return
 	}

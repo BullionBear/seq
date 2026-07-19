@@ -6,6 +6,7 @@ const (
 	BaseWsAPIURL = "wss://ws-api.binance.com:443/ws-api/v3"
 
 	EndpointDepth       = "/api/v3/depth"
+	EndpointKlines      = "/api/v3/klines"
 	EndpointCreateOrder = "/api/v3/order"
 	EndpointAccount     = "/api/v3/account"
 )

@@ -16,6 +16,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/buger/jsonparser"
 
 	"github.com/valyala/fasthttp"
 )
@@ -27,6 +28,9 @@ func unsafeString(b []byte) string {
 // errSnapshotDropped is returned when a depth snapshot could not be published
 // because the event bus dropped it under overflow; the caller may retry.
 var errSnapshotDropped = errors.New("bybit: depth snapshot dropped under event bus overflow")
+
+// errKlineDropped is returned when a historical kline response could not be published.
+var errKlineDropped = errors.New("bybit: historical kline dropped under event bus overflow")
 
 type BybitHTTPClient struct {
 	catalog *catalog.Catalog
@@ -177,6 +181,159 @@ func (c *BybitHTTPClient) ReqDepthSnapshot(symbolId int, limit int) error {
 	// Publish to event bus
 	c.msgBus.Publish(ref)
 	return nil
+}
+
+// ReqHistoricalKline fetches historical klines via GET /v5/market/kline and
+// publishes TopicEventRespHistoricalKline. Times are nanoseconds; 0 omits the bound.
+func (c *BybitHTTPClient) ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error {
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		return err
+	}
+	iv, err := common.ParseInterval(interval)
+	if err != nil {
+		return err
+	}
+	bybitIV, ok := iv.BybitTopic()
+	if !ok {
+		return errors.New("bybit: unsupported kline interval: " + interval)
+	}
+	category, ok := ProductSlugToCategory[symbol.Product.Slug]
+	if !ok {
+		return errors.New("unsupported product type for Bybit: " + symbol.Product.Slug)
+	}
+
+	c.buffer.Reset()
+	c.buffer.Grow(len(c.baseURL) + len(EndpointKline) + len(symbol.Name) + 96)
+	c.buffer.WriteString(c.baseURL)
+	c.buffer.WriteString(EndpointKline)
+	c.buffer.WriteByte('?')
+	c.buffer.WriteString("category=")
+	c.buffer.WriteString(string(category))
+	c.buffer.WriteString("&symbol=")
+	c.buffer.WriteString(symbol.Name)
+	c.buffer.WriteString("&interval=")
+	c.buffer.WriteString(bybitIV)
+	if startTimeNs > 0 {
+		c.buffer.WriteString("&start=")
+		c.buffer.WriteString(strconv.FormatUint(startTimeNs/1_000_000, 10))
+	}
+	if endTimeNs > 0 {
+		c.buffer.WriteString("&end=")
+		c.buffer.WriteString(strconv.FormatUint(endTimeNs/1_000_000, 10))
+	}
+	if limit > 0 {
+		c.buffer.WriteString("&limit=")
+		c.buffer.WriteString(strconv.Itoa(limit))
+	}
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURIBytes(c.buffer.Bytes())
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	if err = c.client.Do(req, resp); err != nil {
+		return err
+	}
+	if statusCode := resp.StatusCode(); statusCode != fasthttp.StatusOK {
+		return &HTTPError{StatusCode: statusCode, Body: string(resp.Body())}
+	}
+
+	jsonData := resp.Body()
+	if err := c.checkRetCode(jsonData); err != nil {
+		return err
+	}
+
+	list, _, _, err := jsonparser.Get(jsonData, "result", "list")
+	if err != nil {
+		return err
+	}
+	bars, err := parseBybitKlines(list)
+	if err != nil {
+		return err
+	}
+
+	out := event.RespHistoricalKline{
+		SymbolID: symbolID,
+		Interval: iv,
+		Bars:     bars,
+	}
+	size := uint64(out.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventRespHistoricalKline, size)
+	if !ok {
+		return errKlineDropped
+	}
+	if err := out.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return err
+	}
+	c.msgBus.Publish(ref)
+	return nil
+}
+
+// parseBybitKlines parses result.list from /v5/market/kline.
+// Bybit returns newest-first; we reverse to oldest → newest.
+// Each row: [start, open, high, low, close, volume, turnover] (strings).
+func parseBybitKlines(list []byte) ([]event.KlineBar, error) {
+	bars := make([]event.KlineBar, 0, 64)
+	var parseErr error
+	_, err := jsonparser.ArrayEach(list, func(value []byte, dataType jsonparser.ValueType, _ int, _ error) {
+		if parseErr != nil || dataType != jsonparser.Array {
+			return
+		}
+		bar, err := parseBybitKlineRow(value)
+		if err != nil {
+			parseErr = err
+			return
+		}
+		bars = append(bars, bar)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	// Reverse newest-first → oldest-first
+	for i, j := 0, len(bars)-1; i < j; i, j = i+1, j-1 {
+		bars[i], bars[j] = bars[j], bars[i]
+	}
+	return bars, nil
+}
+
+func parseBybitKlineRow(row []byte) (event.KlineBar, error) {
+	var bar event.KlineBar
+	idx := 0
+	_, err := jsonparser.ArrayEach(row, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+		switch idx {
+		case 0: // start time ms (string)
+			ms := int64(parseFloat64(value))
+			bar.StartTime = uint64(ms) * 1_000_000
+			bar.Timestamp = bar.StartTime
+		case 1:
+			bar.Open = parseFloat64(value)
+		case 2:
+			bar.High = parseFloat64(value)
+		case 3:
+			bar.Low = parseFloat64(value)
+		case 4:
+			bar.Close = parseFloat64(value)
+		case 5:
+			bar.Volume = parseFloat64(value)
+		case 6:
+			bar.QuoteVolume = parseFloat64(value)
+		}
+		idx++
+	})
+	if err != nil {
+		return event.KlineBar{}, err
+	}
+	bar.Closed = true
+	return bar, nil
 }
 
 // checkRetCode verifies Bybit API response has retCode=0

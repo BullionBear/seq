@@ -190,6 +190,10 @@ func decodeEventPayload(topic event.Topic, buf []byte) any {
 		return orDecodeErr(event.NewDepthUpdateFromBytes(buf))
 	case event.TopicEventTick:
 		return orDecodeErr(event.NewTickFromBytes(buf))
+	case event.TopicEventKline:
+		return orDecodeErr(event.NewKlineFromBytes(buf))
+	case event.TopicEventRespHistoricalKline:
+		return orDecodeErr(event.NewRespHistoricalKlineFromBytes(buf))
 	case event.TopicEventTimer:
 		return orDecodeErr(event.NewTimeEventFromBytes(buf))
 	case event.TopicEventOrderNew:
@@ -238,6 +242,8 @@ func decodeCommandPayload(cmdType command.CommandType, buf []byte) any {
 		return orDecodeErr(command.NewQryBalanceSnapshotFromBytes(buf))
 	case command.CommandTypeReqDepthSnapshot:
 		return orDecodeErr(command.NewReqDepthSnapshotFromBytes(buf))
+	case command.CommandTypeReqHistoricalKline:
+		return orDecodeErr(command.NewReqHistoricalKlineFromBytes(buf))
 	default:
 		return map[string]any{"raw_len": len(buf)}
 	}

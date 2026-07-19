@@ -17,13 +17,17 @@ type DataRouterEntry struct {
 	Endpoint string       `yaml:"endpoint,omitempty"` // Regional endpoint: bybit, bybit_tr, bybit_eu
 	Depth    *DepthConfig `yaml:"depth,omitempty"`    // Depth subscription options
 	Trade    *TradeConfig `yaml:"trade,omitempty"`    // Trade subscription options
+	Kline    *KlineConfig `yaml:"kline,omitempty"`    // Kline subscription options
 }
 
 // DepthConfig configures depth stream subscription.
 type DepthConfig struct {
-	Type     string `yaml:"type,omitempty"`      // delta, snapshot, depth5, depth10, depth20 (binance)
+	// Type selects the depth stream kind for Binance:
+	//   delta (default) → diff depth (@depth@100ms)
+	//   depth5|depth10|depth20 → partial book WS (@depthN@100ms → DepthSnapshot)
+	Type     string `yaml:"type,omitempty"`
 	PushRate string `yaml:"push_rate,omitempty"` // 100ms, 1000ms (binance)
-	Levels   int    `yaml:"levels,omitempty"`    // 1, 50, 200, 500 (bybit)
+	Levels   int    `yaml:"levels,omitempty"`    // 1, 50, 200, 1000 (bybit)
 }
 
 // TradeConfig configures trade stream subscription.
@@ -31,17 +35,27 @@ type TradeConfig struct {
 	Type string `yaml:"type,omitempty"` // trade, aggTrade
 }
 
+// KlineConfig configures kline / candlestick stream subscription.
+type KlineConfig struct {
+	Interval string `yaml:"interval,omitempty"` // 1m, 5m, 1h, 1d, ... (Binance form; Bybit mapped)
+}
+
 // DepthOptions contains generic depth subscription options.
 // These are translated to primitive parameters by the router.
 type DepthOptions struct {
-	Type     string // delta, snapshot, depth5, depth10, depth20 (binance)
+	Type     string // delta, depth5, depth10, depth20 (binance)
 	PushRate string // 100ms, 1000ms (binance)
-	Levels   int    // 1, 50, 200, 500 (bybit)
+	Levels   int    // 1, 50, 200, 1000 (bybit)
 }
 
 // TradeOptions contains generic trade subscription options.
 type TradeOptions struct {
 	Type string // trade, aggTrade
+}
+
+// KlineOptions contains generic kline subscription options.
+type KlineOptions struct {
+	Interval string // 1m, 5m, 1h, 1d, ...
 }
 
 // DataClient is the interface for exchange-specific market data stream clients.
@@ -52,7 +66,10 @@ type DataClient interface {
 	Disconnect()
 	SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int)
 	SubscribeTrade(symbolID int, useAggTrade bool)
+	SubscribeKline(symbolID int, interval string)
 	ReqDepthSnapshot(symbolID int, limit int) error
+	// ReqHistoricalKline fetches historical candles. Times are nanoseconds; 0 omits the bound.
+	ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error
 }
 
 // DataClientFactory creates a DataClient for a specific exchange+product.
@@ -125,6 +142,16 @@ func (r *DataRouter) SubscribeDepthUpdate(symbolID int, opts *DepthOptions) erro
 		if opts.Levels > 0 {
 			depthLevel = opts.Levels
 		}
+		// Binance partial-book types override depthLevel; Bybit ignores these
+		// values (only 1/50/200/1000 are valid Bybit depths).
+		switch opts.Type {
+		case "depth5":
+			depthLevel = 5
+		case "depth10":
+			depthLevel = 10
+		case "depth20":
+			depthLevel = 20
+		}
 		switch opts.PushRate {
 		case "1000ms", "1s":
 			pushRateMs = 1000
@@ -155,6 +182,25 @@ func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
 	return nil
 }
 
+// SubscribeKline subscribes to kline updates for a symbol with options.
+func (r *DataRouter) SubscribeKline(symbolID int, opts *KlineOptions) error {
+	symbol, err := r.cat.GetSymbol(symbolID)
+	if err != nil {
+		return err
+	}
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
+	if err != nil {
+		return err
+	}
+
+	interval := "1m"
+	if opts != nil && opts.Interval != "" {
+		interval = opts.Interval
+	}
+	client.SubscribeKline(symbolID, interval)
+	return nil
+}
+
 func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 	symbol, err := r.cat.GetSymbol(symbolID)
 	if err != nil {
@@ -165,6 +211,20 @@ func (r *DataRouter) ReqDepthSnapshot(symbolID int) error {
 		return err
 	}
 	return client.ReqDepthSnapshot(symbolID, 1000)
+}
+
+// ReqHistoricalKline requests historical klines for a symbol.
+// interval is a Binance-style string (e.g. "1m"); start/end are nanoseconds (0 = omit).
+func (r *DataRouter) ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error {
+	symbol, err := r.cat.GetSymbol(symbolID)
+	if err != nil {
+		return err
+	}
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
+	if err != nil {
+		return err
+	}
+	return client.ReqHistoricalKline(symbolID, interval, startTimeNs, endTimeNs, limit)
 }
 
 func (r *DataRouter) Connect(ctx context.Context) error {

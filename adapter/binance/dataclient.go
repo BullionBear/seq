@@ -40,8 +40,10 @@ var (
 	bytesEventDepthUpdate = []byte("depthUpdate")
 	bytesEventTrade       = []byte("trade")
 	bytesEventAggTrade    = []byte("aggTrade")
+	bytesEventKline       = []byte("kline")
 	bytesStreamDepth      = []byte("depth")
 	bytesStreamTrade      = []byte("trade")
+	bytesStreamKline      = []byte("kline")
 )
 
 // symbolPrecision caches per-symbol tick multipliers so the per-message path
@@ -75,6 +77,7 @@ type BinanceSpotDataClient struct {
 	// Subscription management
 	depthSubs map[int]*DepthSubscriptionOptions // symbolID -> options
 	tradeSubs map[int]*TradeSubscriptionOptions // symbolID -> options
+	klineSubs map[int]common.Interval           // symbolID -> interval
 	subsLock  sync.RWMutex
 
 	// Stream to symbolID mapping for fast lookup during message processing
@@ -115,6 +118,7 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *
 		httpClient:     &httpClient,
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
 		tradeSubs:      make(map[int]*TradeSubscriptionOptions, 64),
+		klineSubs:      make(map[int]common.Interval, 64),
 		streamToSymbol: make(map[string]int, 128),
 		symbolToID:     make(map[string]int, 128),
 		precisions:     make(map[int]symbolPrecision, 128),
@@ -125,12 +129,13 @@ func NewBinanceSpotDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus) *
 func (c *BinanceSpotDataClient) HasSub() bool {
 	c.subsLock.RLock()
 	defer c.subsLock.RUnlock()
-	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0
+	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0 || len(c.klineSubs) > 0
 }
 
-// SubscribeDepthUpdate subscribes to depth update stream for a symbol.
-// depthLevel is ignored (Binance uses pushRateMs). pushRateMs selects the push rate:
-// >=1000 uses 1s, otherwise 100ms.
+// SubscribeDepthUpdate subscribes to a depth stream for a symbol.
+// depthLevel 5/10/20 selects Binance partial-book streams (@depthN@… → DepthSnapshot);
+// any other value selects diff depth (@depth@… → DepthUpdate).
+// pushRateMs selects the push rate: >=1000 uses 1s, otherwise 100ms.
 func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
@@ -139,11 +144,16 @@ func (c *BinanceSpotDataClient) SubscribeDepthUpdate(symbolID int, depthLevel in
 	if pushRateMs >= 1000 {
 		pushRate = PushRate1s
 	}
-	opts := &DepthSubscriptionOptions{PushRate: pushRate}
+	levels := 0
+	switch depthLevel {
+	case 5, 10, 20:
+		levels = depthLevel
+	}
+	opts := &DepthSubscriptionOptions{PushRate: pushRate, Levels: levels}
 	c.depthSubs[symbolID] = opts
 
 	if c.connected.Load() {
-		c.subscribeToDepthStream(symbolID, opts.PushRate)
+		c.subscribeToDepthStream(symbolID, opts)
 	}
 }
 
@@ -165,10 +175,33 @@ func (c *BinanceSpotDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
 	}
 }
 
-// ReqDepth requests a depth snapshot via HTTP REST API
-// This delegates to the internal HTTP client
+// SubscribeKline subscribes to a kline stream for a symbol.
+// interval is a Binance-style string (e.g. "1m", "1h", "1d").
+func (c *BinanceSpotDataClient) SubscribeKline(symbolID int, interval string) {
+	iv, err := common.ParseInterval(interval)
+	if err != nil || iv == common.IntervalUnknown {
+		log().Error().Str("interval", interval).Msg("Invalid kline interval for Binance")
+		return
+	}
+
+	c.subsLock.Lock()
+	defer c.subsLock.Unlock()
+
+	c.klineSubs[symbolID] = iv
+
+	if c.connected.Load() {
+		c.subscribeToKlineStream(symbolID, iv)
+	}
+}
+
+// ReqDepthSnapshot requests a depth snapshot via HTTP REST API.
 func (c *BinanceSpotDataClient) ReqDepthSnapshot(symbolID int, limit int) error {
 	return c.httpClient.ReqDepthSnapshot(symbolID, limit)
+}
+
+// ReqHistoricalKline requests historical klines via HTTP REST API.
+func (c *BinanceSpotDataClient) ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error {
+	return c.httpClient.ReqHistoricalKline(symbolID, interval, startTimeNs, endTimeNs, limit)
 }
 
 // Connect establishes the WebSocket connection and starts processing
@@ -247,7 +280,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 	c.subsLock.RLock()
 	defer c.subsLock.RUnlock()
 
-	streams := make([]string, 0, len(c.depthSubs)+len(c.tradeSubs))
+	streams := make([]string, 0, len(c.depthSubs)+len(c.tradeSubs)+len(c.klineSubs))
 
 	for symbolID, opts := range c.depthSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
@@ -255,7 +288,7 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
 			continue
 		}
-		streamName := strings.ToLower(symbol.Name) + "@" + opts.PushRate.StreamSuffix()
+		streamName := strings.ToLower(symbol.Name) + "@" + opts.PushRate.StreamSuffix(opts.Levels)
 		streams = append(streams, streamName)
 		c.registerStream(streamName, symbol)
 	}
@@ -271,6 +304,17 @@ func (c *BinanceSpotDataClient) buildStreamList() []string {
 			stream = streamAggTrade
 		}
 		streamName := strings.ToLower(symbol.Name) + "@" + stream
+		streams = append(streams, streamName)
+		c.registerStream(streamName, symbol)
+	}
+
+	for symbolID, iv := range c.klineSubs {
+		symbol, err := c.catalog.GetSymbol(symbolID)
+		if err != nil {
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for kline subscription")
+			continue
+		}
+		streamName := strings.ToLower(symbol.Name) + "@kline_" + iv.BinanceStream()
 		streams = append(streams, streamName)
 		c.registerStream(streamName, symbol)
 	}
@@ -313,15 +357,26 @@ func (c *BinanceSpotDataClient) subscribeToStream(symbolID int, streamType strin
 	c.sendSubscription(streamName)
 }
 
-// subscribeToDepthStream sends a subscription message for depth stream with specified push rate
-func (c *BinanceSpotDataClient) subscribeToDepthStream(symbolID int, pushRate PushRate) {
+// subscribeToKlineStream sends a subscription message for a kline stream.
+func (c *BinanceSpotDataClient) subscribeToKlineStream(symbolID int, iv common.Interval) {
+	c.subscribeToStream(symbolID, "kline_"+iv.BinanceStream())
+}
+
+// subscribeToDepthStream sends a subscription message for a depth stream.
+func (c *BinanceSpotDataClient) subscribeToDepthStream(symbolID int, opts *DepthSubscriptionOptions) {
 	symbol, err := c.catalog.GetSymbol(symbolID)
 	if err != nil {
 		log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for depth subscription")
 		return
 	}
 
-	streamName := strings.ToLower(symbol.Name) + "@" + pushRate.StreamSuffix()
+	levels := 0
+	pushRate := PushRate100ms
+	if opts != nil {
+		levels = opts.Levels
+		pushRate = opts.PushRate
+	}
+	streamName := strings.ToLower(symbol.Name) + "@" + pushRate.StreamSuffix(levels)
 	c.registerStream(streamName, symbol)
 	c.sendSubscription(streamName)
 }
@@ -440,6 +495,8 @@ func (c *BinanceSpotDataClient) processMessage(data []byte) {
 		c.processDepthUpdate(symbolID, data)
 	case bytes.Equal(eventType, bytesEventTrade), bytes.Equal(eventType, bytesEventAggTrade):
 		c.processTrade(symbolID, data)
+	case bytes.Equal(eventType, bytesEventKline):
+		c.processKline(symbolID, data)
 	}
 }
 
@@ -454,11 +511,28 @@ func (c *BinanceSpotDataClient) processStreamMessage(stream, data []byte) {
 	}
 
 	// Determine message type from stream name
-	if bytes.Contains(stream, bytesStreamDepth) {
-		c.processDepthUpdate(symbolID, data)
+	if bytes.Contains(stream, bytesStreamKline) {
+		c.processKline(symbolID, data)
+	} else if bytes.Contains(stream, bytesStreamDepth) {
+		if isPartialBookStream(stream) {
+			c.processDepthSnapshot(symbolID, data)
+		} else {
+			c.processDepthUpdate(symbolID, data)
+		}
 	} else if bytes.Contains(stream, bytesStreamTrade) {
 		c.processTrade(symbolID, data)
 	}
+}
+
+// isPartialBookStream reports whether stream is a Binance partial-book name
+// (e.g. "btcusdt@depth5@100ms"), as opposed to diff depth ("btcusdt@depth@100ms").
+func isPartialBookStream(stream []byte) bool {
+	idx := bytes.Index(stream, []byte("@depth"))
+	if idx < 0 {
+		return false
+	}
+	rest := stream[idx+len("@depth"):]
+	return len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9'
 }
 
 // getPrecision returns the cached tick multipliers for a symbol. On a miss
@@ -484,6 +558,48 @@ func (c *BinanceSpotDataClient) getPrecision(symbolID int) (symbolPrecision, boo
 	c.precisions[symbolID] = prec
 	c.streamMapLock.Unlock()
 	return prec, true
+}
+
+// processDepthSnapshot parses and publishes a partial-book depth snapshot.
+// Binance partial book format (no "e" field):
+//
+//	{
+//	  "lastUpdateId": 160,
+//	  "bids": [["price","qty"],...],
+//	  "asks": [["price","qty"],...]
+//	}
+func (c *BinanceSpotDataClient) processDepthSnapshot(symbolID int, data []byte) {
+	prec, ok := c.getPrecision(symbolID)
+	if !ok {
+		return
+	}
+
+	lastUpdateID, err := jsonparser.GetInt(data, "lastUpdateId")
+	if err != nil {
+		return
+	}
+
+	c.scratchBids = appendPriceLevels(c.scratchBids[:0], data, "bids", prec)
+	c.scratchAsks = appendPriceLevels(c.scratchAsks[:0], data, "asks", prec)
+
+	snapshot := event.DepthSnapshot{
+		SymbolID:  symbolID,
+		DepthID:   int(lastUpdateID),
+		Timestamp: uint64(time.Now().UnixNano()),
+		Asks:      c.scratchAsks,
+		Bids:      c.scratchBids,
+	}
+
+	size := uint64(snapshot.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventDepthSnapshot, size)
+	if !ok {
+		return // dropped under overflow; next partial push resyncs the top-N book
+	}
+	if err := snapshot.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
 }
 
 // processDepthUpdate parses and publishes a depth update event
@@ -533,6 +649,72 @@ func (c *BinanceSpotDataClient) processDepthUpdate(symbolID int, data []byte) {
 		return // dropped under overflow; orderbook re-syncs via DepthID gap
 	}
 	if err := depthUpdate.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return
+	}
+	c.msgBus.Publish(ref)
+}
+
+// processKline parses and publishes a kline event.
+// Binance kline format:
+//
+//	{
+//	  "e": "kline",
+//	  "E": 123456789,
+//	  "s": "BNBBTC",
+//	  "k": {
+//	    "t": 123400000, "T": 123499999, "i": "1m",
+//	    "o": "0.0010", "c": "0.0020", "h": "0.0025", "l": "0.0015",
+//	    "v": "1000", "q": "1.0000", "n": 100, "x": false
+//	  }
+//	}
+func (c *BinanceSpotDataClient) processKline(symbolID int, data []byte) {
+	kobj, _, _, err := jsonparser.Get(data, "k")
+	if err != nil {
+		return
+	}
+
+	intervalBytes, _, _, _ := jsonparser.Get(kobj, "i")
+	iv, err := common.ParseInterval(string(intervalBytes))
+	if err != nil {
+		return
+	}
+
+	startMs, _ := jsonparser.GetInt(kobj, "t")
+	endMs, _ := jsonparser.GetInt(kobj, "T")
+	eventTime, _ := jsonparser.GetInt(data, "E")
+	tradeCount, _ := jsonparser.GetInt(kobj, "n")
+	closed, _ := jsonparser.GetBoolean(kobj, "x")
+
+	openBytes, _, _, _ := jsonparser.Get(kobj, "o")
+	highBytes, _, _, _ := jsonparser.Get(kobj, "h")
+	lowBytes, _, _, _ := jsonparser.Get(kobj, "l")
+	closeBytes, _, _, _ := jsonparser.Get(kobj, "c")
+	volBytes, _, _, _ := jsonparser.Get(kobj, "v")
+	quoteBytes, _, _, _ := jsonparser.Get(kobj, "q")
+
+	kline := event.Kline{
+		SymbolID:    symbolID,
+		Interval:    iv,
+		StartTime:   uint64(startMs) * 1_000_000,
+		EndTime:     uint64(endMs) * 1_000_000,
+		Timestamp:   uint64(eventTime) * 1_000_000,
+		Open:        parseFloat64(openBytes),
+		High:        parseFloat64(highBytes),
+		Low:         parseFloat64(lowBytes),
+		Close:       parseFloat64(closeBytes),
+		Volume:      parseFloat64(volBytes),
+		QuoteVolume: parseFloat64(quoteBytes),
+		TradeCount:  int(tradeCount),
+		Closed:      closed,
+	}
+
+	size := uint64(kline.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventKline, size)
+	if !ok {
+		return // dropped under overflow
+	}
+	if err := kline.Encode(buf); err != nil {
 		c.msgBus.Cancel(ref)
 		return
 	}

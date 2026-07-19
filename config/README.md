@@ -50,6 +50,10 @@ export BYBIT_HEPHE_API_KEY='...' BYBIT_HEPHE_API_SECRET='...'
 cp config/xarb.yml config/xarb.local.yml
 # Edit the api_keys key/secret values in the .local.yml copy
 ./bin/seq -c config/xarb.local.yml
+
+# MACD strategy sample:
+cp config/macd.yml config/macd.local.yml
+./bin/seq -c config/macd.local.yml
 ```
 
 `config/*.local.yml` is gitignored. Keep private copies out of git.

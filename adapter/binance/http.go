@@ -14,6 +14,7 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
+	"github.com/buger/jsonparser"
 
 	"github.com/valyala/fasthttp"
 )
@@ -25,6 +26,9 @@ func unsafeString(b []byte) string {
 // errSnapshotDropped is returned when a depth snapshot could not be published
 // because the event bus dropped it under overflow; the caller may retry.
 var errSnapshotDropped = errors.New("binance: depth snapshot dropped under event bus overflow")
+
+// errKlineDropped is returned when a historical kline response could not be published.
+var errKlineDropped = errors.New("binance: historical kline dropped under event bus overflow")
 
 type BinanceHTTPClient struct {
 	catalog *catalog.Catalog
@@ -312,6 +316,151 @@ func (c *BinanceHTTPClient) parsePriceLevelsInto(data []byte, key string, levels
 	}
 
 	return nil
+}
+
+// ReqHistoricalKline fetches historical klines via GET /api/v3/klines and
+// publishes TopicEventRespHistoricalKline. Times are nanoseconds; 0 omits the bound.
+func (c *BinanceHTTPClient) ReqHistoricalKline(symbolID int, interval string, startTimeNs, endTimeNs uint64, limit int) error {
+	symbol, err := c.catalog.GetSymbol(symbolID)
+	if err != nil {
+		return err
+	}
+	iv, err := common.ParseInterval(interval)
+	if err != nil {
+		return err
+	}
+
+	c.buffer.Reset()
+	c.buffer.Grow(len(c.baseURL) + len(EndpointKlines) + len(symbol.Name) + 96)
+	c.buffer.WriteString(c.baseURL)
+	c.buffer.WriteString(EndpointKlines)
+	c.buffer.WriteByte('?')
+	c.buffer.WriteString("symbol=")
+	c.buffer.WriteString(symbol.Name)
+	c.buffer.WriteString("&interval=")
+	c.buffer.WriteString(iv.BinanceStream())
+	if startTimeNs > 0 {
+		c.buffer.WriteString("&startTime=")
+		c.buffer.WriteString(strconv.FormatUint(startTimeNs/1_000_000, 10))
+	}
+	if endTimeNs > 0 {
+		c.buffer.WriteString("&endTime=")
+		c.buffer.WriteString(strconv.FormatUint(endTimeNs/1_000_000, 10))
+	}
+	if limit > 0 {
+		c.buffer.WriteString("&limit=")
+		c.buffer.WriteString(strconv.Itoa(limit))
+	}
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURIBytes(c.buffer.Bytes())
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.Header.Set("Accept", "application/json")
+
+	if err = c.client.Do(req, resp); err != nil {
+		return err
+	}
+	if statusCode := resp.StatusCode(); statusCode != fasthttp.StatusOK {
+		return &HTTPError{StatusCode: statusCode, Body: string(resp.Body())}
+	}
+
+	bars, err := parseBinanceKlines(resp.Body())
+	if err != nil {
+		return err
+	}
+
+	out := event.RespHistoricalKline{
+		SymbolID: symbolID,
+		Interval: iv,
+		Bars:     bars,
+	}
+	size := uint64(out.GetBufferLength())
+	ref, buf, ok := c.msgBus.Allocate(event.TopicEventRespHistoricalKline, size)
+	if !ok {
+		return errKlineDropped
+	}
+	if err := out.Encode(buf); err != nil {
+		c.msgBus.Cancel(ref)
+		return err
+	}
+	c.msgBus.Publish(ref)
+	return nil
+}
+
+// parseBinanceKlines parses a Binance /api/v3/klines JSON array into bars
+// (oldest → newest). Each element is:
+// [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, ...].
+func parseBinanceKlines(data []byte) ([]event.KlineBar, error) {
+	bars := make([]event.KlineBar, 0, 64)
+	var parseErr error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, _ error) {
+		if parseErr != nil || dataType != jsonparser.Array {
+			return
+		}
+		bar, err := parseBinanceKlineRow(value)
+		if err != nil {
+			parseErr = err
+			return
+		}
+		bars = append(bars, bar)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	return bars, nil
+}
+
+func parseBinanceKlineRow(row []byte) (event.KlineBar, error) {
+	var bar event.KlineBar
+	idx := 0
+	_, err := jsonparser.ArrayEach(row, func(value []byte, dataType jsonparser.ValueType, _ int, _ error) {
+		switch idx {
+		case 0: // open time ms
+			if dataType == jsonparser.Number {
+				if ms, e := jsonparser.ParseInt(value); e == nil {
+					bar.StartTime = uint64(ms) * 1_000_000
+					bar.Timestamp = bar.StartTime
+				}
+			}
+		case 1:
+			bar.Open = parseFloat64(value)
+		case 2:
+			bar.High = parseFloat64(value)
+		case 3:
+			bar.Low = parseFloat64(value)
+		case 4:
+			bar.Close = parseFloat64(value)
+		case 5:
+			bar.Volume = parseFloat64(value)
+		case 6: // close time ms
+			if dataType == jsonparser.Number {
+				if ms, e := jsonparser.ParseInt(value); e == nil {
+					bar.EndTime = uint64(ms) * 1_000_000
+				}
+			}
+		case 7:
+			bar.QuoteVolume = parseFloat64(value)
+		case 8:
+			if dataType == jsonparser.Number {
+				if n, e := jsonparser.ParseInt(value); e == nil {
+					bar.TradeCount = int(n)
+				}
+			}
+		}
+		idx++
+	})
+	if err != nil {
+		return event.KlineBar{}, err
+	}
+	bar.Closed = true // REST historical bars are closed
+	return bar, nil
 }
 
 // unmarshalRespDepthSnapshot parses JSON into RespDepthSnapshot (allocates slices - use for testing)
