@@ -24,6 +24,7 @@ import (
 	_ "github.com/BullionBear/seq/risk/actor/ratelimiter"
 	_ "github.com/BullionBear/seq/risk/actor/tpnl"
 	_ "github.com/BullionBear/seq/strategy/actor/obtest"
+	_ "github.com/BullionBear/seq/strategy/actor/sma"
 	_ "github.com/BullionBear/seq/strategy/actor/xarb"
 )
 
@@ -112,7 +113,7 @@ func main() {
 	// Create the Node
 	n := node.NewNode(catalogService)
 
-	// Set up binary message logger if configured
+	// Set up plaintext JSONL message logger if configured
 	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.Dir != "" {
 		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.Dir)
 		if err != nil {

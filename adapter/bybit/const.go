@@ -6,6 +6,7 @@ const (
 	// Bybit V5 API unifies all products into single endpoints
 	// Use "category" parameter to specify: spot, linear, inverse, option
 	EndpointOrderbook     = "/v5/market/orderbook"
+	EndpointKline         = "/v5/market/kline"
 	EndpointWalletBalance = "/v5/account/wallet-balance"
 
 	// HTTP API settings

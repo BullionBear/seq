@@ -42,9 +42,9 @@ func assertPOD(t *testing.T, typ reflect.Type, path string) {
 // TestWireTypeLayoutGolden asserts the size and every field offset of every
 // wire type against the golden constants in registry_test.go. The memcpy wire
 // format is exactly the compiler's struct layout, so any change here (field
-// added, removed, reordered, or retyped) invalidates historical msglogs.
-// A failure means: either revert the layout change, or bump the msglog schema
-// version (core/msgbus) and regenerate the golden constants deliberately.
+// added, removed, reordered, or retyped) is a breaking in-memory wire change.
+// A failure means: either revert the layout change, or regenerate the golden
+// constants deliberately.
 func TestWireTypeLayoutGolden(t *testing.T) {
 	for _, wt := range wireTypes {
 		t.Run(wt.name, func(t *testing.T) {

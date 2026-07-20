@@ -26,6 +26,7 @@ type DataSubscription struct {
 	Endpoint string                // regional endpoint override
 	Depth    *adapter.DepthOptions // nil if no depth subscription
 	Trade    *adapter.TradeOptions // nil if no trade subscription
+	Kline    *adapter.KlineOptions // nil if no kline subscription
 }
 
 // Engine manages market data processing including orderbook management.
@@ -58,6 +59,7 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 func (e *Engine) handledCommandTypes() []command.CommandType {
 	return []command.CommandType{
 		command.CommandTypeReqDepthSnapshot,
+		command.CommandTypeReqHistoricalKline,
 	}
 }
 
@@ -77,6 +79,11 @@ func (e *Engine) Init(config Config, subscriptions []adapter.DataRouterEntry) {
 		if sub.Trade != nil {
 			if err := e.router.SubscribeTrade(sub.SymbolID, sub.Trade); err != nil {
 				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare trade subscription")
+			}
+		}
+		if sub.Kline != nil {
+			if err := e.router.SubscribeKline(sub.SymbolID, sub.Kline); err != nil {
+				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare kline subscription")
 			}
 		}
 	}
@@ -136,11 +143,28 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 			return
 		}
 		e.execReqDepthSnapshot(req)
+	case command.CommandTypeReqHistoricalKline:
+		buf := bus.ReadCmdBuffer(cmd.Ref.Index, cmd.Ref.Length)
+		req, err := command.NewReqHistoricalKlineFromBytes(buf)
+		if err != nil {
+			log().Error().Err(err).Msg("DataEngine: failed to decode command")
+			return
+		}
+		e.execReqHistoricalKline(req)
 	}
 }
 
 func (e *Engine) execReqDepthSnapshot(req command.ReqDepthSnapshot) {
 	e.router.ReqDepthSnapshot(req.SymbolID)
+}
+
+func (e *Engine) execReqHistoricalKline(req command.ReqHistoricalKline) {
+	if err := e.router.ReqHistoricalKline(req.SymbolID, req.Interval.String(), req.StartTime, req.EndTime, req.Limit); err != nil {
+		log().Error().Err(err).
+			Int("symbolID", req.SymbolID).
+			Str("interval", req.Interval.String()).
+			Msg("DataEngine: ReqHistoricalKline failed")
+	}
 }
 
 // ============================================================================
@@ -176,12 +200,19 @@ func (e *Engine) parseSubscriptions(subscriptions []adapter.DataRouterEntry) {
 			}
 		}
 
+		if cfg.Kline != nil {
+			sub.Kline = &adapter.KlineOptions{
+				Interval: cfg.Kline.Interval,
+			}
+		}
+
 		e.dataSubs = append(e.dataSubs, sub)
 		log().Debug().
 			Int("symbolID", symbol.ID).
 			Str("ticker", cfg.Symbol).
 			Bool("hasDepth", sub.Depth != nil).
 			Bool("hasTrade", sub.Trade != nil).
+			Bool("hasKline", sub.Kline != nil).
 			Msg("DataEngine: Configured subscription")
 	}
 }

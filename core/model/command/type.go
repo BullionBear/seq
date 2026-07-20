@@ -17,6 +17,7 @@ const (
 
 	// Data Commands
 	CommandTypeReqDepthSnapshot
+	CommandTypeReqHistoricalKline
 )
 
 func (t CommandType) String() string {
@@ -35,6 +36,8 @@ func (t CommandType) String() string {
 		return "QryBalanceSnapshot"
 	case CommandTypeReqDepthSnapshot:
 		return "ReqDepthSnapshot"
+	case CommandTypeReqHistoricalKline:
+		return "ReqHistoricalKline"
 	default:
 		return fmt.Sprintf("Undefined(%d)", int(t))
 	}

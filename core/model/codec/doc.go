@@ -11,9 +11,8 @@
 //  1. Contain no pointer, slice, map, string, chan, func, or interface
 //     field at any nesting depth (enforced by TestWireTypesArePOD).
 //  2. Keep its size and every field offset equal to the golden constants in
-//     guard_test.go. Any layout change fails CI until the constants — and
-//     the msglog schema version in core/msgbus — are bumped deliberately
-//     (enforced by TestWireTypeLayoutGolden).
+//     guard_test.go. Any layout change fails CI until the constants are
+//     bumped deliberately (enforced by TestWireTypeLayoutGolden).
 //
 // # Style rule for wire structs
 //
@@ -21,6 +20,5 @@
 // fields, then 4-byte, then smaller) and spell out any padding explicitly
 // as `_ [N]byte` so the byte image is what the source says, not what the
 // compiler chose. New wire types must be added to the registry in
-// guard_test.go before they are published on the bus or written to the
-// msglog.
+// guard_test.go before they are published on the bus.
 package codec

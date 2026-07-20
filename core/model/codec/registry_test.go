@@ -15,8 +15,8 @@ type fieldGolden struct {
 // wireType is one entry in the registry of every memcpy'd wire type.
 // size and fields are the golden layout constants: they were generated once
 // from the layout in production at the time the format was frozen. If a
-// guard test fails against them, the wire format changed — bump the msglog
-// schema version (core/msgbus) and regenerate these constants deliberately.
+// guard test fails against them, the wire format changed — regenerate these
+// constants deliberately.
 type wireType struct {
 	name   string
 	zero   any
@@ -60,6 +60,26 @@ var wireTypes = []wireType{
 			{"Side", 16},
 			{"Price", 24},
 			{"Qty", 32},
+		},
+	},
+	{
+		name: "event.Kline",
+		zero: event.Kline{},
+		size: 104,
+		fields: []fieldGolden{
+			{"SymbolID", 0},
+			{"Interval", 8},
+			{"StartTime", 16},
+			{"EndTime", 24},
+			{"Timestamp", 32},
+			{"Open", 40},
+			{"High", 48},
+			{"Low", 56},
+			{"Close", 64},
+			{"Volume", 72},
+			{"QuoteVolume", 80},
+			{"TradeCount", 88},
+			{"Closed", 96},
 		},
 	},
 	{
@@ -256,6 +276,36 @@ var wireTypes = []wireType{
 		size: 8,
 		fields: []fieldGolden{
 			{"SymbolID", 0},
+		},
+	},
+	{
+		name: "command.ReqHistoricalKline",
+		zero: command.ReqHistoricalKline{},
+		size: 40,
+		fields: []fieldGolden{
+			{"SymbolID", 0},
+			{"Interval", 8},
+			{"StartTime", 16},
+			{"EndTime", 24},
+			{"Limit", 32},
+		},
+	},
+	{
+		name: "event.KlineBar",
+		zero: event.KlineBar{},
+		size: 88,
+		fields: []fieldGolden{
+			{"StartTime", 0},
+			{"EndTime", 8},
+			{"Timestamp", 16},
+			{"Open", 24},
+			{"High", 32},
+			{"Low", 40},
+			{"Close", 48},
+			{"Volume", 56},
+			{"QuoteVolume", 64},
+			{"TradeCount", 72},
+			{"Closed", 80},
 		},
 	},
 }

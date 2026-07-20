@@ -2,147 +2,41 @@ package msgbus
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/binary"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"time"
+
+	"github.com/BullionBear/seq/core/model/command"
+	"github.com/BullionBear/seq/core/model/event"
 )
 
-// Msglog binary format (little-endian throughout):
-//
-// Each .dat file starts with a 64-byte file header:
-//
-//	magic         [4]byte  "SEQD"
-//	endianness    uint16   0xFEFF (a big-endian reader sees 0xFFFE and must refuse the file)
-//	schemaVersion uint16   SchemaVersion at write time
-//	streamType    uint8    1 = event stream, 2 = command stream
-//	reserved      [7]byte  zero
-//	build         [48]byte zero-padded VCS revision of the writing binary
-//
-// followed by records, each with a 24-byte record header:
-//
-//	schemaVersion uint16  SchemaVersion at write time
-//	msgType       uint16  event.Topic or command.CommandType
-//	length        uint32  payload length in bytes
-//	seqID         uint64  EventID / CommandID
-//	createdAt     uint64  UnixNano
-//
-// SchemaVersion bump rule: any change to the file header, the record header,
-// or to the binary encoding of ANY event/command payload type (field added,
-// removed, reordered, or resized) MUST increment SchemaVersion. Readers
-// refuse files and records whose schema version they do not support.
-const (
-	// SchemaVersion is the current msglog schema version.
-	SchemaVersion uint16 = 1
-
-	// FileHeaderSize is the size of the .dat file header.
-	FileHeaderSize = 64
-
-	// RecordHeaderSize is the size of each .dat record header:
-	// schemaVersion(2) + msgType(2) + length(4) + seqID(8) + createdAt(8) = 24 bytes
-	RecordHeaderSize = 24
-
-	// EndiannessMarker is written as little-endian 0xFEFF.
-	EndiannessMarker uint16 = 0xFEFF
-
-	// StreamTypeEvent / StreamTypeCommand identify the record stream in the file header.
-	StreamTypeEvent   uint8 = 1
-	StreamTypeCommand uint8 = 2
-)
-
-// MagicBytes identify a versioned seq .dat file.
-var MagicBytes = [4]byte{'S', 'E', 'Q', 'D'}
-
-// File header validation errors.
-var (
-	ErrBadMagic          = errors.New("msglog: not a seq .dat file (bad magic; unversioned pre-P0-4 files are not supported)")
-	ErrBadEndianness     = errors.New("msglog: endianness marker mismatch (file written on a big-endian machine?)")
-	ErrUnsupportedSchema = errors.New("msglog: unsupported schema version")
-	ErrBadStreamType     = errors.New("msglog: unknown stream type")
-)
-
-// FileHeader is the decoded form of the 64-byte .dat file header.
-type FileHeader struct {
-	SchemaVersion uint16
-	StreamType    uint8
-	Build         string
+// jsonRecord is one line in an event_*.jsonl / command_*.jsonl file.
+type jsonRecord struct {
+	Topic       string `json:"topic,omitempty"`
+	EventID     uint64 `json:"event_id,omitempty"`
+	CommandType string `json:"command_type,omitempty"`
+	CommandID   uint64 `json:"command_id,omitempty"`
+	CreatedAt   uint64 `json:"created_at"`
+	Data        any    `json:"data"`
 }
 
-// EncodeFileHeader renders a file header for the given stream type.
-func EncodeFileHeader(streamType uint8) [FileHeaderSize]byte {
-	var buf [FileHeaderSize]byte
-	copy(buf[0:4], MagicBytes[:])
-	binary.LittleEndian.PutUint16(buf[4:6], EndiannessMarker)
-	binary.LittleEndian.PutUint16(buf[6:8], SchemaVersion)
-	buf[8] = streamType
-	// buf[9:16] reserved
-	copy(buf[16:64], buildString())
-	return buf
-}
-
-// DecodeFileHeader parses and validates a file header.
-func DecodeFileHeader(buf []byte) (FileHeader, error) {
-	if len(buf) < FileHeaderSize {
-		return FileHeader{}, fmt.Errorf("msglog: file header truncated (%d bytes)", len(buf))
-	}
-	if !bytes.Equal(buf[0:4], MagicBytes[:]) {
-		return FileHeader{}, ErrBadMagic
-	}
-	if binary.LittleEndian.Uint16(buf[4:6]) != EndiannessMarker {
-		return FileHeader{}, ErrBadEndianness
-	}
-	h := FileHeader{
-		SchemaVersion: binary.LittleEndian.Uint16(buf[6:8]),
-		StreamType:    buf[8],
-		Build:         string(bytes.TrimRight(buf[16:64], "\x00")),
-	}
-	if h.SchemaVersion != SchemaVersion {
-		return FileHeader{}, fmt.Errorf("%w: file has v%d, reader supports v%d",
-			ErrUnsupportedSchema, h.SchemaVersion, SchemaVersion)
-	}
-	if h.StreamType != StreamTypeEvent && h.StreamType != StreamTypeCommand {
-		return FileHeader{}, fmt.Errorf("%w: %d", ErrBadStreamType, h.StreamType)
-	}
-	return h, nil
-}
-
-// buildString returns the VCS revision of the running binary, truncated/padded
-// for the fixed-width file header field.
-func buildString() []byte {
-	rev := "unknown"
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" {
-				rev = s.Value
-				break
-			}
-		}
-	}
-	if len(rev) > 48 {
-		rev = rev[:48]
-	}
-	return []byte(rev)
-}
-
-// MsgLogger writes binary event/command records to date-stamped .dat files.
-// It is designed to be called from the single dispatch goroutine, so no
-// locking is required.
+// MsgLogger writes plaintext JSONL event/command records to date-stamped
+// .jsonl files. It is designed to be called from the single dispatch
+// goroutine, so no locking is required.
 type MsgLogger struct {
 	dir string
 
 	eventFile   *os.File
 	eventWriter *bufio.Writer
+	eventEnc    *json.Encoder
 	eventDate   string
 
 	commandFile   *os.File
 	commandWriter *bufio.Writer
+	commandEnc    *json.Encoder
 	commandDate   string
-
-	headerBuf [RecordHeaderSize]byte
 }
 
 // NewMsgLogger creates a new MsgLogger that writes to the given directory.
@@ -154,22 +48,44 @@ func NewMsgLogger(dir string) (*MsgLogger, error) {
 	return &MsgLogger{dir: dir}, nil
 }
 
-// LogEvent writes a binary record for an event to the event .dat file.
+// LogEvent writes a JSONL record for an event to the event .jsonl file.
 func (l *MsgLogger) LogEvent(ev Event, payload []byte) {
 	today := time.Now().UTC().Format("2006-01-02")
-	if l.eventWriter == nil || today != l.eventDate {
+	if l.eventEnc == nil || today != l.eventDate {
 		l.rotateEventFile(today)
 	}
-	l.writeRecord(l.eventWriter, uint16(ev.Ref.Topic), ev.EventID, ev.CreatedAt, payload)
+	if l.eventEnc == nil {
+		return
+	}
+	rec := jsonRecord{
+		Topic:     ev.Ref.Topic.String(),
+		EventID:   ev.EventID,
+		CreatedAt: ev.CreatedAt,
+		Data:      decodeEventPayload(ev.Ref.Topic, payload),
+	}
+	if err := l.eventEnc.Encode(rec); err != nil {
+		log().Error().Err(err).Msg("msglog: failed to encode event record")
+	}
 }
 
-// LogCommand writes a binary record for a command to the command .dat file.
+// LogCommand writes a JSONL record for a command to the command .jsonl file.
 func (l *MsgLogger) LogCommand(cmd Command, payload []byte) {
 	today := time.Now().UTC().Format("2006-01-02")
-	if l.commandWriter == nil || today != l.commandDate {
+	if l.commandEnc == nil || today != l.commandDate {
 		l.rotateCommandFile(today)
 	}
-	l.writeRecord(l.commandWriter, uint16(cmd.Ref.CommandType), cmd.CommandID, cmd.CreatedAt, payload)
+	if l.commandEnc == nil {
+		return
+	}
+	rec := jsonRecord{
+		CommandType: cmd.Ref.CommandType.String(),
+		CommandID:   cmd.CommandID,
+		CreatedAt:   cmd.CreatedAt,
+		Data:        decodeCommandPayload(cmd.Ref.CommandType, payload),
+	}
+	if err := l.commandEnc.Encode(rec); err != nil {
+		log().Error().Err(err).Msg("msglog: failed to encode command record")
+	}
 }
 
 // Close flushes and closes all open files.
@@ -188,22 +104,6 @@ func (l *MsgLogger) Close() {
 	}
 }
 
-// writeRecord writes a single binary record:
-// [schemaVersion(2)][msgType(2)][length(4)][seqID(8)][createdAt(8)][payload]
-func (l *MsgLogger) writeRecord(w *bufio.Writer, msgType uint16, seqID, createdAt uint64, payload []byte) {
-	if w == nil {
-		return
-	}
-	buf := l.headerBuf[:]
-	binary.LittleEndian.PutUint16(buf[0:], SchemaVersion)
-	binary.LittleEndian.PutUint16(buf[2:], msgType)
-	binary.LittleEndian.PutUint32(buf[4:], uint32(len(payload)))
-	binary.LittleEndian.PutUint64(buf[8:], seqID)
-	binary.LittleEndian.PutUint64(buf[16:], createdAt)
-	w.Write(buf)
-	w.Write(payload)
-}
-
 func (l *MsgLogger) rotateEventFile(date string) {
 	if l.eventWriter != nil {
 		l.eventWriter.Flush()
@@ -211,16 +111,18 @@ func (l *MsgLogger) rotateEventFile(date string) {
 	if l.eventFile != nil {
 		l.eventFile.Close()
 	}
-	path := filepath.Join(l.dir, fmt.Sprintf("event_%s.dat", date))
-	f, err := openLogFile(path, StreamTypeEvent)
+	path := filepath.Join(l.dir, fmt.Sprintf("event_%s.jsonl", date))
+	f, enc, w, err := openJSONL(path)
 	if err != nil {
 		log().Error().Err(err).Str("path", path).Msg("msglog: failed to open event file")
 		l.eventFile = nil
 		l.eventWriter = nil
+		l.eventEnc = nil
 		return
 	}
 	l.eventFile = f
-	l.eventWriter = bufio.NewWriter(f)
+	l.eventWriter = w
+	l.eventEnc = enc
 	l.eventDate = date
 }
 
@@ -231,64 +133,118 @@ func (l *MsgLogger) rotateCommandFile(date string) {
 	if l.commandFile != nil {
 		l.commandFile.Close()
 	}
-	path := filepath.Join(l.dir, fmt.Sprintf("command_%s.dat", date))
-	f, err := openLogFile(path, StreamTypeCommand)
+	path := filepath.Join(l.dir, fmt.Sprintf("command_%s.jsonl", date))
+	f, enc, w, err := openJSONL(path)
 	if err != nil {
 		log().Error().Err(err).Str("path", path).Msg("msglog: failed to open command file")
 		l.commandFile = nil
 		l.commandWriter = nil
+		l.commandEnc = nil
 		return
 	}
 	l.commandFile = f
-	l.commandWriter = bufio.NewWriter(f)
+	l.commandWriter = w
+	l.commandEnc = enc
 	l.commandDate = date
 }
 
-// openLogFile opens (or creates) a .dat file for appending. A new/empty file
-// gets a file header. An existing file must carry a compatible header;
-// an incompatible or unversioned file is moved aside (never appended to,
-// never overwritten) and a fresh file is started.
-func openLogFile(path string, streamType uint8) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+func openJSONL(path string) (*os.File, *json.Encoder, *bufio.Writer, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	st, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	if st.Size() == 0 {
-		hdr := EncodeFileHeader(streamType)
-		if _, err := f.Write(hdr[:]); err != nil {
-			f.Close()
-			return nil, err
-		}
-		return f, nil
-	}
+	w := bufio.NewWriter(f)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return f, enc, w, nil
+}
 
-	var hdr [FileHeaderSize]byte
-	_, readErr := f.ReadAt(hdr[:], 0)
-	var decoded FileHeader
-	var decErr error
-	if readErr != nil {
-		decErr = readErr
-	} else {
-		decoded, decErr = DecodeFileHeader(hdr[:])
-		if decErr == nil && decoded.StreamType != streamType {
-			decErr = fmt.Errorf("%w: file has stream type %d, want %d", ErrBadStreamType, decoded.StreamType, streamType)
-		}
+// orDecodeErr adapts the (T, error) decoder signature to the any-typed JSON
+// output: decode failures are reported inline in the record instead of
+// aborting the write.
+func orDecodeErr[T any](v T, err error) any {
+	if err != nil {
+		return map[string]any{"decode_error": err.Error()}
 	}
-	if decErr != nil {
-		// Incompatible existing file: preserve it under a suffix and start fresh.
-		f.Close()
-		backup := fmt.Sprintf("%s.incompatible-%d", path, time.Now().UnixNano())
-		log().Warn().Err(decErr).Str("path", path).Str("backup", backup).
-			Msg("msglog: existing .dat file has incompatible header; moving aside")
-		if err := os.Rename(path, backup); err != nil {
-			return nil, fmt.Errorf("msglog: move incompatible file aside: %w", err)
-		}
-		return openLogFile(path, streamType)
+	return v
+}
+
+func decodeEventPayload(topic event.Topic, buf []byte) any {
+	if len(buf) == 0 {
+		return nil
 	}
-	return f, nil
+	switch topic {
+	case event.TopicEventAbnormal:
+		return orDecodeErr(event.NewAbnormalEventFromBytes(buf))
+	case event.TopicEventReady:
+		return orDecodeErr(event.NewReadyEventFromBytes(buf))
+	case event.TopicEventStop:
+		return orDecodeErr(event.NewStopEventFromBytes(buf))
+	case event.TopicEventFinished:
+		return orDecodeErr(event.NewFinishedEventFromBytes(buf))
+	case event.TopicEventDepthSnapshot:
+		return orDecodeErr(event.NewDepthSnapshotFromBytes(buf))
+	case event.TopicEventRespDepthSnapshot:
+		return orDecodeErr(event.NewRespDepthSnapshotFromBytes(buf))
+	case event.TopicEventDepthUpdate:
+		return orDecodeErr(event.NewDepthUpdateFromBytes(buf))
+	case event.TopicEventTick:
+		return orDecodeErr(event.NewTickFromBytes(buf))
+	case event.TopicEventKline:
+		return orDecodeErr(event.NewKlineFromBytes(buf))
+	case event.TopicEventRespHistoricalKline:
+		return orDecodeErr(event.NewRespHistoricalKlineFromBytes(buf))
+	case event.TopicEventTimer:
+		return orDecodeErr(event.NewTimeEventFromBytes(buf))
+	case event.TopicEventOrderNew:
+		return orDecodeErr(event.NewOrderNewFromBytes(buf))
+	case event.TopicEventOrderUnknownStatus:
+		return orDecodeErr(event.NewOrderUnknownStatusFromBytes(buf))
+	case event.TopicEventOrderError:
+		return orDecodeErr(event.NewOrderErrorFromBytes(buf))
+	case event.TopicEventOrderRiskInvalid:
+		return orDecodeErr(event.NewOrderRiskInvalidFromBytes(buf))
+	case event.TopicEventOrderAccepted:
+		return orDecodeErr(event.NewOrderAcceptedFromBytes(buf))
+	case event.TopicEventOrderPartialFill:
+		return orDecodeErr(event.NewOrderPartiallyFilledFromBytes(buf))
+	case event.TopicEventOrderFilled:
+		return orDecodeErr(event.NewOrderFilledFromBytes(buf))
+	case event.TopicEventExecution:
+		return orDecodeErr(event.NewExecutionFromBytes(buf))
+	case event.TopicEventOrderCanceled:
+		return orDecodeErr(event.NewOrderCanceledFromBytes(buf))
+	case event.TopicEventOrderRejected:
+		return orDecodeErr(event.NewOrderRejectedFromBytes(buf))
+	case event.TopicEventRespBalanceSnapshot:
+		return orDecodeErr(event.NewRespBalanceSnapshotFromBytes(buf))
+	case event.TopicEventBalanceUpdate:
+		return orDecodeErr(event.NewBalanceUpdateFromBytes(buf))
+	default:
+		return map[string]any{"raw_len": len(buf)}
+	}
+}
+
+func decodeCommandPayload(cmdType command.CommandType, buf []byte) any {
+	if len(buf) == 0 {
+		return nil
+	}
+	switch cmdType {
+	case command.CommandTypeOrderRiskCheck:
+		return orDecodeErr(command.NewRiskCheckFromBytes(buf))
+	case command.CommandTypeOrderSubmit:
+		return orDecodeErr(command.NewSubmitOrderFromBytes(buf))
+	case command.CommandTypeOrderCancel:
+		return orDecodeErr(command.NewCancelOrderFromBytes(buf))
+	case command.CommandTypeCancelAll:
+		return orDecodeErr(command.NewCancelAllFromBytes(buf))
+	case command.CommandTypeQryBalanceSnapshot:
+		return orDecodeErr(command.NewQryBalanceSnapshotFromBytes(buf))
+	case command.CommandTypeReqDepthSnapshot:
+		return orDecodeErr(command.NewReqDepthSnapshotFromBytes(buf))
+	case command.CommandTypeReqHistoricalKline:
+		return orDecodeErr(command.NewReqHistoricalKlineFromBytes(buf))
+	default:
+		return map[string]any{"raw_len": len(buf)}
+	}
 }

@@ -1,4 +1,0 @@
-{"topic":"Tick","event_id":1,"created_at":1700000000000000001,"data":{"SymbolID":1,"Timestamp":1700000000000000000,"Side":0,"Price":50000.5,"Qty":1.25}}
-{"topic":"OrderNew","event_id":2,"created_at":1700000000000000002,"data":{"AccountID":9,"ClientOrderID":77,"OrderID":-1,"SymbolID":1,"Side":0,"OrderType":0,"TimeInForce":0,"Quantity":2,"Price":49000,"ExecutedQty":0,"CreatedAt":0,"UpdatedAt":0}}
-{"topic":"Timer","event_id":3,"created_at":1700000000000000003,"data":null}
-{"topic":"Tick","event_id":4,"created_at":1700000000000000004,"data":{"decode_error":"buffer too small"}}

@@ -196,6 +196,210 @@ func TestProcessDepthUpdate(t *testing.T) {
 	}
 }
 
+func TestStreamSuffix(t *testing.T) {
+	tests := []struct {
+		rate     PushRate
+		levels   int
+		expected string
+	}{
+		{PushRate100ms, 0, "depth@100ms"},
+		{PushRate1s, 0, "depth@1000ms"},
+		{PushRate100ms, 5, "depth5@100ms"},
+		{PushRate100ms, 10, "depth10@100ms"},
+		{PushRate1s, 20, "depth20@1000ms"},
+		{PushRate100ms, 50, "depth@100ms"}, // non-partial levels → diff
+	}
+	for _, tt := range tests {
+		got := tt.rate.StreamSuffix(tt.levels)
+		if got != tt.expected {
+			t.Errorf("StreamSuffix(%d,%d)=%q, want %q", tt.rate, tt.levels, got, tt.expected)
+		}
+	}
+}
+
+func TestIsPartialBookStream(t *testing.T) {
+	tests := []struct {
+		stream   string
+		expected bool
+	}{
+		{"btcusdt@depth@100ms", false},
+		{"btcusdt@depth@1000ms", false},
+		{"btcusdt@depth5@100ms", true},
+		{"btcusdt@depth10@100ms", true},
+		{"ethusdt@depth20@1000ms", true},
+		{"btcusdt@trade", false},
+	}
+	for _, tt := range tests {
+		got := isPartialBookStream([]byte(tt.stream))
+		if got != tt.expected {
+			t.Errorf("isPartialBookStream(%q)=%v, want %v", tt.stream, got, tt.expected)
+		}
+	}
+}
+
+func TestProcessDepthSnapshot(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT", PricePrecision: 2, SizePrecision: 1}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.streamToSymbol["btcusdt@depth20@100ms"] = 1
+	client.precisions[1] = newSymbolPrecision(2, 1)
+
+	// Combined-stream partial book message (no "e" field)
+	msg := []byte(`{
+		"stream":"btcusdt@depth20@100ms",
+		"data":{
+			"lastUpdateId": 160,
+			"bids": [
+				["50000.00", "1.5"],
+				["49999.00", "2.0"]
+			],
+			"asks": [
+				["50001.00", "0.5"],
+				["50002.00", "1.0"]
+			]
+		}
+	}`)
+
+	client.processMessage(msg)
+
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
+		receivedEvent = e
+	})
+	if !ok {
+		t.Fatal("Expected depth snapshot event to be published")
+	}
+	if receivedEvent.Ref.Topic != event.TopicEventDepthSnapshot {
+		t.Errorf("Expected TopicEventDepthSnapshot, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	snapshot, err := event.NewDepthSnapshotFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if snapshot.SymbolID != 1 {
+		t.Errorf("Expected SymbolID 1, got %d", snapshot.SymbolID)
+	}
+	if snapshot.DepthID != 160 {
+		t.Errorf("Expected DepthID 160, got %d", snapshot.DepthID)
+	}
+	if len(snapshot.Bids) != 2 {
+		t.Fatalf("Expected 2 bids, got %d", len(snapshot.Bids))
+	}
+	if snapshot.Bids[0].Price != 50000.0 || snapshot.Bids[0].Quantity != 1.5 {
+		t.Errorf("Bid[0] mismatch: got %+v", snapshot.Bids[0])
+	}
+	if len(snapshot.Asks) != 2 {
+		t.Fatalf("Expected 2 asks, got %d", len(snapshot.Asks))
+	}
+	if snapshot.Asks[0].Price != 50001.0 || snapshot.Asks[0].Quantity != 0.5 {
+		t.Errorf("Ask[0] mismatch: got %+v", snapshot.Asks[0])
+	}
+}
+
+func TestProcessKline(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.streamToSymbol["btcusdt@kline_1m"] = 1
+
+	msg := []byte(`{
+		"stream":"btcusdt@kline_1m",
+		"data":{
+			"e": "kline",
+			"E": 1672515782136,
+			"s": "BTCUSDT",
+			"k": {
+				"t": 1672515780000,
+				"T": 1672515839999,
+				"s": "BTCUSDT",
+				"i": "1m",
+				"f": 100,
+				"L": 200,
+				"o": "0.0010",
+				"c": "0.0020",
+				"h": "0.0025",
+				"l": "0.0015",
+				"v": "1000",
+				"n": 100,
+				"x": false,
+				"q": "1.0000",
+				"V": "500",
+				"Q": "0.500",
+				"B": "123456"
+			}
+		}
+	}`)
+
+	client.processMessage(msg)
+
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
+		receivedEvent = e
+	})
+	if !ok {
+		t.Fatal("Expected kline event to be published")
+	}
+	if receivedEvent.Ref.Topic != event.TopicEventKline {
+		t.Errorf("Expected TopicEventKline, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	kline, err := event.NewKlineFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if kline.SymbolID != 1 {
+		t.Errorf("Expected SymbolID 1, got %d", kline.SymbolID)
+	}
+	if kline.Interval != common.Interval1m {
+		t.Errorf("Expected Interval1m, got %v", kline.Interval)
+	}
+	if math.Abs(kline.Open-0.0010) > 1e-12 || math.Abs(kline.High-0.0025) > 1e-12 ||
+		math.Abs(kline.Low-0.0015) > 1e-12 || math.Abs(kline.Close-0.0020) > 1e-12 {
+		t.Errorf("OHLC mismatch: %+v", kline)
+	}
+	if math.Abs(kline.Volume-1000) > 1e-12 || math.Abs(kline.QuoteVolume-1.0) > 1e-12 {
+		t.Errorf("Volume mismatch: %+v", kline)
+	}
+	if kline.TradeCount != 100 {
+		t.Errorf("Expected TradeCount 100, got %d", kline.TradeCount)
+	}
+	if kline.Closed {
+		t.Error("Expected Closed=false")
+	}
+	if kline.StartTime != 1672515780000*1_000_000 {
+		t.Errorf("Unexpected StartTime %d", kline.StartTime)
+	}
+}
+
+func TestSubscribeKlineBuildStream(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.SubscribeKline(1, "1m")
+
+	streams := client.buildStreamList()
+	if len(streams) != 1 || streams[0] != "btcusdt@kline_1m" {
+		t.Fatalf("Expected [btcusdt@kline_1m], got %v", streams)
+	}
+}
+
 func TestProcessTrade(t *testing.T) {
 	eb := msgbus.NewMsgBus()
 	cat := &catalog.Catalog{}
@@ -576,6 +780,32 @@ func TestBuildStreamList(t *testing.T) {
 	}
 	if client.streamToSymbol["ethusdt@trade"] != 2 {
 		t.Error("Stream mapping for trade not set correctly")
+	}
+}
+
+func TestBuildStreamListPartialBook(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.SubscribeDepthUpdate(1, 20, 100)
+
+	streams := client.buildStreamList()
+	if len(streams) != 1 {
+		t.Fatalf("Expected 1 stream, got %d", len(streams))
+	}
+	if streams[0] != "btcusdt@depth20@100ms" {
+		t.Errorf("Expected btcusdt@depth20@100ms, got %q", streams[0])
+	}
+	if client.streamToSymbol["btcusdt@depth20@100ms"] != 1 {
+		t.Error("Stream mapping for partial depth not set correctly")
+	}
+	if !client.depthSubs[1].IsPartialBook() {
+		t.Error("Expected partial-book subscription options")
 	}
 }
 

@@ -57,7 +57,7 @@ type MsgBus struct {
 	cmdArena      *mem.SimpleByteArena
 	cmdProcessors map[command.CommandType]CommandProcessor
 
-	// Optional binary logger for persisting commands to .dat files
+	// Optional logger for persisting commands as JSONL
 	msgLogger *MsgLogger
 
 	// Optional ticker driven by the dispatch loop (set via SetTicker)
@@ -91,7 +91,7 @@ func NewMsgBusWithCapacity(eventArenaCapacity uint64) *MsgBus {
 	}
 }
 
-// SetMsgLogger sets the binary message logger for persisting events and commands to disk.
+// SetMsgLogger sets the message logger for persisting events and commands as JSONL.
 // It also forwards the logger to the EventBus for event logging.
 func (m *MsgBus) SetMsgLogger(l *MsgLogger) {
 	m.msgLogger = l

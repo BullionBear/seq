@@ -36,6 +36,7 @@ func newTestDataClient(t testing.TB) (*BybitDataClient, *msgbus.MsgBus, *wsConne
 	sym := symbols[1]
 	client.registerTopic("orderbook.50.BTCUSDT", &sym)
 	client.registerTopic("publicTrade.BTCUSDT", &sym)
+	client.registerTopic("kline.1.BTCUSDT", &sym)
 
 	return client, eb, &wsConnection{client: client}
 }
@@ -122,6 +123,27 @@ var bybitBuyTradeMsg = []byte(`{
 	]
 }`)
 
+var bybitKlineMsg = []byte(`{
+	"topic": "kline.1.BTCUSDT",
+	"type": "snapshot",
+	"ts": 1672324988882,
+	"data": [
+		{
+			"start": 1672324800000,
+			"end": 1672324859999,
+			"interval": "1",
+			"open": "16649.5",
+			"close": "16677",
+			"high": "16677",
+			"low": "16608",
+			"volume": "2.081",
+			"turnover": "34666.4005",
+			"confirm": false,
+			"timestamp": 1672324988882
+		}
+	]
+}`)
+
 // TestProcessTradeSides pins the Side mapping to the common.Side enum:
 // "Sell" -> common.SideSell (2), "Buy" -> common.SideBuy (1). The previous
 // implementation published 1 (SideBuy) for sells and 0 (SideUnknown) for buys.
@@ -156,6 +178,60 @@ func TestProcessTradeSides(t *testing.T) {
 	tick = decodeTick()
 	if tick.Side != common.SideBuy {
 		t.Errorf("Expected SideBuy for S=Buy, got %v", tick.Side)
+	}
+}
+
+func TestProcessKline(t *testing.T) {
+	client, eb, ws := newTestDataClient(t)
+
+	client.processMessage(ws, bybitKlineMsg)
+
+	var received msgbus.Event
+	if !eb.Poll(func(e msgbus.Event) { received = e }) {
+		t.Fatal("Expected kline event to be published")
+	}
+	if received.Ref.Topic != event.TopicEventKline {
+		t.Fatalf("Expected TopicEventKline, got %v", received.Ref.Topic)
+	}
+	kline, err := event.NewKlineFromBytes(eb.ReadBuffer(received.Ref.Index, received.Ref.Length))
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if kline.SymbolID != 1 {
+		t.Errorf("Expected SymbolID 1, got %d", kline.SymbolID)
+	}
+	if kline.Interval != common.Interval1m {
+		t.Errorf("Expected Interval1m, got %v", kline.Interval)
+	}
+	if kline.Open != 16649.5 || kline.Close != 16677 || kline.High != 16677 || kline.Low != 16608 {
+		t.Errorf("OHLC mismatch: %+v", kline)
+	}
+	if math.Abs(kline.Volume-2.081) > 1e-12 || math.Abs(kline.QuoteVolume-34666.4005) > 1e-9 {
+		t.Errorf("Volume mismatch: %+v", kline)
+	}
+	if kline.Closed {
+		t.Error("Expected Closed=false")
+	}
+	if kline.StartTime != 1672324800000*1_000_000 {
+		t.Errorf("Unexpected StartTime %d", kline.StartTime)
+	}
+}
+
+func TestSubscribeKlineTopic(t *testing.T) {
+	client, _, _ := newTestDataClient(t)
+	client.SubscribeKline(1, "1m")
+
+	topics := client.buildCategoryTopics()
+	found := false
+	for _, list := range topics {
+		for _, topic := range list {
+			if topic == "kline.1.BTCUSDT" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("Expected kline.1.BTCUSDT in topics, got %v", topics)
 	}
 }
 

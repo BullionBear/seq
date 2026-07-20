@@ -33,6 +33,9 @@ const (
 	TopicEventBalanceUpdate
 	// Timer
 	TopicEventTimer
+	// Market Data (appended: keep prior iota values stable)
+	TopicEventKline
+	TopicEventRespHistoricalKline
 
 	// TopicCount is a sentinel: the number of defined topics. It must remain
 	// the last entry in this block (used to size per-topic counter arrays).
@@ -51,6 +54,7 @@ func (t Topic) IsDroppable() bool {
 		TopicEventRespDepthSnapshot,
 		TopicEventDepthUpdate,
 		TopicEventTick,
+		TopicEventKline,
 		TopicEventTimer:
 		return true
 	}
@@ -79,6 +83,10 @@ func (t Topic) String() string {
 		return "DepthUpdate"
 	case TopicEventTick:
 		return "Tick"
+	case TopicEventKline:
+		return "Kline"
+	case TopicEventRespHistoricalKline:
+		return "RespHistoricalKline"
 	case TopicEventOrderRiskInvalid:
 		return "OrderRiskInvalid"
 	case TopicEventOrderUnknownStatus:
@@ -122,6 +130,8 @@ var topicByName = map[string]Topic{
 	"RespDepthSnapshot":   TopicEventRespDepthSnapshot,
 	"DepthUpdate":         TopicEventDepthUpdate,
 	"Tick":                TopicEventTick,
+	"Kline":               TopicEventKline,
+	"RespHistoricalKline": TopicEventRespHistoricalKline,
 	"OrderUnknownStatus":  TopicEventOrderUnknownStatus,
 	"OrderError":          TopicEventOrderError,
 	"OrderRiskInvalid":    TopicEventOrderRiskInvalid,

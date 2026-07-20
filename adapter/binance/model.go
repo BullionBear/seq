@@ -19,20 +19,31 @@ const (
 	PushRate1s
 )
 
-// StreamSuffix returns the Binance stream suffix for the push rate
-func (p PushRate) StreamSuffix() string {
-	switch p {
-	case PushRate100ms:
-		return "depth@100ms"
-	case PushRate1s:
-		return "depth@1000ms"
-	default:
-		return "depth@1000ms" // default to 1s
-	}
-}
-
+// DepthSubscriptionOptions holds options for depth subscription.
+// Levels 0 means diff-depth stream; 5, 10, or 20 means partial-book stream.
 type DepthSubscriptionOptions struct {
 	PushRate PushRate
+	Levels   int // 0 = diff (@depth@…), 5|10|20 = partial (@depthN@…)
+}
+
+// IsPartialBook reports whether this subscription uses a partial-book stream.
+func (o *DepthSubscriptionOptions) IsPartialBook() bool {
+	return o != nil && (o.Levels == 5 || o.Levels == 10 || o.Levels == 20)
+}
+
+// StreamSuffix returns the Binance depth stream suffix for the given push rate
+// and book levels. Diff depth: "depth@100ms". Partial: "depth20@100ms".
+func (p PushRate) StreamSuffix(levels int) string {
+	rate := "1000ms"
+	if p == PushRate100ms {
+		rate = "100ms"
+	}
+	switch levels {
+	case 5, 10, 20:
+		return "depth" + strconv.Itoa(levels) + "@" + rate
+	default:
+		return "depth@" + rate
+	}
 }
 
 // TradeSubscriptionOptions holds options for trade subscription
