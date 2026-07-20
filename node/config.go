@@ -3,7 +3,7 @@ package node
 import (
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/portfolio"
+	"github.com/BullionBear/seq/ledger"
 	"github.com/BullionBear/seq/risk"
 	"github.com/BullionBear/seq/strategy"
 )
@@ -47,7 +47,7 @@ const (
 type EngineConfig struct {
 	Data      data.Config      `yaml:"data"`
 	Execution execution.Config `yaml:"execution"`
-	Portfolio portfolio.Config `yaml:"portfolio"`
+	Ledger    ledger.Config    `yaml:"ledger"`
 	Risk      risk.Config      `yaml:"risk"`
 	Strategy  strategy.Config  `yaml:"strategy"`
 }

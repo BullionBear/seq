@@ -1,4 +1,4 @@
-package portfolio
+package ledger
 
 import (
 	"sync"
@@ -16,7 +16,7 @@ import (
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
-// Engine manages portfolio actors and orchestrates their lifecycle.
+// Engine manages ledger actors and orchestrates their lifecycle.
 // Balance state is owned by individual BalanceActors which write to cache.
 type Engine struct {
 	engine.EngineBase
@@ -37,10 +37,10 @@ type Engine struct {
 	mu           sync.Mutex
 }
 
-// NewEngine creates a new portfolio engine.
+// NewEngine creates a new ledger engine.
 func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	return &Engine{
-		EngineBase:  engine.NewEngineBase(common.EnginePortfolio),
+		EngineBase:  engine.NewEngineBase(common.EngineLedger),
 		catalog:     cat,
 		cache:       c,
 		msgBus:      msgBus,
@@ -61,7 +61,7 @@ func (e *Engine) SetAccounts(accountIDs []int, walletTypes map[int]common.Wallet
 
 	log().Info().
 		Ints("accountIDs", accountIDs).
-		Msg("PortfolioEngine: Configured accounts")
+		Msg("LedgerEngine: Configured accounts")
 }
 
 // GetConfiguredAccounts returns the list of configured account IDs.
@@ -80,7 +80,7 @@ func (e *Engine) Init(config Config) {
 	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
 		if err != nil {
-			log().Error().Err(err).Str("type", entry.Type).Msg("PortfolioEngine: skipping unknown actor type")
+			log().Error().Err(err).Str("type", entry.Type).Msg("LedgerEngine: skipping unknown actor type")
 			continue
 		}
 
@@ -105,7 +105,7 @@ func (e *Engine) Init(config Config) {
 			balanceActorCount++
 		}
 
-		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("PortfolioEngine: actor initialized")
+		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("LedgerEngine: actor initialized")
 	}
 
 	e.mu.Lock()
@@ -113,18 +113,18 @@ func (e *Engine) Init(config Config) {
 	e.mu.Unlock()
 
 	if e.execRouter == nil {
-		log().Warn().Msg("PortfolioEngine: No execution router configured, skipping balance subscription")
+		log().Warn().Msg("LedgerEngine: No execution router configured, skipping balance subscription")
 	} else {
 		for _, acctID := range e.accountIDs {
 			if err := e.execRouter.SubscribeBalance(acctID); err != nil {
-				log().Error().Err(err).Int("accountID", acctID).Msg("PortfolioEngine: Failed to subscribe to balance updates")
+				log().Error().Err(err).Int("accountID", acctID).Msg("LedgerEngine: Failed to subscribe to balance updates")
 			} else {
-				log().Debug().Int("accountID", acctID).Msg("PortfolioEngine: Subscribed to balance updates")
+				log().Debug().Int("accountID", acctID).Msg("LedgerEngine: Subscribed to balance updates")
 			}
 		}
 	}
 
-	log().Info().Msg("PortfolioEngine initialized")
+	log().Info().Msg("LedgerEngine initialized")
 }
 
 // Start triggers actors and requests initial balance snapshots for all accounts.
@@ -138,17 +138,17 @@ func (e *Engine) Start() {
 			wt := e.walletTypes[acctID]
 			if err := e.execRouter.ReqBalanceSnapshot(acctID, wt); err != nil {
 				log().Error().Err(err).Int("accountID", acctID).Str("walletType", wt.String()).
-					Msg("PortfolioEngine: Failed to request balance snapshot")
+					Msg("LedgerEngine: Failed to request balance snapshot")
 			} else {
 				log().Debug().Int("accountID", acctID).Str("walletType", wt.String()).
-					Msg("PortfolioEngine: Requested balance snapshot")
+					Msg("LedgerEngine: Requested balance snapshot")
 			}
 		}
 	} else {
 		e.EngineBase.NotifyReady()
 	}
 
-	log().Info().Msg("PortfolioEngine started")
+	log().Info().Msg("LedgerEngine started")
 }
 
 // Stop stops the engine.
@@ -157,7 +157,7 @@ func (e *Engine) Stop() {
 		a.OnStop()
 	}
 	e.NotifyStop()
-	log().Info().Msg("PortfolioEngine stopped")
+	log().Info().Msg("LedgerEngine stopped")
 }
 
 // ============================================================================
@@ -181,7 +181,7 @@ func (e *Engine) NotifyReady() {
 	e.readyCount++
 	if !e.ready && e.readyCount >= e.pendingCount {
 		e.ready = true
-		log().Info().Msg("PortfolioEngine: All balance snapshots received, notifying ready")
+		log().Info().Msg("LedgerEngine: All balance snapshots received, notifying ready")
 		e.EngineBase.NotifyReady()
 	}
 }

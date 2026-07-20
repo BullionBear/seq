@@ -2,7 +2,7 @@
 
 In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/BullionBear/seq`).
 
-A single Go binary boots a `node.Node` that owns market data, execution, portfolio, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
+A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
 
 For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`architecture.md`](./architecture.md).
 
@@ -15,7 +15,7 @@ For the module-by-module source of truth (package responsibilities, boot order, 
 | Instrument / account metadata | `core/catalog` (local `instruments.json` + config-defined accounts) |
 | Market data | `data` engine + `adapter` data clients |
 | Order lifecycle | `execution` engine + OMS actor |
-| Balances | `portfolio` engine + balance actors |
+| Balances | `ledger` engine + balance actors |
 | Pre-trade gates | `risk` engine + rules/actors |
 | Trading logic | `strategy` engine + strategy actors |
 | Venue I/O | `adapter/binance`, `adapter/bybit` |
@@ -31,7 +31,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
                     │                                      ▲
      ┌──────────────┼──────────────┬───────────┬───────────┼────────┐
      ▼              ▼              ▼           ▼           ▼        │
-  DataEngine   ExecEngine    Portfolio    RiskEngine  StrategyEngine │
+  DataEngine   ExecEngine    Ledger    RiskEngine  StrategyEngine │
   orderbook      OMS          balance     ratelimit/     xarb/obtest │
   + DataRouter + ExecRouter   actors      tpnl+Checker      │        │
      │              │              │           ▲            │        │
@@ -154,7 +154,7 @@ node:
       actor:
         - type: oms
           config: {}
-    portfolio:
+    ledger:
       actor:
         - type: balance
           config: {}
@@ -208,7 +208,7 @@ seq/
 ├── adapter/             # DataRouter, ExecutionRouter, binance/, bybit/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
-├── portfolio/           # balance engine + balance actor
+├── ledger/           # balance engine + balance actor
 ├── risk/                # risk engine, checker, rules, ratelimiter/tpnl actors
 └── strategy/            # strategy engine + xarb/obtest (+ StrategyActorBase)
 ```

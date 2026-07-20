@@ -1,4 +1,4 @@
-package portfolio
+package ledger
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 )
 
-// Factory is a constructor function that creates a portfolio actor.
-// The handler parameter is the portfolio engine; each actor package
+// Factory is a constructor function that creates a ledger actor.
+// The handler parameter is the ledger engine; each actor package
 // defines its own interface and performs a type assertion.
 type Factory func(handler any) actor.Actor
 
@@ -17,13 +17,13 @@ var (
 	registry   = make(map[string]Factory)
 )
 
-// Register registers a portfolio actor factory under the given type name.
-// Typically called from init() in each portfolio actor package.
+// Register registers a ledger actor factory under the given type name.
+// Typically called from init() in each ledger actor package.
 func Register(typeName string, factory Factory) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, dup := registry[typeName]; dup {
-		panic(fmt.Sprintf("portfolio: Register called twice for type %q", typeName))
+		panic(fmt.Sprintf("ledger: Register called twice for type %q", typeName))
 	}
 	registry[typeName] = factory
 }
@@ -33,7 +33,7 @@ func lookupFactory(typeName string) (Factory, error) {
 	defer registryMu.RUnlock()
 	f, ok := registry[typeName]
 	if !ok {
-		return nil, fmt.Errorf("portfolio: unknown actor type %q", typeName)
+		return nil, fmt.Errorf("ledger: unknown actor type %q", typeName)
 	}
 	return f, nil
 }

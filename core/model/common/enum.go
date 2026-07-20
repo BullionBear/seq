@@ -136,7 +136,7 @@ type EngineType int
 const (
 	EngineData EngineType = iota
 	EngineExecution
-	EnginePortfolio
+	EngineLedger
 	EngineRisk
 	EngineStrategy
 )
@@ -147,8 +147,8 @@ func (e EngineType) String() string {
 		return "Data"
 	case EngineExecution:
 		return "Execution"
-	case EnginePortfolio:
-		return "Portfolio"
+	case EngineLedger:
+		return "Ledger"
 	case EngineRisk:
 		return "Risk"
 	case EngineStrategy:
