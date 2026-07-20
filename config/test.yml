@@ -76,7 +76,7 @@ node:
           config:
             
     
-    portfolio:
+    ledger:
       actor:
         # - type: balance
         #   name: balance-bybit-unified

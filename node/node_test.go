@@ -15,7 +15,7 @@ import (
 	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 
-	_ "github.com/BullionBear/seq/portfolio/actor/balance"
+	_ "github.com/BullionBear/seq/ledger/actor/balance"
 )
 
 func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
@@ -60,8 +60,8 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	n.PortfolioEngine().Start()
-	t.Log("Portfolio engine started, waiting for balance snapshot...")
+	n.LedgerEngine().Start()
+	t.Log("Ledger engine started, waiting for balance snapshot...")
 
 	bus := n.MsgBus()
 	snapshotReceived := make(chan struct{}, 1)
@@ -84,7 +84,7 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 	}()
 
 	go func() {
-		accounts := n.PortfolioEngine().GetConfiguredAccounts()
+		accounts := n.LedgerEngine().GetConfiguredAccounts()
 		if len(accounts) == 0 {
 			return
 		}
@@ -119,7 +119,7 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 		t.Fatal("Timed out waiting for balance snapshot")
 	}
 
-	for _, acctID := range n.PortfolioEngine().GetConfiguredAccounts() {
+	for _, acctID := range n.LedgerEngine().GetConfiguredAccounts() {
 		balances := n.Cache().GetAccountBalances(acctID)
 		t.Logf("Account %d: %d token balances", acctID, len(balances))
 		for _, b := range balances {
@@ -160,7 +160,7 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	n.Init(cfg.Node, cfg.ExecRouter, cfg.DataRouter, tradingmode.ModePaper)
 
 	bus := n.MsgBus()
-	acctID := n.PortfolioEngine().GetConfiguredAccounts()[0]
+	acctID := n.LedgerEngine().GetConfiguredAccounts()[0]
 
 	// Resolve the walletID for the first configured wallet so the balance actor accepts the event
 	wallet, err := cat.GetWalletByName("bybit-hephe-unified")

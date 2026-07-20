@@ -7,18 +7,18 @@ import (
 	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
-	"github.com/BullionBear/seq/portfolio"
+	"github.com/BullionBear/seq/ledger"
 	"github.com/mitchellh/mapstructure"
 )
 
-// EngineHandler defines what the balance actor needs from the portfolio engine.
+// EngineHandler defines what the balance actor needs from the ledger engine.
 type EngineHandler interface {
 	ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error)
 	NotifyReady()
 }
 
 func init() {
-	portfolio.Register("balance", func(handler any) actor.Actor {
+	ledger.Register("balance", func(handler any) actor.Actor {
 		return NewBalanceActor(handler.(EngineHandler))
 	})
 }
@@ -34,7 +34,7 @@ var balanceTopics = []event.Topic{
 
 var _ actor.Actor = (*BalanceActor)(nil)
 
-// BalanceActor is an actor owned by the portfolio Engine.
+// BalanceActor is an actor owned by the ledger Engine.
 // Each instance manages exactly one wallet, filtering incoming events by walletID.
 // It writes balance state directly to cache for other engines/strategies to read.
 type BalanceActor struct {
@@ -53,7 +53,7 @@ type BalanceActor struct {
 // NewBalanceActor creates a new BalanceActor for the given engine handler.
 func NewBalanceActor(handler EngineHandler) *BalanceActor {
 	return &BalanceActor{
-		ActorBase: actor.NewActorBase("portfolio-balance", balanceTopics),
+		ActorBase: actor.NewActorBase("ledger-balance", balanceTopics),
 		handler:   handler,
 	}
 }

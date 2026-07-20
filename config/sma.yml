@@ -27,7 +27,7 @@ node:
     execution:
       actor: []
 
-    portfolio:
+    ledger:
       actor: []
 
     risk:

@@ -17,7 +17,7 @@ Seq is an **in-process, actor-oriented crypto trading runtime** written in Go. A
 | Instrument / account metadata | `core/catalog` (local `instruments.json` + config-defined accounts) |
 | Market data | `data` engine + `adapter` data clients |
 | Order lifecycle cache | `execution` engine + OMS actor |
-| Balances | `portfolio` engine + balance actors |
+| Balances | `ledger` engine + balance actors |
 | Pre-trade gates | `risk` engine + rules/actors |
 | Trading logic | `strategy` engine + strategy actors |
 | Venue I/O | `adapter/binance`, `adapter/bybit` |
@@ -33,7 +33,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
                     │                                      ▲
      ┌──────────────┼──────────────┬───────────┬───────────┼────────┐
      ▼              ▼              ▼           ▼           ▼        │
-  DataEngine   ExecEngine    Portfolio    RiskEngine  StrategyEngine │
+  DataEngine   ExecEngine    Ledger    RiskEngine  StrategyEngine │
   orderbook      OMS          balance     ratelimit/     xarb/obtest │
   + DataRouter + ExecRouter   actors      tpnl+Checker      │        │
      │              │              │           ▲            │        │
@@ -71,7 +71,7 @@ Shutdown order is intentional for safety:
 1. Stop strategies (emit cancels).
 2. Disconnect data clients.
 3. Drain msgbus (~3s / idle rounds).
-4. Stop risk / execution / portfolio actors.
+4. Stop risk / execution / ledger actors.
 5. Disconnect execution clients.
 
 ---
@@ -126,7 +126,7 @@ In-memory read model shared across engines/strategies (no engine package imports
 - Risk metadata (e.g. rate-limit next-accept time).
 - TPNL window state.
 
-Writers: data/execution/portfolio/risk actors. Readers: strategies and risk rules.
+Writers: data/execution/ledger/risk actors. Readers: strategies and risk rules.
 
 ### 3.6 `core/catalog`
 
@@ -148,11 +148,11 @@ Local instrument/account registry: symbols load from a JSON file (`catalog.instr
 
 `Node` owns engines and routers. `Init` responsibilities:
 
-1. Attach `StateNotifier` to portfolio.
+1. Attach `StateNotifier` to ledger.
 2. From `execrouter` YAML: resolve catalog accounts/wallets, create Binance/Bybit execution clients, register on `ExecutionRouter`.
 3. Init engines with `node.engine.*` YAML + `datarouter` subscriptions for data.
 
-Start order: data → execution connect/start → portfolio → risk → strategy.
+Start order: data → execution connect/start → ledger → risk → strategy.
 
 ---
 
@@ -171,10 +171,10 @@ Start order: data → execution connect/start → portfolio → risk → strateg
 - Cancel path does **optimistic** cache update to `Cancelling` before venue call.
 - Actor: `oms` consumes order lifecycle events and keeps `cache` order state coherent (`OrderNew` → accepted / fills / cancel / reject / risk-invalid).
 
-### 5.3 Portfolio (`portfolio/`)
+### 5.3 Ledger (`ledger/`)
 
 - Subscribes balances on execution clients; requests initial snapshots on start.
-- Actor: `balance` writes snapshot/update events into cache; signals engine readiness when all balance actors have snapshots (portfolio gates system `Ready`).
+- Actor: `balance` writes snapshot/update events into cache; signals engine readiness when all balance actors have snapshots (ledger gates system `Ready`).
 
 ### 5.4 Risk (`risk/`)
 
@@ -239,7 +239,7 @@ node:
   engine:
     data: { actor: [...] }
     execution: { actor: [...] }
-    portfolio: { actor: [...] }
+    ledger: { actor: [...] }
     risk: { actor: [...], checker: [...] }
     strategy: { actor: [...] }
 ```
@@ -305,7 +305,7 @@ seq/
 ├── adapter/             # DataRouter, ExecutionRouter, binance/, bybit/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
-├── portfolio/           # balance engine + balance actor
+├── ledger/           # balance engine + balance actor
 ├── risk/                # risk engine, checker, rules, ratelimiter/tpnl actors
 └── strategy/            # strategy engine + xarb/obtest (+ StrategyActorBase)
 ```

@@ -18,7 +18,7 @@ import (
 	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/data"
 	"github.com/BullionBear/seq/execution"
-	"github.com/BullionBear/seq/portfolio"
+	"github.com/BullionBear/seq/ledger"
 	"github.com/BullionBear/seq/risk"
 	"github.com/BullionBear/seq/strategy"
 	"github.com/rs/zerolog"
@@ -34,7 +34,7 @@ type Node struct {
 	// Engines
 	dataEngine      *data.Engine
 	riskEngine      *risk.Engine
-	portfolioEngine *portfolio.Engine
+	ledgerEngine    *ledger.Engine
 	executionEngine *execution.Engine
 	strategyEngine  *strategy.Engine
 
@@ -60,7 +60,7 @@ func NewNode(cat *catalog.Catalog) *Node {
 		catalog:         cat,
 		dataEngine:      data.NewEngine(cat, bus, c),
 		riskEngine:      risk.NewEngine(cat, bus, c),
-		portfolioEngine: portfolio.NewEngine(cat, bus, c),
+		ledgerEngine:    ledger.NewEngine(cat, bus, c),
 		executionEngine: execution.NewEngine(executionRouter, bus, c),
 		strategyEngine:  strategy.NewEngine(cat, bus, c),
 		executionRouter: executionRouter,
@@ -95,18 +95,18 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 
 	notifier := msgbus.NewStateNotifier(n.msgBus)
 
-	// Configure portfolio engine with execution router and notifier
-	n.portfolioEngine.SetExecutionRouter(n.executionRouter)
-	n.portfolioEngine.SetNotifier(notifier)
+	// Configure ledger engine with execution router and notifier
+	n.ledgerEngine.SetExecutionRouter(n.executionRouter)
+	n.ledgerEngine.SetNotifier(notifier)
 
 	// Set up execution clients from top-level execrouter config
 	accountIDs, walletTypes := n.setupExecutionClients(execRouter)
-	n.portfolioEngine.SetAccounts(accountIDs, walletTypes)
+	n.ledgerEngine.SetAccounts(accountIDs, walletTypes)
 
 	// Initialize all engines with their configs
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
-	n.portfolioEngine.Init(config.Engine.Portfolio)
+	n.ledgerEngine.Init(config.Engine.Ledger)
 	n.riskEngine.Init(config.Engine.Risk)
 	n.strategyEngine.Init(config.Engine.Strategy)
 
@@ -187,8 +187,8 @@ func (n *Node) Start(ctx context.Context) {
 	}
 	n.executionEngine.Start()
 
-	n.portfolioEngine.Start()
-	log().Info().Msg("Node: PortfolioEngine started")
+	n.ledgerEngine.Start()
+	log().Info().Msg("Node: LedgerEngine started")
 
 	n.riskEngine.Start()
 	log().Info().Msg("Node: RiskEngine started")
@@ -265,7 +265,7 @@ func (n *Node) Run(ctx context.Context) {
 //  2. Data clients disconnect (stop incoming market data)
 //  3. Drain msgbus (dispatch loop processes pending cancel commands
 //     and receives exchange cancel confirmations)
-//  4. Execution/portfolio engines stop their actors
+//  4. Execution/ledger engines stop their actors
 //  5. Execution clients disconnect
 func (n *Node) stop() {
 	log().Info().Msg("Node: shutting down...")
@@ -280,7 +280,7 @@ func (n *Node) stop() {
 
 	n.riskEngine.Stop()
 	n.executionEngine.Stop()
-	n.portfolioEngine.Stop()
+	n.ledgerEngine.Stop()
 	log().Info().Msg("Node: engines stopped")
 
 	n.executionEngine.Disconnect()
@@ -340,7 +340,7 @@ func (n *Node) ExecutionEngine() *execution.Engine {
 	return n.executionEngine
 }
 
-// PortfolioEngine returns the portfolio engine.
-func (n *Node) PortfolioEngine() *portfolio.Engine {
-	return n.portfolioEngine
+// LedgerEngine returns the ledger engine.
+func (n *Node) LedgerEngine() *ledger.Engine {
+	return n.ledgerEngine
 }

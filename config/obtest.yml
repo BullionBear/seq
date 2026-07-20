@@ -30,7 +30,7 @@ node:
     execution:
       actor: []
 
-    portfolio:
+    ledger:
       actor: []
 
     strategy:
