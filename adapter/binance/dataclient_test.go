@@ -583,6 +583,174 @@ func TestProcessMessage_SingleStream(t *testing.T) {
 	}
 }
 
+func TestProcessAggTrade(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+
+	// Binance aggTrade: trade ID is "a"; p/q/T/m match @trade.
+	aggMsg := []byte(`{
+		"e": "aggTrade",
+		"E": 1672531200000,
+		"s": "BTCUSDT",
+		"a": 12345,
+		"p": "50000.50",
+		"q": "1.25",
+		"f": 100,
+		"l": 105,
+		"T": 1672531200123,
+		"m": true,
+		"M": true
+	}`)
+
+	client.processTrade(1, aggMsg)
+
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
+		receivedEvent = e
+	})
+	if !ok {
+		t.Fatal("Expected aggTrade event to be published")
+	}
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	tick, err := event.NewTickFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if tick.SymbolID != 1 {
+		t.Errorf("Expected SymbolID 1, got %d", tick.SymbolID)
+	}
+	if tick.Price != 50000.50 {
+		t.Errorf("Expected Price 50000.50, got %f", tick.Price)
+	}
+	if tick.Qty != 1.25 {
+		t.Errorf("Expected Qty 1.25, got %f", tick.Qty)
+	}
+	if tick.Side != common.SideSell {
+		t.Errorf("Expected SideSell (m=true), got %v", tick.Side)
+	}
+	if tick.Timestamp != 1672531200123*1_000_000 {
+		t.Errorf("Expected Timestamp %d, got %d", uint64(1672531200123*1_000_000), tick.Timestamp)
+	}
+}
+
+func TestProcessMessage_CombinedStreamAggTrade(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.streamToSymbol["btcusdt@aggTrade"] = 1
+
+	combinedMsg := []byte(`{
+		"stream": "btcusdt@aggTrade",
+		"data": {
+			"e": "aggTrade",
+			"E": 1672531200000,
+			"s": "BTCUSDT",
+			"a": 12345,
+			"p": "50000.00",
+			"q": "1.0",
+			"f": 100,
+			"l": 105,
+			"T": 1672531200123,
+			"m": false,
+			"M": true
+		}
+	}`)
+
+	client.processMessage(combinedMsg)
+
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
+		receivedEvent = e
+	})
+	if !ok {
+		t.Fatal("Expected event from combined aggTrade stream message")
+	}
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
+	}
+
+	buf := eb.ReadBuffer(receivedEvent.Ref.Index, receivedEvent.Ref.Length)
+	tick, err := event.NewTickFromBytes(buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if tick.Side != common.SideBuy {
+		t.Errorf("Expected SideBuy (m=false), got %v", tick.Side)
+	}
+}
+
+func TestProcessMessage_SingleStreamAggTrade(t *testing.T) {
+	eb := msgbus.NewMsgBus()
+	cat := &catalog.Catalog{}
+
+	symbols := make(map[int]catalog.Symbol)
+	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	setPrivateField(cat, "symbols", symbols)
+
+	client := NewBinanceSpotDataClient(cat, eb)
+	client.symbolToID["BTCUSDT"] = 1
+
+	singleMsg := []byte(`{
+		"e": "aggTrade",
+		"E": 1672531200000,
+		"s": "BTCUSDT",
+		"a": 12345,
+		"p": "50000.00",
+		"q": "1.0",
+		"f": 100,
+		"l": 105,
+		"T": 1672531200123,
+		"m": false,
+		"M": true
+	}`)
+
+	client.processMessage(singleMsg)
+
+	var receivedEvent msgbus.Event
+	ok := eb.Poll(func(e msgbus.Event) {
+		receivedEvent = e
+	})
+	if !ok {
+		t.Fatal("Expected event from single aggTrade stream message")
+	}
+	if receivedEvent.Ref.Topic != event.TopicEventTick {
+		t.Errorf("Expected TopicEventTick, got %v", receivedEvent.Ref.Topic)
+	}
+}
+
+func TestIsTradeStream(t *testing.T) {
+	cases := []struct {
+		stream string
+		want   bool
+	}{
+		{"btcusdt@trade", true},
+		{"btcusdt@aggTrade", true},
+		{"btcusdt@depth@100ms", false},
+		{"btcusdt@depth5@100ms", false},
+		{"btcusdt@kline_1m", false},
+	}
+	for _, tc := range cases {
+		if got := isTradeStream([]byte(tc.stream)); got != tc.want {
+			t.Errorf("isTradeStream(%q)=%v, want %v", tc.stream, got, tc.want)
+		}
+	}
+}
+
 // ============================================================================
 // Benchmark Tests for Message Processing
 // ============================================================================
@@ -720,18 +888,32 @@ func TestSubscribeTrade(t *testing.T) {
 
 	symbols := make(map[int]catalog.Symbol)
 	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
+	symbols[2] = catalog.Symbol{ID: 2, Name: "ETHUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	client.SubscribeTrade(1, false)
+	client.SubscribeTrade(2, true)
 
-	if len(client.tradeSubs) != 1 {
-		t.Errorf("Expected 1 trade subscription, got %d", len(client.tradeSubs))
+	if len(client.tradeSubs) != 2 {
+		t.Errorf("Expected 2 trade subscriptions, got %d", len(client.tradeSubs))
 	}
 
-	if _, ok := client.tradeSubs[1]; !ok {
-		t.Error("Expected subscription for symbolID 1")
+	opts, ok := client.tradeSubs[1]
+	if !ok {
+		t.Fatal("Expected subscription for symbolID 1")
+	}
+	if opts.UseAggTrade {
+		t.Error("Expected UseAggTrade=false for symbolID 1")
+	}
+
+	opts, ok = client.tradeSubs[2]
+	if !ok {
+		t.Fatal("Expected subscription for symbolID 2")
+	}
+	if !opts.UseAggTrade {
+		t.Error("Expected UseAggTrade=true for symbolID 2")
 	}
 }
 
@@ -742,28 +924,34 @@ func TestBuildStreamList(t *testing.T) {
 	symbols := make(map[int]catalog.Symbol)
 	symbols[1] = catalog.Symbol{ID: 1, Name: "BTCUSDT"}
 	symbols[2] = catalog.Symbol{ID: 2, Name: "ETHUSDT"}
+	symbols[3] = catalog.Symbol{ID: 3, Name: "BNBUSDT"}
 	setPrivateField(cat, "symbols", symbols)
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	client.SubscribeDepthUpdate(1, 0, 100)
 	client.SubscribeTrade(2, false)
+	client.SubscribeTrade(3, true)
 
 	streams := client.buildStreamList()
 
-	if len(streams) != 2 {
-		t.Fatalf("Expected 2 streams, got %d", len(streams))
+	if len(streams) != 3 {
+		t.Fatalf("Expected 3 streams, got %d", len(streams))
 	}
 
 	// Check stream names (order may vary)
 	hasDepth := false
 	hasTrade := false
+	hasAggTrade := false
 	for _, s := range streams {
 		if s == "btcusdt@depth@100ms" {
 			hasDepth = true
 		}
 		if s == "ethusdt@trade" {
 			hasTrade = true
+		}
+		if s == "bnbusdt@aggTrade" {
+			hasAggTrade = true
 		}
 	}
 
@@ -773,10 +961,16 @@ func TestBuildStreamList(t *testing.T) {
 	if !hasTrade {
 		t.Error("Expected ethusdt@trade stream")
 	}
+	if !hasAggTrade {
+		t.Error("Expected bnbusdt@aggTrade stream")
+	}
 
 	// Verify stream to symbol mapping
 	if client.streamToSymbol["btcusdt@depth@100ms"] != 1 {
 		t.Error("Stream mapping for depth not set correctly")
+	}
+	if client.streamToSymbol["bnbusdt@aggTrade"] != 3 {
+		t.Error("Stream mapping for aggTrade not set correctly")
 	}
 	if client.streamToSymbol["ethusdt@trade"] != 2 {
 		t.Error("Stream mapping for trade not set correctly")

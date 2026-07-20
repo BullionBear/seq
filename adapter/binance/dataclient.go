@@ -42,7 +42,8 @@ var (
 	bytesEventAggTrade    = []byte("aggTrade")
 	bytesEventKline       = []byte("kline")
 	bytesStreamDepth      = []byte("depth")
-	bytesStreamTrade      = []byte("trade")
+	bytesStreamTrade      = []byte("@trade")
+	bytesStreamAggTrade   = []byte("@aggTrade")
 	bytesStreamKline      = []byte("kline")
 )
 
@@ -519,9 +520,17 @@ func (c *BinanceSpotDataClient) processStreamMessage(stream, data []byte) {
 		} else {
 			c.processDepthUpdate(symbolID, data)
 		}
-	} else if bytes.Contains(stream, bytesStreamTrade) {
+	} else if isTradeStream(stream) {
 		c.processTrade(symbolID, data)
 	}
+}
+
+// isTradeStream reports whether stream is a Binance trade or aggregate-trade
+// name. Suffix match is required: bytes.Contains(..., "trade") misses
+// "@aggTrade" (capital T) and would be ambiguous if other streams ever
+// embedded the substring.
+func isTradeStream(stream []byte) bool {
+	return bytes.HasSuffix(stream, bytesStreamTrade) || bytes.HasSuffix(stream, bytesStreamAggTrade)
 }
 
 // isPartialBookStream reports whether stream is a Binance partial-book name
@@ -721,20 +730,12 @@ func (c *BinanceSpotDataClient) processKline(symbolID int, data []byte) {
 	c.msgBus.Publish(ref)
 }
 
-// processTrade parses and publishes a trade event
-// Binance trade format:
+// processTrade parses and publishes a trade or aggregate-trade as Tick.
+// Shared fields (p/q/T/m) are identical on @trade and @aggTrade; trade ID
+// fields differ (t vs a) and are not part of Tick.
 //
-//	{
-//	  "e": "trade",
-//	  "E": 123456789,   // Event time
-//	  "s": "BTCUSDT",   // Symbol
-//	  "t": 12345,       // Trade ID
-//	  "p": "0.001",     // Price
-//	  "q": "100",       // Quantity
-//	  "T": 123456785,   // Trade time
-//	  "m": true,        // Is buyer maker
-//	  "M": true         // Ignore
-//	}
+//	trade:    {"e":"trade","p":"...","q":"...","T":...,"m":true,...}
+//	aggTrade: {"e":"aggTrade","p":"...","q":"...","T":...,"m":true,...}
 func (c *BinanceSpotDataClient) processTrade(symbolID int, data []byte) {
 	var tick event.Tick
 	tick.SymbolID = symbolID
