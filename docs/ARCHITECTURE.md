@@ -106,6 +106,8 @@ Design notes:
 
 Engines construct actors from YAML via per-package factory registries (`Register("type", factory)` in `init()`).
 
+Actor lifecycle, domain ownership, and conventions: [`ACTORS.md`](./ACTORS.md).
+
 ### 3.3 `core/engine`
 
 `Engine` interface + `EngineBase` for lifecycle and state notifications (`Ready` / `Stop` / `Finished` / `Abnormal`) published through `msgbus.StateNotifier`. Domain engines embed this.
@@ -119,6 +121,8 @@ Binary-encoded domain types for the in-memory bus:
 - `model/command` — `OrderRiskCheck`, `OrderSubmit`, `OrderCancel`, `CancelAll`, `ReqDepthSnapshot`, `ReqHistoricalKline`, `QryBalanceSnapshot`.
 
 Fixed-size codecs use shared `core/model/codec` (`Encode` / `Decode` with bounds checks + POD/layout guards). Variable-size types (depth snapshots/updates, hist-kline responses) keep specialized codecs/views.
+
+To add a new event type end-to-end, see [`ADDING_AN_EVENT.md`](./ADDING_AN_EVENT.md).
 
 ### 3.5 `core/cache`
 

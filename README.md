@@ -4,7 +4,7 @@ In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/Bulli
 
 A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
 
-For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). Actors and domain ownership: [`docs/ACTORS.md`](./docs/ACTORS.md). New msgbus events: [`docs/ADDING_AN_EVENT.md`](./docs/ADDING_AN_EVENT.md).
 
 ## Overview
 
