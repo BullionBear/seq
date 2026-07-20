@@ -75,7 +75,8 @@ Legend: **Yes** = implemented · **Partial** = subset · **No** = venue offers i
 | Capability | Seq |
 | --- | --- |
 | Spot | **Yes** (factory registered) |
-| USD-M / COIN-M futures market data | **No** |
+| USD-M futures | **Separate package** — see [`adapter/binancefutures`](../binancefutures/BINANCE_FUTURES.md) |
+| COIN-M futures | **No** (deferred) |
 | Testnet hosts | **No** (hardcoded mainnet URLs) |
 
 ---
@@ -130,6 +131,6 @@ Seq: adapter publishes `DepthUpdate` / `DepthSnapshot`; `data/actor/orderbook` o
 ## Gaps worth knowing
 
 1. No bookTicker / ticker / avgPrice streams (BBO without full depth).
-2. No futures market-data factories.
+2. USD-M futures is implemented in `adapter/binancefutures` (not this package); COIN-M still deferred.
 3. `datarouter.endpoint` and alternate hosts unused.
 4. `TopicEventRespDepthSnapshot` exists in the topic enum but Binance REST publishes `TopicEventDepthSnapshot` (same as partial WS).

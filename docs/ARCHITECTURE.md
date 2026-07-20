@@ -20,7 +20,7 @@ Seq is an **in-process, actor-oriented crypto trading runtime** written in Go. A
 | Balances | `ledger` engine + balance actors |
 | Pre-trade gates | `risk` engine + rules/actors |
 | Trading logic | `strategy` engine + strategy actors |
-| Venue I/O | `adapter/binance`, `adapter/bybit` |
+| Venue I/O | `adapter/binance`, `adapter/binancefutures`, `adapter/bybit` |
 
 There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional plaintext msgbus logging (`.jsonl` files). Catalog metadata is local only (instruments JSON + YAML accounts).
 
@@ -231,11 +231,12 @@ Built-in strategies:
 | Package | Coverage (current) |
 | --- | --- |
 | `adapter/binance` | Spot data + spot execution (WS + fasthttp); live + hist kline |
+| `adapter/binancefutures` | USD-M perpetual data + execution (`fstream` / `fapi` / `ws-fapi`); live + hist kline |
 | `adapter/bybit` | Spot data + execution (WS + HTTP); live + hist kline |
 
 Adapters publish **normalized** events onto msgbus; they do not call strategy code. Live kline streams include both open (`Closed=false`) and closed (`Closed=true`) bars.
 
-There is no rich unified venue API: each stream parser maps venue JSON onto shared events. Market-data coverage vs exchange docs: [`adapter/binance/BINANCE.md`](../adapter/binance/BINANCE.md), [`adapter/bybit/BYBIT.md`](../adapter/bybit/BYBIT.md).
+There is no rich unified venue API: each stream parser maps venue JSON onto shared events. Market-data coverage vs exchange docs: [`adapter/binance/BINANCE.md`](../adapter/binance/BINANCE.md), [`adapter/binancefutures/BINANCE_FUTURES.md`](../adapter/binancefutures/BINANCE_FUTURES.md), [`adapter/bybit/BYBIT.md`](../adapter/bybit/BYBIT.md).
 
 ---
 

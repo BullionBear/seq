@@ -8,6 +8,7 @@ import (
 
 	"github.com/BullionBear/seq/adapter"
 	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/binancefutures"
 	"github.com/BullionBear/seq/adapter/bybit"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
@@ -144,7 +145,7 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, 
 		accountIDs = append(accountIDs, account.ID)
 		walletTypes[account.ID] = walletType
 
-		client, err := n.createExecutionClient(account, entry.API, walletID)
+		client, err := n.createExecutionClient(account, entry.API, walletID, walletType)
 		if err != nil {
 			log().Error().Err(err).Str("account", account.Name).Msg("Node: Failed to create execution client")
 			continue
@@ -164,9 +165,13 @@ func (n *Node) setupExecutionClients(entries []adapter.ExecRouterEntry) ([]int, 
 }
 
 // createExecutionClient creates an execution client for the given account.
-func (n *Node) createExecutionClient(account *catalog.Account, apiKeyName string, walletID int) (adapter.ExecutionClient, error) {
+// For Binance, wallet type umargin selects the USD-M futures client; otherwise spot.
+func (n *Node) createExecutionClient(account *catalog.Account, apiKeyName string, walletID int, walletType common.WalletType) (adapter.ExecutionClient, error) {
 	switch account.Exchange {
 	case "BINANCE", "Binance":
+		if walletType == common.WalletTypeUMargin {
+			return binancefutures.NewBinanceFuturesExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
+		}
 		return binance.NewBinanceSpotExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)
 	case "BYBIT", "Bybit":
 		return bybit.NewBybitExecutionClient(n.catalog, n.msgBus, account.ID, apiKeyName, walletID)

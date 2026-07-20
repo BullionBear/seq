@@ -2,7 +2,7 @@
 
 In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/BullionBear/seq`).
 
-A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
+A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance (spot + USD-M futures) and Bybit adapters.
 
 For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). Actors and domain ownership: [`docs/ACTORS.md`](./docs/ACTORS.md). New msgbus events: [`docs/ADDING_AN_EVENT.md`](./docs/ADDING_AN_EVENT.md).
 
@@ -18,7 +18,7 @@ For the module-by-module source of truth (package responsibilities, boot order, 
 | Balances | `ledger` engine + balance actors |
 | Pre-trade gates | `risk` engine + rules/actors |
 | Trading logic | `strategy` engine + strategy actors |
-| Venue I/O | `adapter/binance`, `adapter/bybit` |
+| Venue I/O | `adapter/binance`, `adapter/binancefutures`, `adapter/bybit` |
 
 There is **no PostgreSQL / GORM stack** in the current tree. Persistence today is optional plaintext msgbus logging (`.jsonl` files) plus the remote catalog. The legacy `docker-compose.yml` Postgres service is not part of this runtime.
 
@@ -47,7 +47,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 - **Dual-channel msgbus** — MPSC events (topic fan-out) and SPSC commands (point-to-point, higher priority)
 - **Shared cache** — order books, open orders, balances, and risk metadata as the cross-engine read model
 - **Mandatory risk gate** — strategies call `SubmitOrder` → `OrderRiskCheck`; venue submit only on pass
-- **Venue adapters** — Binance/Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
+- **Venue adapters** — Binance spot, Binance USD-M futures, Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
 - **Config-driven actors** — YAML factories for orderbook, OMS, balance, ratelimiter, tpnl, `xarb`, `obtest`
 - **Optional msglog** — plaintext JSONL event/command audit trail written at dispatch
 - **Structured logging** — zerolog with optional lumberjack rotation
@@ -205,7 +205,7 @@ seq/
 ├── node/                # composition root + event loop
 ├── core/
 │   ├── actor|engine|msgbus|mem|clock|cache|catalog|config|logger|env|model
-├── adapter/             # DataRouter, ExecutionRouter, binance/, bybit/
+├── adapter/             # DataRouter, ExecutionRouter, binance/, binancefutures/, bybit/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
 ├── ledger/           # balance engine + balance actor

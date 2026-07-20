@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/BullionBear/seq/adapter/binance"
+	"github.com/BullionBear/seq/adapter/binancefutures"
 	"github.com/BullionBear/seq/adapter/bybit"
 	"github.com/BullionBear/seq/core/catalog"
 	"github.com/BullionBear/seq/core/model/common"
@@ -97,6 +98,9 @@ func NewDataRouter(cat *catalog.Catalog, bus *msgbus.MsgBus) *DataRouter {
 
 	r.RegisterFactory(int(common.ExchangeBinance), int(common.ProductTypeSpot), func(c *catalog.Catalog, m *msgbus.MsgBus) DataClient {
 		return binance.NewBinanceSpotDataClient(c, m)
+	})
+	r.RegisterFactory(int(common.ExchangeBinance), int(common.ProductTypePerpetual), func(c *catalog.Catalog, m *msgbus.MsgBus) DataClient {
+		return binancefutures.NewBinanceFuturesDataClient(c, m)
 	})
 	r.RegisterFactory(int(common.ExchangeBybit), int(common.ProductTypeSpot), func(c *catalog.Catalog, m *msgbus.MsgBus) DataClient {
 		return bybit.NewBybitDataClient(c, m)

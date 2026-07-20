@@ -11,7 +11,7 @@ catalog:
   instruments: ./instruments.json
 ```
 
-See [`instruments.json`](instruments.json) for the expected shape. Add an entry per tradable symbol; `exchange.id` must match the internal exchange IDs (Binance=1, Bybit=2) and `product.id` the internal product IDs (SPOT=1).
+See [`instruments.json`](instruments.json) for the expected shape. Add an entry per tradable symbol; `exchange.id` must match the internal exchange IDs (Binance=1, Bybit=2) and `product.id` the internal product IDs (SPOT=1, PERPETUAL=2). Binance USD-M futures instruments use product PERPETUAL (e.g. `BINANCE_PERPETUAL_ETHUSDT`) and the [`adapter/binancefutures`](../adapter/binancefutures/BINANCE_FUTURES.md) clients.
 
 ## Accounts and credentials
 

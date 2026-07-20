@@ -53,5 +53,16 @@
     "price_precision": 2,
     "size_precision": 4,
     "universal_ticker": "BYBIT_SPOT_ETHUSDT"
+  },
+  {
+    "id": 6,
+    "name": "ETHUSDT",
+    "exchange": { "id": 1, "name": "Binance", "slug": "binance" },
+    "product": { "id": 2, "name": "PERPETUAL", "slug": "perpetual" },
+    "base_token": { "id": 4, "name": "ETH", "slug": "eth" },
+    "quote_token": { "id": 2, "name": "USDT", "slug": "usdt" },
+    "price_precision": 2,
+    "size_precision": 3,
+    "universal_ticker": "BINANCE_PERPETUAL_ETHUSDT"
   }
 ]
