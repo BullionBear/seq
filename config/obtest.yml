@@ -3,7 +3,7 @@ trading_mode: paper  # set to live to enable venue order submit/cancel
 logger:
   level: debug
   output: stdout  # "stdout" or "file"
-  path: /home/yite/BullionBear/seq/logs/obtest.log  # Required when output is "file"
+  path: ./logs/obtest.log  # Required when output is "file"
   max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
   max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
 
@@ -19,13 +19,11 @@ node:
   engine:
     data:
       subscriptions:
-        - symbol: BYBIT_SPOT_BTCUSDT
+        - symbol: BINANCE_PERPETUAL_ETHUSDT
           depth:
-            levels: 50
-      actor:
-        - type: orderbook
-          config:
-            symbol: BYBIT_SPOT_BTCUSDT
+            type: delta
+            push_rate: 100ms
+
 
     execution:
       actor: []
@@ -37,4 +35,10 @@ node:
       actor:
         - type: obtest
           config:
-            symbol_universal_ticker: BYBIT_SPOT_BTCUSDT
+            symbol_universal_ticker: BINANCE_PERPETUAL_ETHUSDT
+
+datarouter:
+  - symbol: BINANCE_PERPETUAL_ETHUSDT
+    depth:
+      type: delta
+      push_rate: 100ms
