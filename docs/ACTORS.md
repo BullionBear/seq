@@ -122,11 +122,11 @@ Strategies read books from cache; they do not rebuild books themselves.
 
 OMS does not call the venue. The engine does, after risk has published `OrderNew` and sent `OrderSubmit`.
 
-### 5.3 Portfolio — balances
+### 5.3 Ledger — balances
 
 | Piece | Kind | Owns |
 | --- | --- | --- |
-| `PortfolioEngine` | Engine | Subscribe private balance streams; request initial snapshots; gate system `Ready` when all wallets have snapshots |
+| `LedgerEngine` | Engine | Subscribe private balance streams; request initial snapshots; gate system `Ready` when all wallets have snapshots |
 | `balance` | Actor | One per wallet; snapshot/update (+ related) events → **write balances to cache**; signal ready to the engine |
 
 ### 5.4 Risk — pre-trade gate + risk state
