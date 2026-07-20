@@ -235,6 +235,8 @@ Built-in strategies:
 
 Adapters publish **normalized** events onto msgbus; they do not call strategy code. Live kline streams include both open (`Closed=false`) and closed (`Closed=true`) bars.
 
+There is no rich unified venue API: each stream parser maps venue JSON onto shared events. Market-data coverage vs exchange docs: [`adapter/binance/BINANCE.md`](../adapter/binance/BINANCE.md), [`adapter/bybit/BYBIT.md`](../adapter/bybit/BYBIT.md).
+
 ---
 
 ## 7. Configuration model
