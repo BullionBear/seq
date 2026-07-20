@@ -1,0 +1,43 @@
+trading_mode: paper
+
+logger:
+  level: debug
+  path: ./logs/sma.log
+  max_byte_size: 10485760
+  max_backup_files: 5
+
+msgbus:
+  msglog:
+    enabled: true
+    dir: ./logs/sma/
+
+catalog:
+  instruments: ./instruments.json
+
+datarouter:
+  - symbol: BINANCE_SPOT_ETHUSDT
+    kline:
+      interval: 1m
+
+node:
+  engine:
+    data:
+      actor: []
+
+    execution:
+      actor: []
+
+    portfolio:
+      actor: []
+
+    risk:
+      actor: []
+
+    strategy:
+      actor:
+        - type: sma
+          name: sma-eth
+          config:
+            universal_ticker: BINANCE_SPOT_ETHUSDT
+            interval: 1m
+            period: 20

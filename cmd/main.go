@@ -23,8 +23,8 @@ import (
 	_ "github.com/BullionBear/seq/portfolio/actor/balance"
 	_ "github.com/BullionBear/seq/risk/actor/ratelimiter"
 	_ "github.com/BullionBear/seq/risk/actor/tpnl"
-	_ "github.com/BullionBear/seq/strategy/actor/macd"
 	_ "github.com/BullionBear/seq/strategy/actor/obtest"
+	_ "github.com/BullionBear/seq/strategy/actor/sma"
 	_ "github.com/BullionBear/seq/strategy/actor/xarb"
 )
 
