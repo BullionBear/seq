@@ -4,7 +4,7 @@ In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/Bulli
 
 A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance/Bybit adapters.
 
-For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`architecture.md`](./architecture.md).
+For the module-by-module source of truth (package responsibilities, boot order, order/event/command flows), see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## Overview
 
@@ -174,7 +174,7 @@ node:
             symbol_universal_ticker: BINANCE_SPOT_BTCUSDT
 ```
 
-Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/test.yml` (placeholders only; see `config/README.md`).
+Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/sma.yml`, `config/test.yml` (placeholders only; see `config/README.md`).
 
 **Security:** sample configs no longer embed catalog tokens. Tokens that were previously committed must still be **rotated at the provider** — scrubbing the tree does not revoke exposed credentials.
 
