@@ -156,7 +156,7 @@ node:
           config: {}
     ledger:
       actor:
-        - type: balance
+        - type: inventory
           config: {}
     risk:
       actor:

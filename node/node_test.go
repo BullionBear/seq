@@ -15,10 +15,10 @@ import (
 	"github.com/BullionBear/seq/core/tradingmode"
 	"github.com/BullionBear/seq/node"
 
-	_ "github.com/BullionBear/seq/ledger/actor/balance"
+	_ "github.com/BullionBear/seq/ledger/actor/inventory"
 )
 
-func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
+func TestIntegration_InventoryActorSnapshotOnStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -135,9 +135,9 @@ func TestIntegration_BalanceActorSnapshotOnStart(t *testing.T) {
 	}
 }
 
-// TestIntegration_BalanceActorEventRouting verifies the balance actor correctly
+// TestIntegration_InventoryActorEventRouting verifies the inventory actor correctly
 // routes RespBalanceSnapshot events from the MsgBus to the cache.
-func TestIntegration_BalanceActorEventRouting(t *testing.T) {
+func TestIntegration_InventoryActorEventRouting(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -162,7 +162,7 @@ func TestIntegration_BalanceActorEventRouting(t *testing.T) {
 	bus := n.MsgBus()
 	acctID := n.LedgerEngine().GetConfiguredAccounts()[0]
 
-	// Resolve the walletID for the first configured wallet so the balance actor accepts the event
+	// Resolve the walletID for the first configured wallet so the inventory actor accepts the event
 	wallet, err := cat.GetWalletByName("bybit-hephe-unified")
 	if err != nil {
 		t.Fatalf("Failed to resolve wallet: %v", err)

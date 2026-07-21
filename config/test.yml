@@ -78,12 +78,12 @@ node:
     
     ledger:
       actor:
-        # - type: balance
-        #   name: balance-bybit-unified
+        # - type: inventory
+        #   name: inventory-bybit-unified
         #   config:
         #     wallet: bybit-hephe-unified
-        # - type: balance
-        #   name: balance-bn-spot
+        # - type: inventory
+        #   name: inventory-bn-spot
         #   config:
         #     wallet: bn-hephe-spot
 

@@ -1,4 +1,4 @@
-package balance
+package inventory
 
 import (
 	"github.com/BullionBear/seq/core/actor"
@@ -11,20 +11,20 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// EngineHandler defines what the balance actor needs from the ledger engine.
+// EngineHandler defines what the inventory actor needs from the ledger engine.
 type EngineHandler interface {
 	ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error)
 	NotifyReady()
 }
 
 func init() {
-	ledger.Register("balance", func(handler any) actor.Actor {
-		return NewBalanceActor(handler.(EngineHandler))
+	ledger.Register("inventory", func(handler any) actor.Actor {
+		return NewInventoryActor(handler.(EngineHandler))
 	})
 }
 
-// Deterministic subscriptions for every balance actor.
-var balanceTopics = []event.Topic{
+// Deterministic subscriptions for every inventory actor.
+var inventoryTopics = []event.Topic{
 	event.TopicEventRespBalanceSnapshot,
 	event.TopicEventBalanceUpdate,
 	event.TopicEventExecution,
@@ -32,12 +32,12 @@ var balanceTopics = []event.Topic{
 	event.TopicEventOrderNew,
 }
 
-var _ actor.Actor = (*BalanceActor)(nil)
+var _ actor.Actor = (*InventoryActor)(nil)
 
-// BalanceActor is an actor owned by the ledger Engine.
+// InventoryActor is an actor owned by the ledger Engine.
 // Each instance manages exactly one wallet, filtering incoming events by walletID.
 // It writes balance state directly to cache for other engines/strategies to read.
-type BalanceActor struct {
+type InventoryActor struct {
 	actor.ActorBase
 	handler EngineHandler
 	cache   *cache.Cache
@@ -50,45 +50,45 @@ type BalanceActor struct {
 	snapshotReceived bool
 }
 
-// NewBalanceActor creates a new BalanceActor for the given engine handler.
-func NewBalanceActor(handler EngineHandler) *BalanceActor {
-	return &BalanceActor{
-		ActorBase: actor.NewActorBase("ledger-balance", balanceTopics),
+// NewInventoryActor creates a new InventoryActor for the given engine handler.
+func NewInventoryActor(handler EngineHandler) *InventoryActor {
+	return &InventoryActor{
+		ActorBase: actor.NewActorBase("ledger-inventory", inventoryTopics),
 		handler:   handler,
 	}
 }
 
 // SetCache injects the shared cache for balance writes.
-func (b *BalanceActor) SetCache(c *cache.Cache) { b.cache = c }
+func (b *InventoryActor) SetCache(c *cache.Cache) { b.cache = c }
 
 // SetCatalog injects the catalog for token name resolution.
-func (b *BalanceActor) SetCatalog(cat *catalog.Catalog) { b.catalog = cat }
+func (b *InventoryActor) SetCatalog(cat *catalog.Catalog) { b.catalog = cat }
 
 // OnInit decodes the wallet config and resolves wallet identity from the catalog.
-func (b *BalanceActor) OnInit(config map[string]any) {
-	var cfg BalanceConfig
+func (b *InventoryActor) OnInit(config map[string]any) {
+	var cfg InventoryConfig
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		Result:  &cfg,
 		TagName: "yaml",
 	})
 	if err != nil {
-		b.Log().Error().Err(err).Msg("BalanceActor: failed to create decoder")
+		b.Log().Error().Err(err).Msg("InventoryActor: failed to create decoder")
 		return
 	}
 	if err := decoder.Decode(config); err != nil {
-		b.Log().Error().Err(err).Msg("BalanceActor: failed to decode config")
+		b.Log().Error().Err(err).Msg("InventoryActor: failed to decode config")
 		return
 	}
 
 	if cfg.Wallet == "" {
-		b.Log().Error().Msg("BalanceActor: wallet name is required in config")
+		b.Log().Error().Msg("InventoryActor: wallet name is required in config")
 		return
 	}
 
 	b.wallet = cfg.Wallet
 	accountID, walletID, walletType, err := b.handler.ResolveWallet(cfg.Wallet)
 	if err != nil {
-		b.Log().Error().Err(err).Str("wallet", cfg.Wallet).Msg("BalanceActor: failed to resolve wallet")
+		b.Log().Error().Err(err).Str("wallet", cfg.Wallet).Msg("InventoryActor: failed to resolve wallet")
 		return
 	}
 	b.accountID = accountID
@@ -100,21 +100,21 @@ func (b *BalanceActor) OnInit(config map[string]any) {
 		Int("accountID", accountID).
 		Int("walletID", walletID).
 		Str("walletType", walletType.String()).
-		Msg("BalanceActor: initialized")
+		Msg("InventoryActor: initialized")
 }
 
-func (b *BalanceActor) OnStart() {
-	b.Log().Info().Str("wallet", b.wallet).Msg("BalanceActor: started")
+func (b *InventoryActor) OnStart() {
+	b.Log().Info().Str("wallet", b.wallet).Msg("InventoryActor: started")
 }
 
 // Handle processes events, filtering by this actor's wallet, and writes to cache.
-func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
+func (b *InventoryActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	switch ev.Ref.Topic {
 	case event.TopicEventBalanceUpdate:
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		update, err := event.NewBalanceUpdateFromBytes(buf)
 		if err != nil {
-			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			b.Log().Error().Err(err).Msg("InventoryActor: failed to decode event")
 			return
 		}
 		if update.WalletID != b.walletID {
@@ -126,7 +126,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		snapshot, err := event.NewRespBalanceSnapshotFromBytes(buf)
 		if err != nil {
-			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			b.Log().Error().Err(err).Msg("InventoryActor: failed to decode event")
 			return
 		}
 		if snapshot.WalletID != b.walletID {
@@ -138,7 +138,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		exec, err := event.NewExecutionFromBytes(buf)
 		if err != nil {
-			b.Log().Error().Err(err).Msg("BalanceActor: failed to decode event")
+			b.Log().Error().Err(err).Msg("InventoryActor: failed to decode event")
 			return
 		}
 		if exec.AccountID != b.accountID {
@@ -148,7 +148,7 @@ func (b *BalanceActor) Handle(ev msgbus.Event, bus *msgbus.MsgBus) {
 	}
 }
 
-func (b *BalanceActor) onBalanceUpdate(ev event.BalanceUpdate) {
+func (b *InventoryActor) onBalanceUpdate(ev event.BalanceUpdate) {
 	for _, bal := range ev.Balances {
 		b.cache.SetBalance(b.accountID, bal.TokenID, bal.Available, bal.Locked, bal.Total)
 	}
@@ -156,17 +156,17 @@ func (b *BalanceActor) onBalanceUpdate(ev event.BalanceUpdate) {
 		Int("accountID", ev.AccountID).
 		Str("walletType", b.walletType.String()).
 		Int("balanceCount", len(ev.Balances)).
-		Msg("BalanceActor: balance updated")
+		Msg("InventoryActor: balance updated")
 }
 
-func (b *BalanceActor) onRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
+func (b *InventoryActor) onRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 	b.cache.SetAccountBalances(b.accountID, ev.Balances)
 
 	b.Log().Info().
 		Int("accountID", ev.AccountID).
 		Str("walletType", b.walletType.String()).
 		Int("balanceCount", len(ev.Balances)).
-		Msg("BalanceActor: balance snapshot received")
+		Msg("InventoryActor: balance snapshot received")
 
 	for _, bal := range ev.Balances {
 		if bal.Total > 0 {
@@ -177,7 +177,7 @@ func (b *BalanceActor) onRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 				Float64("available", bal.Available).
 				Float64("locked", bal.Locked).
 				Float64("total", bal.Total).
-				Msg("BalanceActor: token balance initialized")
+				Msg("InventoryActor: token balance initialized")
 		}
 	}
 
@@ -187,7 +187,7 @@ func (b *BalanceActor) onRespBalanceSnapshot(ev event.RespBalanceSnapshot) {
 	}
 }
 
-func (b *BalanceActor) onExecution(ev event.Execution) {
+func (b *InventoryActor) onExecution(ev event.Execution) {
 	b.Log().Debug().
 		Int("clientOrderID", ev.ClientOrderID).
 		Int("accountID", ev.AccountID).
@@ -196,10 +196,10 @@ func (b *BalanceActor) onExecution(ev event.Execution) {
 		Float64("qty", ev.FilledQty).
 		Float64("price", ev.FilledPrice).
 		Float64("fee", ev.FeeQty).
-		Msg("BalanceActor: fill received")
+		Msg("InventoryActor: fill received")
 }
 
-func (b *BalanceActor) tokenName(tokenID int) string {
+func (b *InventoryActor) tokenName(tokenID int) string {
 	if b.catalog == nil {
 		return "unknown"
 	}
