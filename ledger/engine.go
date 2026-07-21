@@ -17,7 +17,7 @@ import (
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
 // Engine manages ledger actors and orchestrates their lifecycle.
-// Balance state is owned by individual BalanceActors which write to cache.
+// Balance state is owned by individual InventoryActors which write to cache.
 type Engine struct {
 	engine.EngineBase
 	catalog *catalog.Catalog
@@ -30,7 +30,7 @@ type Engine struct {
 	accountIDs  []int
 	walletTypes map[int]common.WalletType // accountID -> WalletType
 
-	// Snapshot readiness: counts NotifyReady calls from balance actors
+	// Snapshot readiness: counts NotifyReady calls from inventory actors
 	pendingCount int
 	readyCount   int
 	ready        bool
@@ -75,7 +75,7 @@ func (e *Engine) GetConfiguredAccounts() []int {
 
 // Init constructs actors from config and registers with the EventBus.
 func (e *Engine) Init(config Config) {
-	balanceActorCount := 0
+	inventoryActorCount := 0
 
 	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
@@ -101,15 +101,15 @@ func (e *Engine) Init(config Config) {
 		actor.Register(e.msgBus, a)
 		e.actors = append(e.actors, a)
 
-		if entry.Type == "balance" {
-			balanceActorCount++
+		if entry.Type == "inventory" {
+			inventoryActorCount++
 		}
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("LedgerEngine: actor initialized")
 	}
 
 	e.mu.Lock()
-	e.pendingCount = balanceActorCount
+	e.pendingCount = inventoryActorCount
 	e.mu.Unlock()
 
 	if e.execRouter == nil {
@@ -161,7 +161,7 @@ func (e *Engine) Stop() {
 }
 
 // ============================================================================
-// balance.EngineHandler implementation
+// inventory.EngineHandler implementation
 // ============================================================================
 
 func (e *Engine) ResolveWallet(name string) (accountID int, walletID int, walletType common.WalletType, err error) {
@@ -172,8 +172,8 @@ func (e *Engine) ResolveWallet(name string) (accountID int, walletID int, wallet
 	return wallet.AcctID, wallet.ID, wallet.WalletType, nil
 }
 
-// NotifyReady is called by each BalanceActor when its snapshot is received.
-// When all balance actors have reported ready, the engine notifies the system.
+// NotifyReady is called by each InventoryActor when its snapshot is received.
+// When all inventory actors have reported ready, the engine notifies the system.
 func (e *Engine) NotifyReady() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
