@@ -61,8 +61,8 @@ datarouter:
     depth:
       type: delta
       push_rate: 100ms   # futures: 100ms | 250ms | 500ms (>=1000ms → 500ms)
-    trade:
-      type: aggTrade
+    trade: {}              # → {symbol}@trade
+    aggTrade: {}           # → {symbol}@aggTrade (independent of trade)
     kline:
       interval: 1m
 

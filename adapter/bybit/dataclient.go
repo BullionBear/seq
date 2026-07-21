@@ -174,9 +174,8 @@ func (c *BybitDataClient) SubscribeDepthUpdate(symbolID int, depthLevel int, pus
 	}
 }
 
-// SubscribeTrade subscribes to trade stream for a symbol.
-// useAggTrade is ignored (Bybit has a single trade stream type).
-func (c *BybitDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
+// SubscribeTrade subscribes to trade tick stream for a symbol.
+func (c *BybitDataClient) SubscribeTrade(symbolID int) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
@@ -202,6 +201,11 @@ func (c *BybitDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
 	if exists && wsConn.connected.Load() {
 		c.subscribeToTradeStream(symbolID, category)
 	}
+}
+
+// SubscribeAggTrade is a no-op: Bybit has no aggregate trade stream.
+func (c *BybitDataClient) SubscribeAggTrade(symbolID int) {
+	log().Warn().Int("symbolID", symbolID).Msg("Bybit does not support aggTrade; subscription ignored")
 }
 
 // SubscribeKline subscribes to a kline stream for a symbol.

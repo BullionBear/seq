@@ -14,11 +14,12 @@ import (
 
 // DataRouterEntry is per-symbol data subscription config from YAML.
 type DataRouterEntry struct {
-	Symbol   string       `yaml:"symbol"`             // Universal ticker (required)
-	Endpoint string       `yaml:"endpoint,omitempty"` // Regional endpoint: bybit, bybit_tr, bybit_eu
-	Depth    *DepthConfig `yaml:"depth,omitempty"`    // Depth subscription options
-	Trade    *TradeConfig `yaml:"trade,omitempty"`    // Trade subscription options
-	Kline    *KlineConfig `yaml:"kline,omitempty"`    // Kline subscription options
+	Symbol   string          `yaml:"symbol"`             // Universal ticker (required)
+	Endpoint string          `yaml:"endpoint,omitempty"` // Regional endpoint: bybit, bybit_tr, bybit_eu
+	Depth    *DepthConfig    `yaml:"depth,omitempty"`    // Depth subscription options
+	Trade    *TradeConfig    `yaml:"trade,omitempty"`    // Trade tick subscription
+	AggTrade *AggTradeConfig `yaml:"aggTrade,omitempty"` // Aggregate trade subscription
+	Kline    *KlineConfig    `yaml:"kline,omitempty"`    // Kline subscription options
 }
 
 // DepthConfig configures depth stream subscription.
@@ -31,10 +32,13 @@ type DepthConfig struct {
 	Levels   int    `yaml:"levels,omitempty"`    // 1, 50, 200, 1000 (bybit)
 }
 
-// TradeConfig configures trade stream subscription.
-type TradeConfig struct {
-	Type string `yaml:"type,omitempty"` // trade, aggTrade
-}
+// TradeConfig enables trade tick stream subscription.
+// Presence of the key is enough; no options today.
+type TradeConfig struct{}
+
+// AggTradeConfig enables aggregate trade stream subscription (Binance @aggTrade).
+// Presence of the key is enough; no options today. Ignored on venues without aggTrade.
+type AggTradeConfig struct{}
 
 // KlineConfig configures kline / candlestick stream subscription.
 type KlineConfig struct {
@@ -49,11 +53,6 @@ type DepthOptions struct {
 	Levels   int    // 1, 50, 200, 1000 (bybit)
 }
 
-// TradeOptions contains generic trade subscription options.
-type TradeOptions struct {
-	Type string // trade, aggTrade
-}
-
 // KlineOptions contains generic kline subscription options.
 type KlineOptions struct {
 	Interval string // 1m, 5m, 1h, 1d, ...
@@ -66,7 +65,8 @@ type DataClient interface {
 	Connect(ctx context.Context) error
 	Disconnect()
 	SubscribeDepthUpdate(symbolID int, depthLevel int, pushRateMs int)
-	SubscribeTrade(symbolID int, useAggTrade bool)
+	SubscribeTrade(symbolID int)
+	SubscribeAggTrade(symbolID int)
 	SubscribeKline(symbolID int, interval string)
 	ReqDepthSnapshot(symbolID int, limit int) error
 	// ReqHistoricalKline fetches historical candles. Times are nanoseconds; 0 omits the bound.
@@ -166,8 +166,8 @@ func (r *DataRouter) SubscribeDepthUpdate(symbolID int, opts *DepthOptions) erro
 	return nil
 }
 
-// SubscribeTrade subscribes to trade updates for a symbol with options.
-func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
+// SubscribeTrade subscribes to trade tick updates for a symbol.
+func (r *DataRouter) SubscribeTrade(symbolID int) error {
 	symbol, err := r.cat.GetSymbol(symbolID)
 	if err != nil {
 		return err
@@ -176,13 +176,21 @@ func (r *DataRouter) SubscribeTrade(symbolID int, opts *TradeOptions) error {
 	if err != nil {
 		return err
 	}
+	client.SubscribeTrade(symbolID)
+	return nil
+}
 
-	useAggTrade := false
-	if opts != nil && opts.Type == "aggTrade" {
-		useAggTrade = true
+// SubscribeAggTrade subscribes to aggregate trade updates for a symbol.
+func (r *DataRouter) SubscribeAggTrade(symbolID int) error {
+	symbol, err := r.cat.GetSymbol(symbolID)
+	if err != nil {
+		return err
 	}
-
-	client.SubscribeTrade(symbolID, useAggTrade)
+	client, err := r.getOrCreateClient(symbol.Exchange.ID, symbol.Product.ID)
+	if err != nil {
+		return err
+	}
+	client.SubscribeAggTrade(symbolID)
 	return nil
 }
 

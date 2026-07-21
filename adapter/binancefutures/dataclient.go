@@ -76,10 +76,11 @@ type BinanceFuturesDataClient struct {
 	connLock sync.RWMutex
 
 	// Subscription management
-	depthSubs map[int]*DepthSubscriptionOptions // symbolID -> options
-	tradeSubs map[int]*TradeSubscriptionOptions // symbolID -> options
-	klineSubs map[int]common.Interval           // symbolID -> interval
-	subsLock  sync.RWMutex
+	depthSubs    map[int]*DepthSubscriptionOptions // symbolID -> options
+	tradeSubs    map[int]struct{}                  // symbolID -> trade tick
+	aggTradeSubs map[int]struct{}                  // symbolID -> aggTrade
+	klineSubs    map[int]common.Interval           // symbolID -> interval
+	subsLock     sync.RWMutex
 
 	// Stream to symbolID mapping for fast lookup during message processing
 	streamToSymbol map[string]int // "btcusdt@depth@100ms" -> symbolID
@@ -118,7 +119,8 @@ func NewBinanceFuturesDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus
 		msgBus:         msgBus,
 		httpClient:     &httpClient,
 		depthSubs:      make(map[int]*DepthSubscriptionOptions, 64),
-		tradeSubs:      make(map[int]*TradeSubscriptionOptions, 64),
+		tradeSubs:      make(map[int]struct{}, 64),
+		aggTradeSubs:   make(map[int]struct{}, 64),
 		klineSubs:      make(map[int]common.Interval, 64),
 		streamToSymbol: make(map[string]int, 128),
 		symbolToID:     make(map[string]int, 128),
@@ -130,7 +132,7 @@ func NewBinanceFuturesDataClient(catalog *catalog.Catalog, msgBus *msgbus.MsgBus
 func (c *BinanceFuturesDataClient) HasSub() bool {
 	c.subsLock.RLock()
 	defer c.subsLock.RUnlock()
-	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0 || len(c.klineSubs) > 0
+	return len(c.depthSubs) > 0 || len(c.tradeSubs) > 0 || len(c.aggTradeSubs) > 0 || len(c.klineSubs) > 0
 }
 
 // SubscribeDepthUpdate subscribes to a depth stream for a symbol.
@@ -155,21 +157,27 @@ func (c *BinanceFuturesDataClient) SubscribeDepthUpdate(symbolID int, depthLevel
 	}
 }
 
-// SubscribeTrade subscribes to trade stream for a symbol.
-// useAggTrade selects between regular trade and aggTrade streams.
-func (c *BinanceFuturesDataClient) SubscribeTrade(symbolID int, useAggTrade bool) {
+// SubscribeTrade subscribes to the trade tick stream (@trade) for a symbol.
+func (c *BinanceFuturesDataClient) SubscribeTrade(symbolID int) {
 	c.subsLock.Lock()
 	defer c.subsLock.Unlock()
 
-	opts := &TradeSubscriptionOptions{UseAggTrade: useAggTrade}
-	c.tradeSubs[symbolID] = opts
+	c.tradeSubs[symbolID] = struct{}{}
 
 	if c.connected.Load() {
-		stream := streamTrade
-		if useAggTrade {
-			stream = streamAggTrade
-		}
-		c.subscribeToStream(symbolID, stream)
+		c.subscribeToStream(symbolID, streamTrade)
+	}
+}
+
+// SubscribeAggTrade subscribes to the aggregate trade stream (@aggTrade) for a symbol.
+func (c *BinanceFuturesDataClient) SubscribeAggTrade(symbolID int) {
+	c.subsLock.Lock()
+	defer c.subsLock.Unlock()
+
+	c.aggTradeSubs[symbolID] = struct{}{}
+
+	if c.connected.Load() {
+		c.subscribeToStream(symbolID, streamAggTrade)
 	}
 }
 
@@ -278,7 +286,7 @@ func (c *BinanceFuturesDataClient) buildStreamList() []string {
 	c.subsLock.RLock()
 	defer c.subsLock.RUnlock()
 
-	streams := make([]string, 0, len(c.depthSubs)+len(c.tradeSubs)+len(c.klineSubs))
+	streams := make([]string, 0, len(c.depthSubs)+len(c.tradeSubs)+len(c.aggTradeSubs)+len(c.klineSubs))
 
 	for symbolID, opts := range c.depthSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
@@ -291,17 +299,24 @@ func (c *BinanceFuturesDataClient) buildStreamList() []string {
 		c.registerStream(streamName, symbol)
 	}
 
-	for symbolID, opts := range c.tradeSubs {
+	for symbolID := range c.tradeSubs {
 		symbol, err := c.catalog.GetSymbol(symbolID)
 		if err != nil {
 			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for trade subscription")
 			continue
 		}
-		stream := streamTrade
-		if opts != nil && opts.UseAggTrade {
-			stream = streamAggTrade
+		streamName := strings.ToLower(symbol.Name) + "@" + streamTrade
+		streams = append(streams, streamName)
+		c.registerStream(streamName, symbol)
+	}
+
+	for symbolID := range c.aggTradeSubs {
+		symbol, err := c.catalog.GetSymbol(symbolID)
+		if err != nil {
+			log().Error().Err(err).Int("symbolID", symbolID).Msg("Failed to get symbol for aggTrade subscription")
+			continue
 		}
-		streamName := strings.ToLower(symbol.Name) + "@" + stream
+		streamName := strings.ToLower(symbol.Name) + "@" + streamAggTrade
 		streams = append(streams, streamName)
 		c.registerStream(streamName, symbol)
 	}

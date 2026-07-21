@@ -25,7 +25,8 @@ type DataSubscription struct {
 	SymbolID int
 	Endpoint string                // regional endpoint override
 	Depth    *adapter.DepthOptions // nil if no depth subscription
-	Trade    *adapter.TradeOptions // nil if no trade subscription
+	Trade    bool                  // trade tick subscription
+	AggTrade bool                  // aggregate trade subscription
 	Kline    *adapter.KlineOptions // nil if no kline subscription
 }
 
@@ -76,9 +77,14 @@ func (e *Engine) Init(config Config, subscriptions []adapter.DataRouterEntry) {
 				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare depth subscription")
 			}
 		}
-		if sub.Trade != nil {
-			if err := e.router.SubscribeTrade(sub.SymbolID, sub.Trade); err != nil {
+		if sub.Trade {
+			if err := e.router.SubscribeTrade(sub.SymbolID); err != nil {
 				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare trade subscription")
+			}
+		}
+		if sub.AggTrade {
+			if err := e.router.SubscribeAggTrade(sub.SymbolID); err != nil {
+				log().Error().Err(err).Int("symbolID", sub.SymbolID).Msg("DataEngine: Failed to prepare aggTrade subscription")
 			}
 		}
 		if sub.Kline != nil {
@@ -194,11 +200,8 @@ func (e *Engine) parseSubscriptions(subscriptions []adapter.DataRouterEntry) {
 			}
 		}
 
-		if cfg.Trade != nil {
-			sub.Trade = &adapter.TradeOptions{
-				Type: cfg.Trade.Type,
-			}
-		}
+		sub.Trade = cfg.Trade != nil
+		sub.AggTrade = cfg.AggTrade != nil
 
 		if cfg.Kline != nil {
 			sub.Kline = &adapter.KlineOptions{
@@ -211,7 +214,8 @@ func (e *Engine) parseSubscriptions(subscriptions []adapter.DataRouterEntry) {
 			Int("symbolID", symbol.ID).
 			Str("ticker", cfg.Symbol).
 			Bool("hasDepth", sub.Depth != nil).
-			Bool("hasTrade", sub.Trade != nil).
+			Bool("hasTrade", sub.Trade).
+			Bool("hasAggTrade", sub.AggTrade).
 			Bool("hasKline", sub.Kline != nil).
 			Msg("DataEngine: Configured subscription")
 	}

@@ -893,27 +893,21 @@ func TestSubscribeTrade(t *testing.T) {
 
 	client := NewBinanceSpotDataClient(cat, eb)
 
-	client.SubscribeTrade(1, false)
-	client.SubscribeTrade(2, true)
+	client.SubscribeTrade(1)
+	client.SubscribeAggTrade(2)
 
-	if len(client.tradeSubs) != 2 {
-		t.Errorf("Expected 2 trade subscriptions, got %d", len(client.tradeSubs))
+	if len(client.tradeSubs) != 1 {
+		t.Errorf("Expected 1 trade subscription, got %d", len(client.tradeSubs))
 	}
-
-	opts, ok := client.tradeSubs[1]
-	if !ok {
-		t.Fatal("Expected subscription for symbolID 1")
-	}
-	if opts.UseAggTrade {
-		t.Error("Expected UseAggTrade=false for symbolID 1")
+	if _, ok := client.tradeSubs[1]; !ok {
+		t.Fatal("Expected trade subscription for symbolID 1")
 	}
 
-	opts, ok = client.tradeSubs[2]
-	if !ok {
-		t.Fatal("Expected subscription for symbolID 2")
+	if len(client.aggTradeSubs) != 1 {
+		t.Errorf("Expected 1 aggTrade subscription, got %d", len(client.aggTradeSubs))
 	}
-	if !opts.UseAggTrade {
-		t.Error("Expected UseAggTrade=true for symbolID 2")
+	if _, ok := client.aggTradeSubs[2]; !ok {
+		t.Fatal("Expected aggTrade subscription for symbolID 2")
 	}
 }
 
@@ -930,8 +924,8 @@ func TestBuildStreamList(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	client.SubscribeDepthUpdate(1, 0, 100)
-	client.SubscribeTrade(2, false)
-	client.SubscribeTrade(3, true)
+	client.SubscribeTrade(2)
+	client.SubscribeAggTrade(3)
 
 	streams := client.buildStreamList()
 
@@ -1028,7 +1022,7 @@ func TestConcurrentSubscriptions(t *testing.T) {
 		}(i)
 		go func(id int) {
 			defer wg.Done()
-			client.SubscribeTrade(id, false)
+			client.SubscribeTrade(id)
 		}(i)
 	}
 	wg.Wait()
@@ -1103,7 +1097,7 @@ func TestIntegration_RealConnection(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to trade stream
-	client.SubscribeTrade(1, false)
+	client.SubscribeTrade(1)
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1239,8 +1233,8 @@ func TestIntegration_MultipleStreams(t *testing.T) {
 	client := NewBinanceSpotDataClient(cat, eb)
 
 	// Subscribe to multiple streams
-	client.SubscribeTrade(1, false)
-	client.SubscribeTrade(2, false)
+	client.SubscribeTrade(1)
+	client.SubscribeTrade(2)
 	client.SubscribeDepthUpdate(1, 0, 100)
 
 	// Connect

@@ -49,8 +49,8 @@ Legend: **Yes** = implemented · **Partial** = subset · **No** = venue offers i
 | --- | --- | --- | --- |
 | Diff. depth `@depth` / `@depth@100ms` / `@depth@1000ms` | Changed levels only; local book needs REST snapshot + sync | **Yes** | `DepthUpdate` |
 | Partial book `@depth5|10|20[@100ms\|@1000ms]` | Top-N replace each push | **Yes** (`type: depth5\|10\|20`) | `DepthSnapshot` |
-| Trade `@trade` | Every match | **Yes** (`trade.type: trade`) | `Tick` |
-| Aggregate trade `@aggTrade` | Same price/time/taker aggregated | **Yes** (`trade.type: aggTrade`) | `Tick` |
+| Trade `@trade` | Every match | **Yes** (`trade: {}`) | `Tick` |
+| Aggregate trade `@aggTrade` | Same price/time/taker aggregated | **Yes** (`aggTrade: {}`) | `Tick` |
 | Kline `@kline_<interval>` | Open + closed (`k.x`); intervals include `1s`…`1M` | **Yes** | `Kline` |
 | Kline with timezone offset | Venue offers `@kline_<interval>@+08:00` etc. | **No** | — |
 | Book ticker `@bookTicker` | Best bid/ask | **No** | — |
@@ -90,8 +90,8 @@ datarouter:
       type: delta          # default → {symbol}@depth@{100ms|1000ms}
       # type: depth5       # → {symbol}@depth5@…
       push_rate: 100ms     # or 1000ms / 1s
-    trade:
-      type: trade          # or aggTrade
+    trade: {}              # → {symbol}@trade
+    aggTrade: {}           # → {symbol}@aggTrade (independent of trade)
     kline:
       interval: 1m         # Binance form; default 1m
 ```

@@ -61,7 +61,7 @@ Legend: **Yes** = implemented · **Partial** = subset · **No** = venue offers i
 | Orderbook option depths `25` / `100` | Option category | **Partial** — constants exist; no option factory in router | — |
 | Orderbook full-depth variants | Venue docs mention full/resync patterns beyond standard depths | **No** | — |
 | Public trade `publicTrade.{symbol}` | Up to many trades per message; taker side `Buy`/`Sell` | **Yes** | `Tick` |
-| Aggregate trade | Binance-style aggTrade | **N/A** on Bybit; YAML `aggTrade` **ignored** | — |
+| Aggregate trade | Binance-style aggTrade | **N/A** on Bybit; YAML `aggTrade: {}` **ignored** | — |
 | Kline `kline.{interval}.{symbol}` | `confirm=true` ⇒ closed; push ~1–60s | **Yes** (interval subset) | `Kline` (`Closed` ← `confirm`; `TradeCount=0`) |
 | Ticker `tickers.{symbol}` | BBO + 24h stats (spot snapshot-only) | **No** | — |
 | Liquidation / LT / other public topics | | **No** | — |
@@ -148,7 +148,7 @@ Seq: adapter publishes snapshot/delta events; `data/actor/orderbook` maintains t
 ## Gaps worth knowing
 
 1. No `tickers.*` (BBO / 24h stats without full book).
-2. No aggTrade equivalent; YAML `trade.type: aggTrade` is ignored.
+2. No aggTrade equivalent; YAML `aggTrade: {}` is ignored.
 3. `push_rate` ignored — cadence comes from orderbook depth.
 4. Spot-only factory in the router despite multi-category client code.
 5. `datarouter.endpoint` unused (no TR/EU/testnet switching).
