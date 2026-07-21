@@ -1,6 +1,6 @@
 # Seq
 
-In-process, actor-oriented crypto trading runtime for Lynkora (`github.com/BullionBear/seq`).
+In progressive development, actor-oriented crypto trading runtime (`github.com/BullionBear/seq`).
 
 A single Go binary boots a `node.Node` that owns market data, execution, ledger, risk, and strategy engines over a shared msgbus and cache. Venue I/O is normalized through Binance (spot + USD-M futures) and Bybit adapters.
 
