@@ -50,7 +50,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 - **Venue adapters** — Binance spot, Binance USD-M futures, Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
 - **Config-driven actors** — YAML factories for orderbook, OMS, balance, ratelimiter, tpnl, `xarb`, `obtest`
 - **Optional msglog** — plaintext JSONL event/command audit trail written at dispatch
-- **Structured logging** — zerolog with optional lumberjack rotation
+- **Structured logging** — zerolog + shared date/size `rotate.Writer` (crash-durable direct writes)
 
 ## Getting started
 
@@ -93,9 +93,9 @@ CONFIG=config/myconfig.yml ./bin/seq
 
 `make run` builds `bin/seq` but does not pass a config path; always supply `-c` or `CONFIG`.
 
-When `msgbus.msglog.enabled` is true, the node writes date-stamped
-`event_YYYY-MM-DD.jsonl` and `command_YYYY-MM-DD.jsonl` files under
-`msgbus.msglog.dir` (one JSON object per line).
+When `msgbus.msglog.enabled` is true, the node writes a merged
+`msg_<YYYY-MM-DD>.jsonl` stream under `msgbus.msglog.file.dir` (one JSON
+object per line, with `"kind":"event"` or `"kind":"command"`).
 
 ## Configuration
 
@@ -107,15 +107,27 @@ trading_mode: paper
 
 logger:
   level: debug              # trace, debug, info, warn, error, fatal, panic
-  output: stdout            # "stdout" or "file"
-  path: logs/seq.log        # required when output is "file"
-  max_byte_size: 10485760
-  max_backup_files: 5
+  stdout: true
+  file:
+    dir: ./logs
+    name: seq               # -> seq_<YYYY-MM-DD>.log
+    max_bytes: 10485760
+    daily: true
+    max_backups: 5
+    max_age_days: 0
+    sync: rotate            # none | rotate | periodic | each
 
 msgbus:
   msglog:
     enabled: true
-    dir: ./logs/
+    file:
+      dir: ./logs
+      name: msg             # -> msg_<YYYY-MM-DD>.jsonl (events + commands)
+      max_bytes: 104857600
+      daily: true
+      max_backups: 10
+      max_age_days: 7
+      sync: rotate
 
 catalog:
   instruments: ./instruments.json   # relative to this config file's directory

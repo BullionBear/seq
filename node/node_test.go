@@ -39,8 +39,8 @@ func TestIntegration_InventoryActorSnapshotOnStart(t *testing.T) {
 
 	n := node.NewNode(cat)
 
-	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.Dir != "" {
-		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.Dir)
+	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.File.Enabled() {
+		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.File.ToPolicy("jsonl"))
 		if err != nil {
 			t.Fatalf("Failed to initialize message logger: %v", err)
 		}

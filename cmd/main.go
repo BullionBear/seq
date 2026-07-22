@@ -114,15 +114,16 @@ func main() {
 	n := node.NewNode(catalogService)
 
 	// Set up plaintext JSONL message logger if configured
-	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.Dir != "" {
-		msgLogger, err := msgbus.NewMsgLogger(cfg.MsgBus.MsgLog.Dir)
+	if cfg.MsgBus.MsgLog.Enabled && cfg.MsgBus.MsgLog.File.Enabled() {
+		pol := cfg.MsgBus.MsgLog.File.ToPolicy("jsonl")
+		msgLogger, err := msgbus.NewMsgLogger(pol)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to initialize message logger")
 			os.Exit(1)
 		}
 		defer msgLogger.Close()
 		n.MsgBus().SetMsgLogger(msgLogger)
-		log.Info().Str("dir", cfg.MsgBus.MsgLog.Dir).Msg("MsgLogger enabled")
+		log.Info().Str("dir", pol.Dir).Str("name", pol.BaseName).Msg("MsgLogger enabled")
 	}
 
 	// Start the metrics endpoint (P2-4): /metrics for runtime histograms and

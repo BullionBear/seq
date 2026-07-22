@@ -9,9 +9,9 @@ COVERAGE_FILE=coverage.out
 VERSION := $(shell git describe --tags --always --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null || echo "dev")
 COMMIT_HASH := $(shell git rev-parse --short HEAD 2> /dev/null || echo "unknown")
 BUILD_TIMESTAMP := $(shell date '+%Y-%m-%dT%H:%M:%S')
-LDFLAGS := -X '${PACKAGE}/env.Version=${VERSION}' \
-           -X '${PACKAGE}/env.CommitHash=${COMMIT_HASH}' \
-           -X '${PACKAGE}/env.BuildTime=${BUILD_TIMESTAMP}'
+LDFLAGS := -X '${PACKAGE}/core/env.Version=${VERSION}' \
+           -X '${PACKAGE}/core/env.CommitHash=${COMMIT_HASH}' \
+           -X '${PACKAGE}/core/env.BuildTime=${BUILD_TIMESTAMP}'
 
 # Default target
 .DEFAULT_GOAL := all

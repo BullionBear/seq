@@ -248,10 +248,9 @@ Top-level YAML (`core/config.AppConfig`):
 trading_mode: paper|live   # optional; default paper; SEQ_TRADING_MODE overrides
 logger:
   level: debug
-  path: logs/seq.log       # optional; stdout always on
-  max_byte_size: 10485760
-  max_backup_files: 5
-msgbus: { msglog: { enabled, dir } }
+  stdout: true
+  file: { dir, name, max_bytes, daily, max_backups, max_age_days, sync }
+msgbus: { msglog: { enabled, file: { dir, name, max_bytes, daily, max_backups, max_age_days, sync } } }
 catalog: { instruments, accounts: [ { name, exchange, api_keys: [...], wallets: [...] } ] }
 execrouter: [ { account, wallet, api } ]
 datarouter: [ { symbol, depth?, trade?, kline?, endpoint? } ]

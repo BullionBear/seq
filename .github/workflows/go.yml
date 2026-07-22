@@ -2,9 +2,10 @@ name: Go CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -70,4 +71,43 @@ jobs:
       with:
         version: latest
         args: --timeout=5m
+
+  release:
+    # Build and publish a GitHub Release when a version tag is pushed
+    # (typically on a commit already on main).
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Verify tag commit is on main
+      run: |
+        git fetch origin main
+        if ! git merge-base --is-ancestor HEAD origin/main; then
+          echo "Tagged commit is not reachable from origin/main; refusing release."
+          exit 1
+        fi
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+        cache-dependency-path: go.sum
+
+    - name: Build release binary
+      run: make build
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: bin/seq-linux-amd64
+        generate_release_notes: true
+        fail_on_unmatched_files: true
 

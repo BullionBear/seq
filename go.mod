@@ -11,7 +11,6 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/tidwall/btree v1.8.1
 	github.com/valyala/fasthttp v1.69.0
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

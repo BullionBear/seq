@@ -12,7 +12,7 @@ catalog:
   instruments: ./config/instruments.json
 logger:
   level: info
-  output: stdout
+  stdout: true
 `
 	cfg, err := LoadConfigFromBytes([]byte(yaml))
 	if err != nil {
@@ -40,7 +40,7 @@ catalog:
           secret: ${TEST_API_SECRET}
 logger:
   level: info
-  output: stdout
+  stdout: true
 `
 	cfg, err := LoadConfigFromBytes([]byte(yaml))
 	if err != nil {
@@ -71,7 +71,7 @@ catalog:
           secret: ""
 logger:
   level: info
-  output: stdout
+  stdout: true
 `
 	cfg, err := LoadConfigFromBytes([]byte(yaml))
 	if err != nil {

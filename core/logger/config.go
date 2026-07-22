@@ -1,20 +1,23 @@
 package logger
 
+import "github.com/BullionBear/seq/core/logger/rotate"
+
 // Config contains logger configuration.
-// Logs always go to stdout. If Path is set, logs are also written to a file.
 type Config struct {
-	Level          string `yaml:"level"`
-	Path           string `yaml:"path,omitempty"`    // If set, also write logs to this file
-	MaxByteSize    int    `yaml:"max_byte_size"`     // Max size in bytes before rotation (0 = no rotation)
-	MaxBackupFiles int    `yaml:"max_backup_files"`  // Max number of backup files to keep (0 = keep all)
+	Level  string            `yaml:"level"`
+	Stdout *bool             `yaml:"stdout"` // nil defaults to true
+	File   rotate.FileConfig `yaml:"file"`   // empty Dir = no file output
 }
 
 // ToOptions converts a Config to an Options struct for Init().
 func (c Config) ToOptions() Options {
+	stdout := true
+	if c.Stdout != nil {
+		stdout = *c.Stdout
+	}
 	return Options{
-		Level:          c.Level,
-		Path:           c.Path,
-		MaxByteSize:    c.MaxByteSize,
-		MaxBackupFiles: c.MaxBackupFiles,
+		Level:  c.Level,
+		Stdout: stdout,
+		File:   c.File,
 	}
 }

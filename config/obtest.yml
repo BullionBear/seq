@@ -2,15 +2,27 @@ trading_mode: paper  # set to live to enable venue order submit/cancel
 
 logger:
   level: debug
-  output: stdout  # "stdout" or "file"
-  path: ./logs/obtest.log  # Required when output is "file"
-  max_byte_size: 10485760  # 10 MB in bytes (0 = no rotation)
-  max_backup_files: 5  # Maximum number of backup files to keep (0 = keep all)
+  stdout: true
+  file:
+    dir: ./logs
+    name: obtest
+    max_bytes: 10485760
+    daily: true
+    max_backups: 5
+    max_age_days: 0
+    sync: rotate
 
 msgbus:
   msglog:
     enabled: true
-    dir: ./logs/
+    file:
+      dir: ./logs
+      name: msg
+      max_bytes: 104857600
+      daily: true
+      max_backups: 10
+      max_age_days: 7
+      sync: rotate
 
 catalog:
   instruments: ./instruments.json  # relative to this config file's directory
