@@ -1,5 +1,9 @@
 // Package logger provides the process-wide zerolog singleton.
 //
+// File output uses core/logger/rotate.Writer (date + size rotation, direct
+// O_APPEND writes, no userspace buffer). Msglog shares the same writer type
+// via msgbus.MsgLogger.
+//
 // # Logging discipline (P2-3)
 //
 // The plaintext msglog (core/msgbus.MsgLogger, JSONL) is the SOLE per-event

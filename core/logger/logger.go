@@ -3,92 +3,47 @@ package logger
 import (
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/BullionBear/seq/core/logger/rotate"
 	"github.com/rs/zerolog"
-	"gopkg.in/natefinch/lumberjack.v2"
-)
-
-// LoggerType represents the type of logger to retrieve
-type LoggerType int
-
-const (
-	// LoggerTypeConsole represents console/terminal output logger
-	LoggerTypeConsole LoggerType = iota
-	// LoggerTypeFile represents file output logger
-	LoggerTypeFile
-)
-
-const (
-	// DefaultLogFile is the default log file path
-	DefaultLogFile = "logs/seq.log"
-	// EnvLogFile is the environment variable name for log file path
-	EnvLogFile = "SEQ_LOG_FILE"
 )
 
 // Options contains configuration options for the logger.
-// Logs always go to stdout. If Path is set, logs are also written to a file.
 type Options struct {
-	Level          string // Log level: trace, debug, info, warn, error, fatal, panic
-	Path           string // If set, also write logs to this file
-	MaxByteSize    int    // Max size in bytes before rotation (0 = no rotation)
-	MaxBackupFiles int    // Max number of backup files to keep (0 = keep all)
+	Level  string            // Log level: trace, debug, info, warn, error, fatal, panic
+	Stdout bool              // Write human-readable logs to stdout (default true via Config)
+	File   rotate.FileConfig // File output; empty Dir disables file logging
 }
 
 var (
-	// globalLogger is the singleton logger instance
-	globalLogger zerolog.Logger
-	// globalLoggerInitialized tracks if the global logger has been initialized
+	globalLogger            zerolog.Logger
 	globalLoggerInitialized bool
-	// globalLoggerMutex protects global logger initialization
-	globalLoggerMutex sync.RWMutex
+	globalLoggerMutex       sync.RWMutex
 
-	// consoleLogger is initialized for console/terminal output
 	consoleLogger zerolog.Logger
-	// fileLogger is initialized for file output
-	fileLogger zerolog.Logger
-	// logFile stores the current log file path
-	logFile string
-	// fileLoggerInit ensures file logger is initialized only once
-	fileLoggerInit sync.Once
-	// fileLoggerMutex protects file logger reinitialization
-	fileLoggerMutex sync.RWMutex
-	// fileLoggerInitialized tracks if file logger has been initialized
-	fileLoggerInitialized bool
-	// consoleWriter is a package-level variable to reduce escapes
-	// Using a pointer to avoid copying the struct when passing to zerolog.New
+	fileWriter    *rotate.Writer // retained so Close/Sync can reach it
+
 	consoleWriter = &zerolog.ConsoleWriter{
 		Out:        os.Stdout,
-		TimeFormat: "2006-01-02 15:04:05.000000", // Date and microsecond precision
+		TimeFormat: "2006-01-02 15:04:05.000000",
 	}
 )
 
-// Init initializes both console and file loggers
 func init() {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro // Use microsecond precision
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)            // More verbose in dev
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	// Initialize console logger with human-friendly output
-	// Using the package-level consoleWriter pointer to reduce heap allocations
 	consoleLogger = zerolog.New(consoleWriter).
 		With().
 		Timestamp().
 		Caller().
 		Logger()
 
-	// Determine log file path: environment variable > SetLogFile() > default
-	logFile = os.Getenv(EnvLogFile)
-	if logFile == "" {
-		logFile = DefaultLogFile
-	}
-
-	// Initialize global logger to console by default
 	globalLogger = consoleLogger
 }
 
-// parseLogLevel parses a string log level and returns the corresponding zerolog.Level
 func parseLogLevel(level string) zerolog.Level {
 	switch strings.ToLower(level) {
 	case "trace":
@@ -106,44 +61,11 @@ func parseLogLevel(level string) zerolog.Level {
 	case "panic":
 		return zerolog.PanicLevel
 	default:
-		return zerolog.DebugLevel // Default to debug
+		return zerolog.DebugLevel
 	}
-}
-
-// createFileWriter creates a file writer with optional log rotation
-func createFileWriter(path string, maxByteSize int, maxBackupFiles int) (io.Writer, error) {
-	// Create logs directory if it doesn't exist
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return nil, err
-	}
-
-	// If no rotation is configured, use a simple file writer
-	if maxByteSize <= 0 {
-		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, err
-		}
-		return file, nil
-	}
-
-	// Use lumberjack for log rotation
-	// Convert bytes to megabytes for lumberjack (it expects MB)
-	maxSizeMB := maxByteSize / (1024 * 1024)
-	if maxSizeMB <= 0 {
-		maxSizeMB = 1 // Minimum 1 MB
-	}
-
-	return &lumberjack.Logger{
-		Filename:   path,
-		MaxSize:    maxSizeMB,      // Maximum size in megabytes before rotation
-		MaxBackups: maxBackupFiles, // Maximum number of old log files to retain
-		MaxAge:     0,              // Don't delete by age, only by count
-		Compress:   false,          // Don't compress by default
-	}, nil
 }
 
 // Init initializes the global singleton logger with the provided options.
-// Logs always go to stdout. If Path is set, logs are additionally written to a file.
 func Init(opts Options) error {
 	globalLoggerMutex.Lock()
 	defer globalLoggerMutex.Unlock()
@@ -151,25 +73,35 @@ func Init(opts Options) error {
 	level := parseLogLevel(opts.Level)
 	zerolog.SetGlobalLevel(level)
 
-	var writer io.Writer = consoleWriter
+	var writers []io.Writer
+	if opts.Stdout {
+		writers = append(writers, consoleWriter)
+	}
 
-	if opts.Path != "" {
-		fileWriter, err := createFileWriter(opts.Path, opts.MaxByteSize, opts.MaxBackupFiles)
+	if opts.File.Enabled() {
+		pol := opts.File.ToPolicy("log")
+		if pol.BaseName == "" {
+			pol.BaseName = "seq"
+		}
+		w, err := rotate.NewWriter(pol)
 		if err != nil {
 			return err
 		}
-		logFile = opts.Path
-		writer = io.MultiWriter(consoleWriter, fileWriter)
+		if fileWriter != nil {
+			_ = fileWriter.Close()
+		}
+		fileWriter = w
+		writers = append(writers, w)
+	}
 
-		fileLoggerMutex.Lock()
-		fileLogger = zerolog.New(fileWriter).
-			With().
-			Timestamp().
-			Caller().
-			Logger().
-			Level(level)
-		fileLoggerInitialized = true
-		fileLoggerMutex.Unlock()
+	var writer io.Writer
+	switch len(writers) {
+	case 0:
+		writer = io.Discard
+	case 1:
+		writer = writers[0]
+	default:
+		writer = io.MultiWriter(writers...)
 	}
 
 	globalLogger = zerolog.New(writer).
@@ -183,8 +115,7 @@ func Init(opts Options) error {
 	return nil
 }
 
-// Get returns the global singleton logger instance
-// If the logger hasn't been initialized with Init(), returns the default console logger
+// Get returns the global singleton logger instance.
 func Get() zerolog.Logger {
 	globalLoggerMutex.RLock()
 	defer globalLoggerMutex.RUnlock()
@@ -192,106 +123,32 @@ func Get() zerolog.Logger {
 	if globalLoggerInitialized {
 		return globalLogger
 	}
-
-	// Fall back to console logger if not initialized
 	return consoleLogger
 }
 
-// initFileLogger initializes the file logger (called lazily on first access)
-func initFileLogger() {
-	fileLoggerMutex.Lock()
-	defer fileLoggerMutex.Unlock()
-
-	// Create logs directory if it doesn't exist
-	// Inline directory creation to reduce variable escapes
-	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
-		// If we can't create the directory, fall back to console logger
-		fileLogger = consoleLogger
-		fileLoggerInitialized = true
-		return
+// Sync fsyncs the file writer when SyncPeriodic (or any explicit sync) is desired.
+func Sync() error {
+	globalLoggerMutex.RLock()
+	w := fileWriter
+	globalLoggerMutex.RUnlock()
+	if w == nil {
+		return nil
 	}
-
-	// Open or create log file (append mode)
-	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		// If we can't open the file, fall back to console logger
-		fileLogger = consoleLogger
-		fileLoggerInitialized = true
-		return
-	}
-
-	fileLogger = zerolog.New(file).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
-	fileLoggerInitialized = true
+	return w.Sync()
 }
 
-// getFileLogger returns the file logger, initializing it if necessary
-func getFileLogger() zerolog.Logger {
-	fileLoggerInit.Do(initFileLogger)
-	fileLoggerMutex.RLock()
-	defer fileLoggerMutex.RUnlock()
-	return fileLogger
-}
-
-// SetLogFile sets the log file path for the file logger.
-// This can be called at any time:
-// - Before first use: Sets the path for initial initialization
-// - After first use: Reinitializes the file logger with the new path
-func SetLogFile(path string) error {
-	fileLoggerMutex.Lock()
-	defer fileLoggerMutex.Unlock()
-
-	logFile = path
-
-	// Reinitialize file logger if it was already initialized
-	if fileLoggerInitialized {
-		// Inline directory creation to reduce variable escapes
-		if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
-			return err
-		}
-
-		file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-
-		fileLogger = zerolog.New(file).
-			With().
-			Timestamp().
-			Caller().
-			Logger()
+// Close closes the underlying file writer, if any.
+func Close() error {
+	globalLoggerMutex.Lock()
+	defer globalLoggerMutex.Unlock()
+	if fileWriter == nil {
+		return nil
 	}
-
-	return nil
+	err := fileWriter.Close()
+	fileWriter = nil
+	return err
 }
 
-// GetLogFile returns the current log file path
-func GetLogFile() string {
-	fileLoggerMutex.RLock()
-	defer fileLoggerMutex.RUnlock()
-	if logFile == "" {
-		return DefaultLogFile
-	}
-	return logFile
-}
-
-// GetLogger returns the logger instance based on the LoggerType
-// This maintains backward compatibility with existing code
-func GetLogger(loggerType LoggerType) zerolog.Logger {
-	switch loggerType {
-	case LoggerTypeFile:
-		return getFileLogger()
-	case LoggerTypeConsole:
-		return consoleLogger
-	default:
-		// Default to console logger for unknown types
-		return consoleLogger
-	}
-}
-
-// Log is kept for backward compatibility, defaults to console logger
-// Deprecated: Use Get() for the singleton logger, or GetLogger(LoggerTypeConsole)/GetLogger(LoggerTypeFile) for specific loggers
+// Log is kept for backward compatibility; defaults to console logger.
+// Deprecated: Use Get() for the singleton logger.
 var Log = consoleLogger

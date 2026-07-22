@@ -2,14 +2,27 @@ trading_mode: paper
 
 logger:
   level: debug
-  path: ./logs/sma.log
-  max_byte_size: 10485760
-  max_backup_files: 5
+  stdout: true
+  file:
+    dir: ./logs
+    name: sma
+    max_bytes: 10485760
+    daily: true
+    max_backups: 5
+    max_age_days: 0
+    sync: rotate
 
 msgbus:
   msglog:
     enabled: true
-    dir: ./logs/sma/
+    file:
+      dir: ./logs/sma
+      name: msg
+      max_bytes: 104857600
+      daily: true
+      max_backups: 10
+      max_age_days: 7
+      sync: rotate
 
 catalog:
   instruments: ./instruments.json

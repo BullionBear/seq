@@ -57,6 +57,9 @@ func (m *MsgBus) observe(ctx context.Context, interval time.Duration) {
 		case <-ticker.C:
 			m.sampleCounters(&cur)
 			m.reportDelta(&prev, &cur, interval)
+			if m.msgLogger != nil {
+				_ = m.msgLogger.Sync()
+			}
 			prev = cur
 		}
 	}

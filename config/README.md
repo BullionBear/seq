@@ -2,6 +2,38 @@
 
 Scenario YAML under this directory is safe to commit. **Never** put venue API keys, secrets, or other credentials in tracked files.
 
+## Logger and msglog
+
+Both use the same `file:` rotation block (`core/logger/rotate.FileConfig`):
+
+```yaml
+logger:
+  level: debug
+  stdout: true
+  file:
+    dir: ./logs
+    name: seq              # -> seq_<YYYY-MM-DD>.log (+ .N on size roll)
+    max_bytes: 10485760
+    daily: true
+    max_backups: 5
+    max_age_days: 0
+    sync: rotate           # none | rotate | periodic | each
+
+msgbus:
+  msglog:
+    enabled: true
+    file:
+      dir: ./logs
+      name: msg             # -> msg_<YYYY-MM-DD>.jsonl (events + commands)
+      max_bytes: 104857600
+      daily: true
+      max_backups: 10
+      max_age_days: 7
+      sync: rotate
+```
+
+Omit `logger.file.dir` (or leave it empty) to disable text-file logging. Msglog never writes to stdout.
+
 ## Instruments
 
 Market data metadata (symbols, exchanges, products, tokens, precisions) loads from a local JSON file referenced by `catalog.instruments`. A relative path is resolved against the config file's directory, so sample configs use:
