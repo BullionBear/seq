@@ -34,8 +34,8 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
      ┌──────────────┼──────────────┬───────────┬───────────┼────────┐
      ▼              ▼              ▼           ▼           ▼        │
   DataEngine   ExecEngine    Ledger    RiskEngine  StrategyEngine │
-  orderbook      OMS          balance     leakybucket/  xarb/obtest/ │
-  + DataRouter + ExecRouter   actors      tpnl+Checker      sma      │
+  orderbook      OMS          balance     leakybucket   xarb/obtest/ │
+  + DataRouter + ExecRouter   actors      (+ Guards)        sma      │
      │              │              │           ▲            │        │
      ▼              ▼              ▼           │            │        │
   Binance/Bybit  Binance/Bybit  private WS     │     SubmitOrder()───┘
@@ -54,7 +54,7 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 3. Resolve paper/live gate via `tradingmode.Resolve(cfg.TradingMode, os.Getenv)` — default `paper`; optional override via `SEQ_TRADING_MODE`. Result is logged and passed into `Node.Init`.
 4. Apply optional `runtime` fencing (`GOMAXPROCS`, `GOGC=off` + `GOMEMLIMIT`) and start the optional metrics HTTP server (`metrics` config).
 5. Build `catalog.Catalog` from the local instruments file (`catalog.instruments`) and config-defined accounts (`catalog.accounts`).
-6. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter` package → type `leakybucket`, `tpnl`, `obtest`, `sma`, `xarb`).
+6. Blank-import actor packages so `init()` registers factories (`orderbook`, `oms`, `balance`, `ratelimiter` package → type `leakybucket`, `obtest`, `sma`, `xarb`).
 7. `node.NewNode` → wire msgbus, cache, five engines, execution router.
 8. Optional `msgbus.MsgLogger` for plaintext JSONL event/command audit logs.
 9. `Init` → `Start` → `Run` (blocks until SIGINT/SIGTERM).
@@ -131,10 +131,8 @@ In-memory read model shared across engines/strategies (no engine package imports
 - Order books (btree price levels per symbol).
 - Open orders (`OrderCache`).
 - Balances per account/token.
-- Risk metadata (e.g. rate-limit next-accept time).
-- TPNL window state.
 
-Writers: data/execution/ledger/risk actors. Readers: strategies and risk rules.
+Writers: data/execution/ledger actors. Readers: strategies (and future read-only risk views).
 
 ### 3.6 `core/catalog`
 
@@ -190,13 +188,14 @@ Start order: data → execution connect/start → ledger → risk → strategy.
 
 ### 5.4 Risk (`risk/`)
 
-Two layers:
+Actors from YAML; those implementing `risk.Guard` form the ordered pre-trade chain (declaration order, short-circuit).
 
-1. **Actors** (YAML type `leakybucket` rate limiter, `tpnl`) update cache risk/TPNL state from events/timers.
-2. **Checker** — ordered rule list (`ratelimit`, `tpnl` stop-loss) evaluated on `CommandTypeOrderRiskCheck`.
+- `leakybucket` — sliding-window rate limit; `Check` admits/rejects atomically (no cache, no `OrderNew` feedback loop).
 
 On pass: publish `OrderNew` event + send `OrderSubmit` command.  
-On fail: publish `OrderRiskInvalid` (no submit).
+On fail: publish `OrderRiskInvalid` (coded error + guard-name message prefix; no submit).
+
+Unknown actor types fail closed at `Init`. Stateless Guards use nil topics and are **not** registered on the bus (see `docs/ACTORS.md` §5.4).
 
 ### 5.5 Strategy (`strategy/`)
 
@@ -269,7 +268,7 @@ node:
     data: { actor: [...] }
     execution: { actor: [...] }
     ledger: { actor: [...] }
-    risk: { actor: [...], checker: [...] }
+    risk: { actor: [...] }
     strategy: { actor: [...] }
 ```
 
@@ -296,7 +295,7 @@ Actor entries are uniformly `{ type, name?, config: map }`. Sample scenarios liv
 ### 8.3 Order intent → venue
 
 1. Strategy `SubmitOrder` → cache insert (`Initialized`) + `OrderRiskCheck` command.
-2. Risk `Checker` runs rules.
+2. Risk Guards run in config order.
 3. Pass → `OrderNew` event + `OrderSubmit` command; fail → `OrderRiskInvalid`.
 4. OMS handles `OrderNew` (cache). Execution engine sends submit to venue via router (refused in paper mode).
 5. Venue private stream → accepted / fill / cancel / reject events → OMS updates cache; strategies react.
@@ -345,7 +344,7 @@ seq/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
 ├── ledger/           # balance engine + balance actor
-├── risk/                # risk engine, checker, rules, ratelimiter/tpnl actors
+├── risk/                # risk engine, Guard interface, ratelimiter actor
 └── strategy/            # strategy engine + xarb/obtest/sma (+ StrategyActorBase)
 ```
 

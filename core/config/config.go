@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,9 +52,13 @@ func LoadConfig(path string) (*AppConfig, error) {
 }
 
 // LoadConfigFromBytes loads configuration from YAML bytes.
+// Unknown fields are rejected (KnownFields) so stale keys like the removed
+// risk.checker block fail closed at load time.
 func LoadConfigFromBytes(data []byte) (*AppConfig, error) {
 	var cfg AppConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, err
 	}
 	cfg.applyDefaults()

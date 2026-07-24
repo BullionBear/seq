@@ -129,24 +129,26 @@ OMS does not call the venue. The engine does, after risk has published `OrderNew
 | `LedgerEngine` | Engine | Subscribe private balance streams; request initial snapshots; gate system `Ready` when all wallets have snapshots |
 | `balance` | Actor | One per wallet; snapshot/update (+ related) events → **write balances to cache**; signal ready to the engine |
 
-### 5.4 Risk — pre-trade gate + risk state
+### 5.4 Risk — pre-trade Guards
 
-Risk has **two layers**. Only one is actors.
+Risk actors that implement `risk.Guard` are the pre-trade gate. Guard and its state are the **same instance** (no separate checker / cache key binding).
 
 | Piece | Kind | Owns |
 | --- | --- | --- |
-| `leakybucket` | Actor | On `OrderNew`, update rate-limit next-accept time in cache |
-| `tpnl` | Actor | On `Execution`, update TPNL window state in cache |
-| **`Checker`** | **Not an actor** | Ordered rules on `CommandTypeOrderRiskCheck` (YAML `checker:`) |
+| `leakybucket` | Actor + Guard | Atomic admit/reject on `CommandTypeOrderRiskCheck` (sliding-window rate limit) |
 
 Flow:
 
 1. Strategy `SubmitOrder` → cache insert (`Initialized`) + `OrderRiskCheck` command.  
-2. Checker reads cache risk/TPNL state.  
+2. Engine runs Guards in YAML declaration order (short-circuit on first reject).  
 3. Pass → publish `OrderNew` + send `OrderSubmit`.  
 4. Fail → publish `OrderRiskInvalid` (no venue submit).
 
-Actors **maintain** risk inputs; the Checker **enforces** the gate. Do not implement pre-trade reject logic as an actor `Handle`.
+Pre-trade reject logic belongs in `Guard.Check`, not in `Handle`.
+
+#### Risk nil topics ≠ subscribe-all
+
+In `core/actor` / `core/msgbus`, `SubscribedTypes()` returning nil/empty means **subscribe to every topic**. Risk `Engine.Init` inverts that for this module: nil/empty topics mean **do not register** on the bus. Stateless Guards (no events to consume) must use nil topics so they are not flooded with every event.
 
 ### 5.5 Strategy — trading intent
 
@@ -171,8 +173,8 @@ Strategies:
 | Order books in cache | `orderbook` actor |
 | Open orders in cache | `oms` (+ strategy insert on `SubmitOrder`); execution engine marks Cancelling |
 | Balances in cache | `balance` actor |
-| Rate-limit / TPNL state | `leakybucket`, `tpnl` actors |
-| Pre-trade accept/reject | Risk **Checker** (engine path) |
+| Rate-limit admit state | `leakybucket` Guard (in-actor; not in cache) |
+| Pre-trade accept/reject | Risk **Guards** (engine path, config order) |
 | Venue market data I/O | Data engine + DataRouter |
 | Venue order I/O | Execution engine + ExecutionRouter |
 | Trading decisions | Strategy actors |
@@ -187,7 +189,7 @@ Strategies:
 4. Blank-import the package in `cmd/main.go`.
 5. Add YAML under `node.engine.{module}.actor`.
 6. New **commands** → register a processor on the **engine**, not on the actor.
-7. New **pre-trade rules** → `risk/rule` + YAML `checker:`, not a new actor.
+7. New **pre-trade controls** → implement `risk.Guard` on a risk actor (`Check`); register via the risk actor factory (YAML `actor:` only).
 8. Keep `Handle` non-blocking; copy arena slices out; no venue calls from strategies.
 
 ---

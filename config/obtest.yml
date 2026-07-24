@@ -30,12 +30,7 @@ catalog:
 node:
   engine:
     data:
-      subscriptions:
-        - symbol: BINANCE_PERPETUAL_ETHUSDT
-          depth:
-            type: delta
-            push_rate: 100ms
-
+      actor: []
 
     execution:
       actor: []

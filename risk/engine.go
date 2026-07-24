@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/BullionBear/seq/core/actor"
@@ -20,16 +21,21 @@ var _ engine.Engine = (*Engine)(nil)
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
+type guardEntry struct {
+	name  string
+	guard Guard
+}
+
 // Engine manages risk calculations and limits.
-// It constructs actors from config via the factory registry and builds a
-// Checker from configured rules to gate order flow.
+// It constructs actors from config via the factory registry; actors that also
+// implement Guard are collected as the ordered pre-trade check chain.
 type Engine struct {
 	engine.EngineBase
 	catalog *catalog.Catalog
 	msgBus  *msgbus.MsgBus
 	cache   *cache.Cache
 	actors  []actor.Actor
-	checker *Checker
+	guards  []guardEntry
 }
 
 // NewEngine creates a new risk engine.
@@ -42,41 +48,43 @@ func NewEngine(cat *catalog.Catalog, msgBus *msgbus.MsgBus, c *cache.Cache) *Eng
 	}
 }
 
-// Init initializes the risk engine: constructs actors from config, builds the
-// checker from configured rules, and registers command handlers.
-func (e *Engine) Init(config Config) {
+// Init initializes the risk engine: constructs actors from config, collects
+// Guards, and registers command handlers. Unknown actor types fail closed.
+func (e *Engine) Init(config Config) error {
 	for _, entry := range config.Actor {
 		factory, err := lookupFactory(entry.Type)
 		if err != nil {
-			log().Error().Err(err).Str("type", entry.Type).Msg("RiskEngine: skipping unknown actor type")
-			continue
+			return fmt.Errorf("risk: actor %q: %w", entry.Name, err)
 		}
 
 		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
-		actor.Register(e.msgBus, a)
+
+		// core/msgbus: nil/empty topics mean "subscribe to all".
+		// Stateless guards must not register, or they receive every event.
+		if len(a.SubscribedTypes()) > 0 {
+			actor.Register(e.msgBus, a)
+		}
 		e.actors = append(e.actors, a)
 
-		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("RiskEngine: actor initialized")
-	}
-
-	builder := NewCheckerBuilder()
-	for _, entry := range config.Checker {
-		r, err := RuleFactory(entry.Type, e.catalog, e.cache, entry.Config)
-		if err != nil {
-			log().Error().Err(err).Str("type", entry.Type).Msg("RiskEngine: skipping unknown rule type")
-			continue
+		g, isGuard := a.(Guard)
+		if isGuard {
+			e.guards = append(e.guards, guardEntry{name: a.Name(), guard: g})
 		}
-		builder.AddRule(r)
-		log().Info().Str("type", entry.Type).Msg("RiskEngine: rule added")
+
+		log().Info().
+			Str("type", entry.Type).
+			Str("name", a.Name()).
+			Bool("guard", isGuard).
+			Msg("RiskEngine: actor initialized")
 	}
-	e.checker = builder.Build()
 
 	for _, cmdType := range e.handledCommandTypes() {
 		e.msgBus.RegisterCommand(cmdType, func(cmd msgbus.Command) { e.Execute(cmd, e.msgBus) })
 	}
 	log().Info().Msg("RiskEngine initialized")
+	return nil
 }
 
 // Start starts the risk engine and all its actors.
@@ -119,13 +127,17 @@ func (e *Engine) Execute(cmd msgbus.Command, bus *msgbus.MsgBus) {
 }
 
 func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
-	if err := e.riskCheck(cmd); err != nil {
-		log().Error().Err(err).Msg("RiskEngine: Order risk check failed")
+	if name, err := e.riskCheck(cmd); err != nil {
+		msg := err.Error()
+		if name != "" {
+			msg = name + ": " + msg
+		}
+		log().Error().Err(err).Str("guard", name).Msg("RiskEngine: Order risk check failed")
 		ev := event.OrderRiskInvalid{
 			ClientOrderID: cmd.ClientOrderID,
 			AccountID:     cmd.AccountID,
-			ErrorCode:     -1,
-			Msg:           err.Error(),
+			ErrorCode:     CodeOf(err),
+			Msg:           msg,
 		}
 		ref, buf, ok := e.msgBus.Allocate(event.TopicEventOrderRiskInvalid, uint64(ev.GetBufferLength()))
 		if !ok {
@@ -177,9 +189,11 @@ func (e *Engine) execOrderRiskCheck(cmd command.RiskCheck) {
 	e.msgBus.Send(cmdRef)
 }
 
-func (e *Engine) riskCheck(cmd command.RiskCheck) error {
-	if e.checker == nil {
-		return nil
+func (e *Engine) riskCheck(cmd command.RiskCheck) (string, error) {
+	for _, ge := range e.guards {
+		if err := ge.guard.Check(cmd); err != nil {
+			return ge.name, err
+		}
 	}
-	return e.checker.Check(cmd)
+	return "", nil
 }
