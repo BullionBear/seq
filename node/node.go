@@ -108,7 +108,9 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.ledgerEngine.Init(config.Engine.Ledger)
-	n.riskEngine.Init(config.Engine.Risk)
+	if err := n.riskEngine.Init(config.Engine.Risk); err != nil {
+		log().Fatal().Err(err).Msg("Node: risk engine init failed")
+	}
 	n.strategyEngine.Init(config.Engine.Strategy)
 
 	log().Info().Str("trading_mode", tradingMode.String()).Msg("Node initialized")

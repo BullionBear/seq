@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/BullionBear/seq/core/tradingmode"
@@ -79,5 +80,28 @@ logger:
 	}
 	if got := cfg.Catalog.Accounts[0].APIKeys[0].Key; got != "" {
 		t.Fatalf("Key = %q, want empty when env unset", got)
+	}
+}
+
+func TestLoadConfigFromBytes_RejectsUnknownFields(t *testing.T) {
+	yaml := `
+catalog:
+  instruments: ./config/instruments.json
+logger:
+  level: info
+  stdout: true
+node:
+  engine:
+    risk:
+      actor: []
+      checker:
+        - type: ratelimit
+`
+	_, err := LoadConfigFromBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for removed risk.checker field")
+	}
+	if !strings.Contains(err.Error(), "checker") {
+		t.Fatalf("error %v should mention checker", err)
 	}
 }

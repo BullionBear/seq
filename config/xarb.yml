@@ -107,18 +107,6 @@ node:
             leak_rate: 2 # requests per second
             capacity: 60
             account: bybit-hephe
-        - type: tpnl
-          name: tpnl-1h
-          config:
-            window: 1h
-      checker:
-        - type: ratelimit
-          config:
-            account: bybit-hephe
-        - type: tpnl
-          config:
-            window: 1h
-            stop_loss: -5.0
 
     strategy:
       actor:

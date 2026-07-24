@@ -32,8 +32,8 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
      ┌──────────────┼──────────────┬───────────┬───────────┼────────┐
      ▼              ▼              ▼           ▼           ▼        │
   DataEngine   ExecEngine    Ledger    RiskEngine  StrategyEngine │
-  orderbook      OMS          balance     ratelimit/     xarb/obtest │
-  + DataRouter + ExecRouter   actors      tpnl+Checker      │        │
+  orderbook      OMS          balance     leakybucket    xarb/obtest │
+  + DataRouter + ExecRouter   actors      (+ Guards)        │        │
      │              │              │           ▲            │        │
      ▼              ▼              ▼           │            │        │
   Binance/Bybit  Binance/Bybit  private WS     │     SubmitOrder()───┘
@@ -45,10 +45,10 @@ There is **no PostgreSQL / GORM stack** in the current tree. Persistence today i
 
 - **In-process Node** — single consumer loop: clock tick → command-before-event dispatch → arena release
 - **Dual-channel msgbus** — MPSC events (topic fan-out) and SPSC commands (point-to-point, higher priority)
-- **Shared cache** — order books, open orders, balances, and risk metadata as the cross-engine read model
-- **Mandatory risk gate** — strategies call `SubmitOrder` → `OrderRiskCheck`; venue submit only on pass
+- **Shared cache** — order books, open orders, and balances as the cross-engine read model
+- **Mandatory risk gate** — strategies call `SubmitOrder` → `OrderRiskCheck`; Guards admit/reject; venue submit only on pass
 - **Venue adapters** — Binance spot, Binance USD-M futures, Bybit spot data + execution (WS + HTTP); adapters publish normalized events only
-- **Config-driven actors** — YAML factories for orderbook, OMS, balance, ratelimiter, tpnl, `xarb`, `obtest`
+- **Config-driven actors** — YAML factories for orderbook, OMS, balance, `leakybucket`, `xarb`, `obtest`, `sma`
 - **Optional msglog** — plaintext JSONL event/command audit trail written at dispatch
 - **Structured logging** — zerolog + shared date/size `rotate.Writer` (crash-durable direct writes)
 
@@ -172,13 +172,11 @@ node:
           config: {}
     risk:
       actor:
-        - type: ratelimiter
-          config: {}
-        - type: tpnl
-          config: {}
-      checker:
-        - type: ratelimit
-        - type: tpnl
+        - type: leakybucket
+          name: rate-limiter
+          config:
+            leak_rate: 2
+            capacity: 60
     strategy:
       actor:
         - type: obtest   # or xarb
@@ -201,7 +199,7 @@ Sample scenarios: `config/obtest.yml`, `config/xarb.yml`, `config/sma.yml`, `con
 ### Order intent → venue
 
 1. Strategy `SubmitOrder` → cache insert (`Initialized`) + `OrderRiskCheck` command
-2. Risk `Checker` runs ordered rules (`ratelimit`, `tpnl`, …)
+2. Risk Guards run in YAML order (`leakybucket`, …)
 3. Pass → `OrderNew` event + `OrderSubmit` command; fail → `OrderRiskInvalid` (no submit)
 4. OMS updates cache; execution engine submits via `ExecutionRouter`
 5. Venue private stream → accept / fill / cancel / reject → OMS → strategies
@@ -221,7 +219,7 @@ seq/
 ├── data/                # market-data engine + orderbook actor
 ├── execution/           # order engine + oms actor
 ├── ledger/           # balance engine + balance actor
-├── risk/                # risk engine, checker, rules, ratelimiter/tpnl actors
+├── risk/                # risk engine, Guard interface, ratelimiter actor
 └── strategy/            # strategy engine + xarb/obtest (+ StrategyActorBase)
 ```
 
