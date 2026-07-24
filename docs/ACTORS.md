@@ -148,7 +148,9 @@ Pre-trade reject logic belongs in `Guard.Check`, not in `Handle`.
 
 #### Risk nil topics ≠ subscribe-all
 
-In `core/actor` / `core/msgbus`, `SubscribedTypes()` returning nil/empty means **subscribe to every topic**. Risk `Engine.Init` inverts that for this module: nil/empty topics mean **do not register** on the bus. Stateless Guards (no events to consume) must use nil topics so they are not flooded with every event.
+In `core/actor` / `core/msgbus`, `SubscribedTypes()` returning nil/empty means **subscribe to every topic**. Risk `Engine.Init` inverts that for this module: nil/empty topics mean **do not register** on the bus. Stateless Guards (no events to consume) must use nil topics so they are not flooded with every event. `Engine.Init` still calls `actor.InjectClock` so `Clock()` remains available without registration.
+
+Rate-limit admit/drain uses `RiskCheck.Timestamp` (set by `SubmitOrder`), not wall-clock `time.Now()`.
 
 ### 5.5 Strategy — trading intent
 

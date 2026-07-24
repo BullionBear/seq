@@ -40,11 +40,10 @@ type Actor interface {
 	OnStop()
 }
 
-// Register is a helper function that registers an Actor with the MsgBus.
-// It creates a handler that calls the actor's Handle method with the MsgBus reference.
-// If a Clock is attached to the MsgBus via SetTicker, it is automatically injected
-// into the actor (available via ActorBase.Clock() in OnStart and Handle).
-func Register(bus *msgbus.MsgBus, a Actor) {
+// InjectClock attaches the MsgBus ticker Clock to the actor when present.
+// Safe to call independently of Register — needed for actors that skip bus
+// registration (e.g. risk Guards with nil SubscribedTypes).
+func InjectClock(bus *msgbus.MsgBus, a Actor) {
 	if t := bus.GetTicker(); t != nil {
 		if clk, ok := t.(*clock.Clock); ok {
 			type clockSetter interface{ SetClock(*clock.Clock) }
@@ -53,6 +52,14 @@ func Register(bus *msgbus.MsgBus, a Actor) {
 			}
 		}
 	}
+}
+
+// Register is a helper function that registers an Actor with the MsgBus.
+// It creates a handler that calls the actor's Handle method with the MsgBus reference.
+// If a Clock is attached to the MsgBus via SetTicker, it is automatically injected
+// into the actor (available via ActorBase.Clock() in OnStart and Handle).
+func Register(bus *msgbus.MsgBus, a Actor) {
+	InjectClock(bus, a)
 	handler := func(ev msgbus.Event) {
 		a.Handle(ev, bus)
 	}

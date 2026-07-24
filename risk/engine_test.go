@@ -8,6 +8,7 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/clock"
 	"github.com/BullionBear/seq/core/model/command"
 	"github.com/BullionBear/seq/core/model/event"
 	"github.com/BullionBear/seq/core/msgbus"
@@ -60,6 +61,8 @@ func TestEngine_Init_StatelessGuardNotRegistered(t *testing.T) {
 	})
 
 	bus := msgbus.NewMsgBus()
+	clk := clock.NewClock(bus)
+	bus.SetTicker(clk)
 	before := bus.ConsumerCount()
 	e := NewEngine(&catalog.Catalog{}, bus, cache.NewCache())
 	if err := e.Init(Config{
@@ -72,6 +75,9 @@ func TestEngine_Init_StatelessGuardNotRegistered(t *testing.T) {
 	}
 	if len(e.guards) != 1 {
 		t.Fatalf("guards = %d, want 1", len(e.guards))
+	}
+	if e.actors[0].(*stubActor).Clock() != clk {
+		t.Fatal("stateless guard must still receive Clock via InjectClock")
 	}
 }
 

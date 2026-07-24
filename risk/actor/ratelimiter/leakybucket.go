@@ -109,12 +109,19 @@ func (lb *LeakyBucket) OnInit(config map[string]any) {
 
 // Check admits the order into the rate bucket or rejects when the burst
 // capacity within the sliding window is exhausted.
+//
+// The sliding window is driven by cmd.Timestamp (set by SubmitOrder), not
+// wall-clock time.Now(). That keeps admit/drain deterministic and aligned
+// with the order's CreatedAt, independent of actor.Register / Clock injection.
 func (lb *LeakyBucket) Check(cmd command.RiskCheck) error {
 	if lb.accountID != -1 && cmd.AccountID != lb.accountID {
 		return nil
 	}
 
-	now := uint64(time.Now().UnixNano())
+	now := cmd.Timestamp
+	if now == 0 {
+		now = uint64(time.Now().UnixNano())
+	}
 	lb.drainExpired(now)
 
 	// Enforce configured capacity (ring buffer size may be rounded up to
