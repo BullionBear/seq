@@ -43,7 +43,7 @@ func (e *Engine) Init(config Config) {
 		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
-		actor.Register(e.msgBus, a)
+		actor.RegisterIn(e.msgBus, a, msgbus.PhaseDecide)
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("StrategyEngine: actor initialized")

@@ -46,7 +46,7 @@ type Actor interface {
 1. Factory constructs the actor (from YAML `type`).
 2. `actor.ApplyName` applies optional YAML `name`.
 3. `OnInit(config)` — decode config, resolve catalog symbols/wallets, set topics.
-4. `actor.Register(bus, a)` — inject `Clock` if present; bind topics → `Handle` on msgbus.
+4. `actor.RegisterIn(bus, a, phase)` — inject `Clock` if present; bind topics → `Handle` on msgbus at the engine's dispatch phase (see [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md)).
 5. Engine `Start` → `OnStart()`.
 6. Dispatch loop fan-outs matching events → `Handle`.
 7. Engine `Stop` → `OnStop()`.
@@ -73,6 +73,10 @@ The Node runs **one** dispatch consumer (`LockOSThread`):
 3. Fan-out the event to every actor whose `SubscribedTypes` matches  
 4. Release arena memory for that event  
 
+Fan-out order is registration order (engine init order). That order is a
+correctness contract — cache writers must precede readers on the same event.
+See [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md).
+
 Rules for `Handle`:
 
 1. **Keep it short** — you share the dispatch thread with every other actor and all command processors.
@@ -88,12 +92,12 @@ Rules for `Handle`:
 | Mechanism | Purpose |
 | --- | --- |
 | `{module}.Register("type", factory)` in `init()` | YAML `type` → constructor |
-| `actor.Register(bus, instance)` | Bind instance to msgbus topics |
+| `actor.RegisterIn(bus, instance, phase)` | Bind instance to msgbus topics at a dispatch phase |
 
 Factories are pulled in via blank imports in `cmd/main.go`. Engines then:
 
 ```text
-lookupFactory(entry.Type) → factory(...) → ApplyName → OnInit → actor.Register → append
+lookupFactory(entry.Type) → factory(...) → ApplyName → OnInit → actor.RegisterIn(phase) → append
 ```
 
 Unknown `type` is logged and skipped.

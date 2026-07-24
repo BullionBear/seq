@@ -54,16 +54,23 @@ func InjectClock(bus *msgbus.MsgBus, a Actor) {
 	}
 }
 
-// Register is a helper function that registers an Actor with the MsgBus.
+// Register is a helper that registers an Actor at PhaseIngest.
+// Engines must use RegisterIn with the engine's phase so Node.Init can
+// AssertOrder; see docs/CONSUMER_ORDER.md.
+func Register(bus *msgbus.MsgBus, a Actor) {
+	RegisterIn(bus, a, msgbus.PhaseIngest)
+}
+
+// RegisterIn registers an Actor with the MsgBus at the given dispatch phase.
 // It creates a handler that calls the actor's Handle method with the MsgBus reference.
 // If a Clock is attached to the MsgBus via SetTicker, it is automatically injected
 // into the actor (available via ActorBase.Clock() in OnStart and Handle).
-func Register(bus *msgbus.MsgBus, a Actor) {
+func RegisterIn(bus *msgbus.MsgBus, a Actor, phase msgbus.Phase) {
 	InjectClock(bus, a)
 	handler := func(ev msgbus.Event) {
 		a.Handle(ev, bus)
 	}
-	bus.Register(a.Name(), a.SubscribedTypes(), handler)
+	bus.RegisterPhased(phase, a.Name(), a.SubscribedTypes(), handler)
 }
 
 // ApplyName sets the actor's name from the config entry. If name is empty,

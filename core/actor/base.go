@@ -59,12 +59,12 @@ func (a *ActorBase) SetTopics(topics []event.Topic) {
 	a.topics = topics
 }
 
-// Clock returns the injected Clock instance. Available after actor.Register().
+// Clock returns the injected Clock instance. Available after actor.RegisterIn().
 func (a *ActorBase) Clock() *clock.Clock {
 	return a.clk
 }
 
-// SetClock sets the clock on this actor. Called automatically by actor.Register().
+// SetClock sets the clock on this actor. Called automatically by actor.RegisterIn().
 func (a *ActorBase) SetClock(c *clock.Clock) {
 	a.clk = c
 }

@@ -105,7 +105,7 @@ func (e *Engine) Init(config Config, subscriptions []adapter.DataRouterEntry) {
 		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
-		actor.Register(e.msgBus, a)
+		actor.RegisterIn(e.msgBus, a, msgbus.PhaseIngest)
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("DataEngine: actor initialized")

@@ -113,6 +113,13 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	}
 	n.strategyEngine.Init(config.Engine.Strategy)
 
+	// Dispatch order is a correctness contract: cache writers (data /
+	// execution / ledger) must precede readers (strategy). See
+	// docs/CONSUMER_ORDER.md.
+	if err := n.msgBus.AssertOrder(); err != nil {
+		log().Fatal().Err(err).Msg("Node: consumer order assertion failed")
+	}
+
 	log().Info().Str("trading_mode", tradingMode.String()).Msg("Node initialized")
 }
 

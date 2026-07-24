@@ -122,8 +122,15 @@ func (m *MsgBus) GetTicker() Ticker {
 // Register adds an event consumer to the MsgBus with optional topic filtering.
 // If topics is nil or empty, the consumer will receive all event topics.
 // Consumers should be registered before calling Dispatch.
+// The consumer is registered at PhaseIngest; engines should use RegisterPhased.
 func (m *MsgBus) Register(name string, topics []event.Topic, handler EventHandler) {
 	m.eventBus.Register(name, topics, handler)
+}
+
+// RegisterPhased adds an event consumer at the given dispatch phase.
+// See docs/CONSUMER_ORDER.md.
+func (m *MsgBus) RegisterPhased(phase Phase, name string, topics []event.Topic, handler EventHandler) {
+	m.eventBus.RegisterPhased(phase, name, topics, handler)
 }
 
 // Publish publishes an EventRef to the event ring buffer. The caller should
@@ -178,6 +185,18 @@ func (m *MsgBus) Poll(handler EventHandler) bool {
 // ConsumerCount returns the number of registered event consumers.
 func (m *MsgBus) ConsumerCount() int {
 	return m.eventBus.ConsumerCount()
+}
+
+// ConsumerNames returns the registered consumer names in dispatch order.
+// The order is load-bearing: see docs/CONSUMER_ORDER.md.
+func (m *MsgBus) ConsumerNames() []string {
+	return m.eventBus.ConsumerNames()
+}
+
+// AssertOrder verifies consumer phases are non-decreasing.
+// Called once from Node.Init after all engines are initialized.
+func (m *MsgBus) AssertOrder() error {
+	return m.eventBus.AssertOrder()
 }
 
 // MinSequence returns the minimum sequence across all event consumers.
