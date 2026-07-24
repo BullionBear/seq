@@ -10,36 +10,6 @@ import (
 	"github.com/BullionBear/seq/core/model/event"
 )
 
-// Phase is the dispatch phase of an event consumer. Consumer phases must be
-// non-decreasing in registration order so cache writers run before readers.
-// See docs/CONSUMER_ORDER.md.
-type Phase int
-
-const (
-	PhaseIngest  Phase = iota // data: write market data (orderbook / kline)
-	PhaseOrder                // execution: write order cache
-	PhaseAccount              // ledger: write balance / position
-	PhaseControl              // risk
-	PhaseDecide               // strategy: read-only
-)
-
-func (p Phase) String() string {
-	switch p {
-	case PhaseIngest:
-		return "ingest"
-	case PhaseOrder:
-		return "order"
-	case PhaseAccount:
-		return "account"
-	case PhaseControl:
-		return "control"
-	case PhaseDecide:
-		return "decide"
-	default:
-		return fmt.Sprintf("phase(%d)", int(p))
-	}
-}
-
 const (
 	// DefaultByteArenaCapacity is the default capacity for the byte arena (1MB)
 	DefaultByteArenaCapacity = 1024 * 1024
@@ -148,16 +118,9 @@ func (e *EventBus) WaitCount(topic event.Topic) uint64 {
 	return atomic.LoadUint64(&e.waitCounts[topic])
 }
 
-// Register adds a consumer to the EventBus with optional topic filtering.
-// If topics is nil or empty, the consumer will receive all topics.
-// Consumers should be registered before calling Dispatch.
-// The consumer is registered at PhaseIngest; engines should use RegisterPhased.
-func (e *EventBus) Register(name string, topics []event.Topic, handler EventHandler) {
-	e.RegisterPhased(PhaseIngest, name, topics, handler)
-}
-
 // RegisterPhased adds a consumer at the given dispatch phase.
-// Phases must be non-decreasing across registrations (AssertOrder enforces this).
+// If topics is nil or empty, the consumer receives all topics.
+// Phases must be non-decreasing across registrations; AssertOrder enforces it.
 // See docs/CONSUMER_ORDER.md.
 func (e *EventBus) RegisterPhased(phase Phase, name string, topics []event.Topic, handler EventHandler) {
 	consumer := NewConsumer(name, topics, handler)
@@ -165,8 +128,8 @@ func (e *EventBus) RegisterPhased(phase Phase, name string, topics []event.Topic
 	e.consumers = append(e.consumers, consumer)
 }
 
-// ConsumerNames returns the registered consumer names in dispatch order.
-// The order is load-bearing: see docs/CONSUMER_ORDER.md.
+// ConsumerNames returns registered consumer names in dispatch order.
+// Allocates; startup and test paths only, never called from Dispatch.
 func (e *EventBus) ConsumerNames() []string {
 	names := make([]string, len(e.consumers))
 	for i, c := range e.consumers {
@@ -175,18 +138,31 @@ func (e *EventBus) ConsumerNames() []string {
 	return names
 }
 
-// AssertOrder verifies consumer phases are non-decreasing.
-// Called once from Node.Init after all engines are initialized.
+// ConsumerPhases returns registered consumer phases in dispatch order.
+// Allocates; startup and test paths only, never called from Dispatch.
+func (e *EventBus) ConsumerPhases() []Phase {
+	phases := make([]Phase, len(e.consumers))
+	for i, c := range e.consumers {
+		phases[i] = c.Phase
+	}
+	return phases
+}
+
+// AssertOrder verifies consumer phases are non-decreasing, i.e. that every
+// cache writer is registered before every cache reader.
+// Called once from Node.initEngines after all engines are initialized.
+// See docs/CONSUMER_ORDER.md.
 func (e *EventBus) AssertOrder() error {
 	prev := Phase(-1)
+	prevName := "<start>"
 	for _, c := range e.consumers {
 		if c.Phase < prev {
 			return fmt.Errorf(
-				"consumer %q (phase %d/%s) registered after phase %d: "+
+				"consumer order violation: %q (phase %s) registered after %q (phase %s); "+
 					"cache writers must precede readers, see docs/CONSUMER_ORDER.md",
-				c.Name, c.Phase, c.Phase.String(), prev)
+				c.Name, c.Phase, prevName, prev)
 		}
-		prev = c.Phase
+		prev, prevName = c.Phase, c.Name
 	}
 	return nil
 }

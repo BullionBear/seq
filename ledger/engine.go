@@ -98,7 +98,7 @@ func (e *Engine) Init(config Config) {
 		}
 
 		a.OnInit(entry.Config)
-		actor.RegisterIn(e.msgBus, a, msgbus.PhaseAccount)
+		actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
 		e.actors = append(e.actors, a)
 
 		if entry.Type == "inventory" {

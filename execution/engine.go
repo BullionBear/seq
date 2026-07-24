@@ -59,7 +59,7 @@ func (e *Engine) Init(config Config) {
 		a := factory(e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
-		actor.RegisterIn(e.msgBus, a, msgbus.PhaseOrder)
+		actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("ExecutionEngine: actor initialized")

@@ -187,7 +187,7 @@ func TestMsgBus_CommandPriorityOverEvent(t *testing.T) {
 	var order []string
 
 	// Register event consumer
-	bus.Register("test-consumer", nil, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "test-consumer", nil, func(ev Event) {
 		order = append(order, "event")
 	})
 
@@ -232,7 +232,7 @@ func TestMsgBus_MultipleCommandsDrainedBeforeEvent(t *testing.T) {
 	eventCount := 0
 
 	// Register event consumer
-	bus.Register("test-consumer", nil, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "test-consumer", nil, func(ev Event) {
 		eventCount++
 	})
 
@@ -293,7 +293,7 @@ func TestMsgBus_EventDispatchDelegation(t *testing.T) {
 	bus := NewMsgBus()
 
 	var receivedTopic event.Topic
-	bus.Register("test", []event.Topic{event.TopicEventTick}, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "test", []event.Topic{event.TopicEventTick}, func(ev Event) {
 		receivedTopic = ev.Ref.Topic
 	})
 
@@ -338,7 +338,7 @@ func BenchmarkMsgBus_SendCommand(b *testing.B) {
 
 func BenchmarkMsgBus_DispatchEvent(b *testing.B) {
 	bus := NewMsgBus()
-	bus.Register("bench", nil, func(ev Event) {})
+	bus.RegisterPhased(PhaseIngest, "bench", nil, func(ev Event) {})
 
 	tick := event.Tick{SymbolID: 1, Price: 50000.0}
 	tickSize := uint64(tick.GetBufferLength())

@@ -48,10 +48,17 @@ func TestEventBus_AssertOrder_Violation(t *testing.T) {
 	if err == nil {
 		t.Fatal("AssertOrder: expected error for phase regression")
 	}
-	if !strings.Contains(err.Error(), "orderbook") {
+	msg := err.Error()
+	if !strings.Contains(msg, "consumer order violation") {
+		t.Fatalf("error should start with violation tag: %v", err)
+	}
+	if !strings.Contains(msg, "orderbook") {
 		t.Fatalf("error should name offending consumer: %v", err)
 	}
-	if !strings.Contains(err.Error(), "CONSUMER_ORDER.md") {
+	if !strings.Contains(msg, "strategy") {
+		t.Fatalf("error should name preceding consumer: %v", err)
+	}
+	if !strings.Contains(msg, "CONSUMER_ORDER.md") {
 		t.Fatalf("error should point at docs: %v", err)
 	}
 }

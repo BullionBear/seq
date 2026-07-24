@@ -6,8 +6,8 @@ Dispatch order is a **correctness contract**, not an implementation detail.
 
 `EventBus.Dispatch()` delivers each event to consumers in registration order
 (`e.consumers` slice). Registration happens in each engine's `Init` via
-`actor.RegisterIn`, and engines are initialized from `node.Init` in a fixed
-order:
+`actor.RegisterIn`, and engines are initialized from `node.initEngines` in a
+fixed order:
 
 ```text
 data → execution → ledger → risk → strategy
@@ -46,20 +46,38 @@ In practice this aligns with engine boundaries, so we enforce a weaker proxy:
 
 This is the order the system already runs. Enforcement does not change it.
 
-## Enforcement
+## Registration API
 
-1. Engines register with `actor.RegisterIn(bus, a, phase)`.
-2. After all engines init, `Node.Init` calls `msgBus.AssertOrder()` and
-   **fatals** on violation.
-3. `ConsumerNames()` exposes the dispatch sequence for inspection / tests.
+There is no unphased registration. `EventBus.Register` and `actor.Register`
+were removed; every consumer must state its phase.
+
+Engines never write a phase literal — they derive it from their own type:
+
+```go
+actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
+```
+
+Ordering policy lives in exactly one place: `phaseTable` in
+`core/msgbus/phase.go`. Adding an engine requires adding a row; `PhaseOf`
+panics on an unknown engine type rather than guessing.
+
+## Enforcement layers
+
+| Layer | Catches | When |
+| --- | --- | --- |
+| `AssertOrder` in `Node.initEngines` | Cross-phase regression (engine reorder, wrong phase) | Startup, fail-closed |
+| `TestNode_ConsumerOrder` | Any change to the consumer sequence, including reordering *within* a phase | CI |
+| `TestPhaseOrdering` | Reshuffling the phase constants | CI |
+
+`AssertOrder` cannot see intra-phase reordering — two `data` actors swapping
+places is invisible to it. That is what the golden test is for.
 
 `AssertOrder` runs once at startup; the dispatch hot path is unchanged.
 
 ## Known limits
 
-- **Intra-engine order** is not checked. Two actors in the same phase can still
-  be wrong relative to each other; the phase assert only covers cross-engine
-  order.
+- **Intra-engine order** is not checked by `AssertOrder` (covered by the golden
+  test instead).
 - **Proxy, not real R/W deps.** We guard engine boundaries, not actual cache
   ownership. If a strategy actor starts writing cache, this proxy fails and a
   real ownership model is needed.

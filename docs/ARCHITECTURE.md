@@ -102,7 +102,7 @@ Design notes:
 
 `Actor` is the unit of business logic: `Name`, `SubscribedTypes`, `Handle`, `OnInit`/`OnStart`/`OnStop`.
 
-`actor.RegisterIn(bus, a, phase)` binds the actor to msgbus at a dispatch phase and injects `clock.Clock` when present. Phases must be non-decreasing; see [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md).
+`actor.RegisterIn(bus, a, msgbus.PhaseOf(e.Type()))` binds the actor to msgbus at a dispatch phase derived from the engine type and injects `clock.Clock` when present. Phases must be non-decreasing; policy lives in `phaseTable` — see [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md).
 
 Engines construct actors from YAML via per-package factory registries (`Register("type", factory)` in `init()`).
 
@@ -160,9 +160,9 @@ Local instrument/account registry: symbols load from a JSON file (`catalog.instr
 2. Attach `StateNotifier` to ledger.
 3. From `execrouter` YAML: resolve catalog accounts/wallets, create Binance/Bybit execution clients, register on `ExecutionRouter` (live mutations gated by trading mode).
 4. Init engines with `node.engine.*` YAML + `datarouter` subscriptions for data.
-5. `msgBus.AssertOrder()` — fail closed if consumer phases regress.
+5. `initEngines` → `msgBus.AssertOrder()` — fail closed if consumer phases regress.
 
-**Dispatch order is a correctness contract.** `EventBus` delivers events to consumers in registration order, and registration order is determined by the order `node.Init` calls each engine `Init`. Cache-writing actors (data / execution / ledger) must all precede cache-reading actors (strategy); otherwise strategies read a stale orderbook on the same tick. Reordering those five `Init` lines (or registering with the wrong phase) breaks the contract — `AssertOrder` fatals at startup. See [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md).
+**Dispatch order is a correctness contract.** `EventBus` delivers events to consumers in registration order, and registration order is determined by the order `node.initEngines` calls each engine `Init`. Cache-writing actors (data / execution / ledger) must all precede cache-reading actors (strategy); otherwise strategies read a stale orderbook on the same tick. Reordering those five `Init` lines (or registering with the wrong phase) breaks the contract — `AssertOrder` fatals at startup. See [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md).
 
 Start order: data → execution connect/start → ledger → risk → strategy.
 

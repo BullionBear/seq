@@ -25,7 +25,7 @@ func TestEventBus_CriticalNoLossUnderFullRing(t *testing.T) {
 	var received int64
 	seen := make(map[int]bool, total)
 	var seenMu sync.Mutex
-	bus.Register("counter", []event.Topic{event.TopicEventOrderNew}, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "counter", []event.Topic{event.TopicEventOrderNew}, func(ev Event) {
 		buf := bus.ReadBuffer(ev.Ref.Index, ev.Ref.Length)
 		orderNew, err := event.NewOrderNewFromBytes(buf)
 		if err != nil {
@@ -110,7 +110,7 @@ func TestEventBus_DroppableAccountedUnderFullRing(t *testing.T) {
 	bus.SetOverflowDeadline(30 * time.Second)
 
 	var received int64
-	bus.Register("counter", []event.Topic{event.TopicEventTick}, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "counter", []event.Topic{event.TopicEventTick}, func(ev Event) {
 		atomic.AddInt64(&received, 1)
 	})
 
@@ -173,7 +173,7 @@ func TestEventBus_ArenaReleasedPerEvent(t *testing.T) {
 	bus.SetOverflowDeadline(30 * time.Second)
 
 	var received int64
-	bus.Register("counter", nil, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "counter", nil, func(ev Event) {
 		atomic.AddInt64(&received, 1)
 	})
 

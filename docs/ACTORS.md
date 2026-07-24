@@ -46,7 +46,7 @@ type Actor interface {
 1. Factory constructs the actor (from YAML `type`).
 2. `actor.ApplyName` applies optional YAML `name`.
 3. `OnInit(config)` — decode config, resolve catalog symbols/wallets, set topics.
-4. `actor.RegisterIn(bus, a, phase)` — inject `Clock` if present; bind topics → `Handle` on msgbus at the engine's dispatch phase (see [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md)).
+4. `actor.RegisterIn(bus, a, msgbus.PhaseOf(e.Type()))` — inject `Clock` if present; bind topics → `Handle` on msgbus at the engine's dispatch phase (see [`CONSUMER_ORDER.md`](./CONSUMER_ORDER.md)).
 5. Engine `Start` → `OnStart()`.
 6. Dispatch loop fan-outs matching events → `Handle`.
 7. Engine `Stop` → `OnStop()`.
@@ -92,12 +92,12 @@ Rules for `Handle`:
 | Mechanism | Purpose |
 | --- | --- |
 | `{module}.Register("type", factory)` in `init()` | YAML `type` → constructor |
-| `actor.RegisterIn(bus, instance, phase)` | Bind instance to msgbus topics at a dispatch phase |
+| `actor.RegisterIn(bus, instance, msgbus.PhaseOf(e.Type()))` | Bind instance to msgbus topics at the engine's dispatch phase |
 
 Factories are pulled in via blank imports in `cmd/main.go`. Engines then:
 
 ```text
-lookupFactory(entry.Type) → factory(...) → ApplyName → OnInit → actor.RegisterIn(phase) → append
+lookupFactory(entry.Type) → factory(...) → ApplyName → OnInit → actor.RegisterIn(PhaseOf(e.Type())) → append
 ```
 
 Unknown `type` is logged and skipped.

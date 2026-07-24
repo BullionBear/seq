@@ -65,7 +65,7 @@ func (e *Engine) Init(config Config) error {
 		// Stateless guards must not register, or they receive every event.
 		// RegisterIn injects Clock; when skipping registration, inject explicitly.
 		if len(a.SubscribedTypes()) > 0 {
-			actor.RegisterIn(e.msgBus, a, msgbus.PhaseControl)
+			actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
 		} else {
 			actor.InjectClock(e.msgBus, a)
 		}

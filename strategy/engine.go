@@ -4,17 +4,23 @@ import (
 	"github.com/BullionBear/seq/core/actor"
 	"github.com/BullionBear/seq/core/cache"
 	"github.com/BullionBear/seq/core/catalog"
+	"github.com/BullionBear/seq/core/engine"
 	"github.com/BullionBear/seq/core/logger"
+	"github.com/BullionBear/seq/core/model/common"
 	"github.com/BullionBear/seq/core/msgbus"
 	"github.com/rs/zerolog"
 )
 
 func log() *zerolog.Logger { l := logger.Get(); return &l }
 
+var _ engine.Engine = (*Engine)(nil)
+
 // Engine manages the lifecycle of multiple strategy actors.
 // It constructs actors from config entries using the factory registry,
 // registers them with the MsgBus, and manages their lifecycle.
 type Engine struct {
+	engine.EngineBase
+
 	actors  []actor.Actor
 	catalog *catalog.Catalog
 	cache   *cache.Cache
@@ -24,9 +30,10 @@ type Engine struct {
 // NewEngine creates a new strategy Engine.
 func NewEngine(cat *catalog.Catalog, bus *msgbus.MsgBus, c *cache.Cache) *Engine {
 	return &Engine{
-		catalog: cat,
-		cache:   c,
-		msgBus:  bus,
+		EngineBase: engine.NewEngineBase(common.EngineStrategy),
+		catalog:    cat,
+		cache:      c,
+		msgBus:     bus,
 	}
 }
 
@@ -43,7 +50,7 @@ func (e *Engine) Init(config Config) {
 		a := factory(e.catalog, e.msgBus, e.cache)
 		actor.ApplyName(a, entry.Name)
 		a.OnInit(entry.Config)
-		actor.RegisterIn(e.msgBus, a, msgbus.PhaseDecide)
+		actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
 		e.actors = append(e.actors, a)
 
 		log().Info().Str("type", entry.Type).Str("name", a.Name()).Msg("StrategyEngine: actor initialized")

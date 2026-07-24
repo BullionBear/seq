@@ -119,15 +119,8 @@ func (m *MsgBus) GetTicker() Ticker {
 // Event API (pub-sub, MPSC)
 // =============================================================================
 
-// Register adds an event consumer to the MsgBus with optional topic filtering.
-// If topics is nil or empty, the consumer will receive all event topics.
-// Consumers should be registered before calling Dispatch.
-// The consumer is registered at PhaseIngest; engines should use RegisterPhased.
-func (m *MsgBus) Register(name string, topics []event.Topic, handler EventHandler) {
-	m.eventBus.Register(name, topics, handler)
-}
-
 // RegisterPhased adds an event consumer at the given dispatch phase.
+// If topics is nil or empty, the consumer receives all event topics.
 // See docs/CONSUMER_ORDER.md.
 func (m *MsgBus) RegisterPhased(phase Phase, name string, topics []event.Topic, handler EventHandler) {
 	m.eventBus.RegisterPhased(phase, name, topics, handler)
@@ -187,14 +180,20 @@ func (m *MsgBus) ConsumerCount() int {
 	return m.eventBus.ConsumerCount()
 }
 
-// ConsumerNames returns the registered consumer names in dispatch order.
-// The order is load-bearing: see docs/CONSUMER_ORDER.md.
+// ConsumerNames returns registered consumer names in dispatch order.
+// Allocates; startup and test paths only. See docs/CONSUMER_ORDER.md.
 func (m *MsgBus) ConsumerNames() []string {
 	return m.eventBus.ConsumerNames()
 }
 
+// ConsumerPhases returns registered consumer phases in dispatch order.
+// Allocates; startup and test paths only. See docs/CONSUMER_ORDER.md.
+func (m *MsgBus) ConsumerPhases() []Phase {
+	return m.eventBus.ConsumerPhases()
+}
+
 // AssertOrder verifies consumer phases are non-decreasing.
-// Called once from Node.Init after all engines are initialized.
+// Called once from Node.initEngines after all engines are initialized.
 func (m *MsgBus) AssertOrder() error {
 	return m.eventBus.AssertOrder()
 }

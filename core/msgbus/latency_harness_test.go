@@ -44,7 +44,7 @@ func TestPublishDispatchLatencyHarness(t *testing.T) {
 	latencies := make([]int64, 0, n)
 	var consumed atomic.Int64
 
-	bus.Register("latency-harness", nil, func(ev Event) {
+	bus.RegisterPhased(PhaseIngest, "latency-harness", nil, func(ev Event) {
 		latencies = append(latencies, time.Now().UnixNano()-int64(ev.CreatedAt))
 		consumed.Add(1)
 	})

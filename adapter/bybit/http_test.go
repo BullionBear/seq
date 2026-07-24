@@ -283,7 +283,7 @@ func TestReqDepthSnapshot_Integration(t *testing.T) {
 
 	// Verify event was published
 	var receivedEvent msgbus.Event
-	eb.Register("test", nil, func(ev msgbus.Event) {
+	eb.RegisterPhased(msgbus.PhaseIngest, "test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -429,7 +429,7 @@ func TestDataClient_ProcessOrderbookSnapshot(t *testing.T) {
 
 	// Verify event was published
 	var receivedEvent msgbus.Event
-	eb.Register("test", nil, func(ev msgbus.Event) {
+	eb.RegisterPhased(msgbus.PhaseIngest, "test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -514,7 +514,7 @@ func TestDataClient_ProcessOrderbookDelta(t *testing.T) {
 
 	// Verify event was published
 	var receivedEvent msgbus.Event
-	eb.Register("test", nil, func(ev msgbus.Event) {
+	eb.RegisterPhased(msgbus.PhaseIngest, "test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 	if !eb.Dispatch() {
@@ -624,7 +624,7 @@ func TestIntegration_ReqBalanceSnapshot(t *testing.T) {
 
 	// Check if event was published
 	var receivedEvent msgbus.Event
-	eb.Register("test", nil, func(ev msgbus.Event) {
+	eb.RegisterPhased(msgbus.PhaseIngest, "test", nil, func(ev msgbus.Event) {
 		receivedEvent = ev
 	})
 
