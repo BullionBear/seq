@@ -112,7 +112,7 @@ func (lb *LeakyBucket) OnInit(config map[string]any) {
 //
 // The sliding window is driven by cmd.Timestamp (set by SubmitOrder), not
 // wall-clock time.Now(). That keeps admit/drain deterministic and aligned
-// with the order's CreatedAt, independent of actor.Register / Clock injection.
+// with the order's CreatedAt, independent of actor.RegisterIn / Clock injection.
 func (lb *LeakyBucket) Check(cmd command.RiskCheck) error {
 	if lb.accountID != -1 && cmd.AccountID != lb.accountID {
 		return nil

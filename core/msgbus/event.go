@@ -39,6 +39,7 @@ type Event struct {
 // coordinating arena memory release across multiple consumers.
 type Consumer struct {
 	Name     string               // unique identifier for this consumer
+	Phase    Phase                // dispatch phase; see docs/CONSUMER_ORDER.md
 	Topics   map[event.Topic]bool // subscribed topics (nil or empty = all topics)
 	Handler  EventHandler         // callback function for handling events
 	Sequence uint64               // last processed event sequence (EventID)

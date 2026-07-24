@@ -41,7 +41,7 @@ type Actor interface {
 }
 
 // InjectClock attaches the MsgBus ticker Clock to the actor when present.
-// Safe to call independently of Register — needed for actors that skip bus
+// Safe to call independently of RegisterIn — needed for actors that skip bus
 // registration (e.g. risk Guards with nil SubscribedTypes).
 func InjectClock(bus *msgbus.MsgBus, a Actor) {
 	if t := bus.GetTicker(); t != nil {
@@ -54,16 +54,18 @@ func InjectClock(bus *msgbus.MsgBus, a Actor) {
 	}
 }
 
-// Register is a helper function that registers an Actor with the MsgBus.
-// It creates a handler that calls the actor's Handle method with the MsgBus reference.
-// If a Clock is attached to the MsgBus via SetTicker, it is automatically injected
-// into the actor (available via ActorBase.Clock() in OnStart and Handle).
-func Register(bus *msgbus.MsgBus, a Actor) {
+// RegisterIn registers an Actor with the MsgBus at the given dispatch phase.
+// It creates a handler that calls the actor's Handle method with the MsgBus
+// reference, and injects a Clock if one is attached via SetTicker.
+//
+// Engines derive the phase from their own type: msgbus.PhaseOf(e.Type()).
+// There is no default phase — see docs/CONSUMER_ORDER.md.
+func RegisterIn(bus *msgbus.MsgBus, a Actor, phase msgbus.Phase) {
 	InjectClock(bus, a)
 	handler := func(ev msgbus.Event) {
 		a.Handle(ev, bus)
 	}
-	bus.Register(a.Name(), a.SubscribedTypes(), handler)
+	bus.RegisterPhased(phase, a.Name(), a.SubscribedTypes(), handler)
 }
 
 // ApplyName sets the actor's name from the config entry. If name is empty,

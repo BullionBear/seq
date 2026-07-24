@@ -63,9 +63,9 @@ func (e *Engine) Init(config Config) error {
 
 		// core/msgbus: nil/empty topics mean "subscribe to all".
 		// Stateless guards must not register, or they receive every event.
-		// Register injects Clock; when skipping registration, inject explicitly.
+		// RegisterIn injects Clock; when skipping registration, inject explicitly.
 		if len(a.SubscribedTypes()) > 0 {
-			actor.Register(e.msgBus, a)
+			actor.RegisterIn(e.msgBus, a, msgbus.PhaseOf(e.Type()))
 		} else {
 			actor.InjectClock(e.msgBus, a)
 		}

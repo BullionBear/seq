@@ -100,20 +100,37 @@ func (n *Node) Init(config Config, execRouter []adapter.ExecRouterEntry, dataRou
 	n.ledgerEngine.SetExecutionRouter(n.executionRouter)
 	n.ledgerEngine.SetNotifier(notifier)
 
-	// Set up execution clients from top-level execrouter config
+	// Venue clients require credentials; kept out of initEngines so the
+	// engine wiring stays testable headless.
 	accountIDs, walletTypes := n.setupExecutionClients(execRouter)
 	n.ledgerEngine.SetAccounts(accountIDs, walletTypes)
 
-	// Initialize all engines with their configs
+	if err := n.initEngines(config, dataRouter); err != nil {
+		log().Fatal().Err(err).Msg("Node: engine initialization failed")
+	}
+
+	log().Info().Str("trading_mode", tradingMode.String()).Msg("Node initialized")
+}
+
+// initEngines initializes every engine in dispatch-phase order and verifies the
+// resulting consumer order. The call order below is a correctness contract:
+// cache writers (data / execution / ledger) must register before readers
+// (strategy). See docs/CONSUMER_ORDER.md.
+//
+// Kept separate from Init so it can run without venue credentials.
+func (n *Node) initEngines(config Config, dataRouter []adapter.DataRouterEntry) error {
 	n.dataEngine.Init(config.Engine.Data, dataRouter)
 	n.executionEngine.Init(config.Engine.Execution)
 	n.ledgerEngine.Init(config.Engine.Ledger)
 	if err := n.riskEngine.Init(config.Engine.Risk); err != nil {
-		log().Fatal().Err(err).Msg("Node: risk engine init failed")
+		return fmt.Errorf("risk engine init: %w", err)
 	}
 	n.strategyEngine.Init(config.Engine.Strategy)
 
-	log().Info().Str("trading_mode", tradingMode.String()).Msg("Node initialized")
+	if err := n.msgBus.AssertOrder(); err != nil {
+		return fmt.Errorf("consumer order: %w", err)
+	}
+	return nil
 }
 
 // setupExecutionClients creates and registers execution clients from

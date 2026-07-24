@@ -1,6 +1,7 @@
 package msgbus
 
 import (
+	"fmt"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -117,12 +118,53 @@ func (e *EventBus) WaitCount(topic event.Topic) uint64 {
 	return atomic.LoadUint64(&e.waitCounts[topic])
 }
 
-// Register adds a consumer to the EventBus with optional topic filtering.
-// If topics is nil or empty, the consumer will receive all topics.
-// Consumers should be registered before calling Dispatch.
-func (e *EventBus) Register(name string, topics []event.Topic, handler EventHandler) {
+// RegisterPhased adds a consumer at the given dispatch phase.
+// If topics is nil or empty, the consumer receives all topics.
+// Phases must be non-decreasing across registrations; AssertOrder enforces it.
+// See docs/CONSUMER_ORDER.md.
+func (e *EventBus) RegisterPhased(phase Phase, name string, topics []event.Topic, handler EventHandler) {
 	consumer := NewConsumer(name, topics, handler)
+	consumer.Phase = phase
 	e.consumers = append(e.consumers, consumer)
+}
+
+// ConsumerNames returns registered consumer names in dispatch order.
+// Allocates; startup and test paths only, never called from Dispatch.
+func (e *EventBus) ConsumerNames() []string {
+	names := make([]string, len(e.consumers))
+	for i, c := range e.consumers {
+		names[i] = c.Name
+	}
+	return names
+}
+
+// ConsumerPhases returns registered consumer phases in dispatch order.
+// Allocates; startup and test paths only, never called from Dispatch.
+func (e *EventBus) ConsumerPhases() []Phase {
+	phases := make([]Phase, len(e.consumers))
+	for i, c := range e.consumers {
+		phases[i] = c.Phase
+	}
+	return phases
+}
+
+// AssertOrder verifies consumer phases are non-decreasing, i.e. that every
+// cache writer is registered before every cache reader.
+// Called once from Node.initEngines after all engines are initialized.
+// See docs/CONSUMER_ORDER.md.
+func (e *EventBus) AssertOrder() error {
+	prev := Phase(-1)
+	prevName := "<start>"
+	for _, c := range e.consumers {
+		if c.Phase < prev {
+			return fmt.Errorf(
+				"consumer order violation: %q (phase %s) registered after %q (phase %s); "+
+					"cache writers must precede readers, see docs/CONSUMER_ORDER.md",
+				c.Name, c.Phase, prevName, prev)
+		}
+		prev, prevName = c.Phase, c.Name
+	}
+	return nil
 }
 
 // Dispatch reads the next event from the ring buffer and dispatches it to all
